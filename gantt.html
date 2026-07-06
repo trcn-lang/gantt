@@ -114,18 +114,13 @@
     position:sticky;top:0;z-index:4;height:56px;
     background:var(--fond);border-bottom:1px solid var(--bordure);
   }
-  .head-inner{position:relative;height:100%;display:flex;align-items:flex-end;}
-  .week{
+  .head-inner{position:relative;height:100%;}
+  .week-label{
     position:absolute;top:0;bottom:0;
     border-left:1px solid var(--bordure);
-    padding-left:4px;font-size:10px;color:var(--bleu-france);font-weight:700;
-    display:flex;align-items:flex-start;white-space:nowrap;padding-top:2px;
-  }
-  .date{
-    position:absolute;bottom:0;
-    border-left:1px solid var(--bordure);
-    padding-left:4px;font-size:11px;color:var(--texte-mention);
-    display:flex;align-items:center;height:24px;white-space:nowrap;
+    padding-left:4px;padding-right:4px;font-size:9px;color:var(--bleu-france);font-weight:700;
+    display:flex;flex-direction:column;align-items:flex-start;justify-content:flex-start;
+    white-space:normal;line-height:1.1;padding-top:2px;width:112px;overflow:hidden;
   }
 
   .label{
@@ -200,7 +195,7 @@
   
   <div class="slider-container">
     <label class="slider-label">Navigation :</label>
-    <input type="range" id="slider" min="0" max="100" value="50" style="flex:1;">
+    <input type="range" id="slider" min="0" max="100" value="50">
     <span id="slider-date" style="font-size:12px;color:var(--texte-mention);min-width:100px;"></span>
   </div>
 
@@ -210,7 +205,7 @@
         <div class="corner">Tâche</div>
         <div id="labels"></div>
       </div>
-      <div style="flex:1;overflow:auto;">
+      <div style="flex:1;overflow:auto;position:relative;">
         <div id="kanban" class="grid"></div>
       </div>
     </div>
@@ -225,6 +220,8 @@ const STATUTS = [
   {nom:"Terminé",     cls:"st-termine",   couleur:"var(--st-termine)"},
   {nom:"Annulé",      cls:"st-annule",    couleur:"var(--st-annule)"},
 ];
+
+const JOURS=['Dimanche','Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
 
 function statutInfo(v){
   const s = (v||"").toString().trim();
@@ -260,6 +257,23 @@ function getWeekNumber(d){
   return Math.ceil((((date - yearStart) / 86400000) + 1) / 7);
 }
 
+function getMondayOfWeek(dayIndex){
+  const d = new Date(dayIndex * MS_JOUR);
+  const dow = d.getUTCDay();
+  const diff = d.getUTCDate() - dow + (dow === 0 ? -6 : 1);
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), diff));
+}
+
+function countWorkDays(startIdx, endIdx){
+  let count = 0;
+  for(let i=startIdx;i<=endIdx;i++){
+    const d = new Date(i*MS_JOUR);
+    const dow = d.getUTCDay();
+    if(dow >= 1 && dow <= 5) count++;
+  }
+  return count;
+}
+
 const MS_JOUR=86400000;
 function jourIndex(d){ return Math.floor(d.getTime()/MS_JOUR); }
 function fmtJJMM(idx){
@@ -271,6 +285,7 @@ function fmtJJMM(idx){
 
 let K=null;
 let allData={};
+let isSliderChanging=false;
 
 grist.ready({requiredAccess:"read table"});
 
@@ -378,19 +393,35 @@ function construire(records){
 
   const head=el("div","head-track");
   const headInner=el("div","head-inner");
+  
+  // Affichage semaines avec labels
+  let currentWeek=null;
   for(let i=minI;i<=maxI;i+=7){
-    const week=el("div","week");
-    week.style.left=((i-minI)*16)+"px";
+    const weekLabel=el("div","week-label");
     const d=new Date(i*MS_JOUR);
-    week.textContent="S"+getWeekNumber(d);
-    headInner.appendChild(week);
+    const wn=getWeekNumber(d);
+    
+    // Trouver lundi et vendredi
+    let mondayIdx=i;
+    let fridayIdx=i+4;
+    if(fridayIdx>maxI) fridayIdx=maxI;
+    
+    const mondayDate=new Date(mondayIdx*MS_JOUR);
+    const fridayDate=new Date(fridayIdx*MS_JOUR);
+    
+    const mondayDay=JOURS[mondayDate.getUTCDay()];
+    const fridayDay=JOURS[fridayDate.getUTCDay()];
+    const workDays=countWorkDays(mondayIdx, fridayIdx);
+    
+    const line1=`S${wn}`;
+    const line2=`${mondayDay} ${fmtJJMM(mondayIdx)} au ${fridayDay} ${fmtJJMM(fridayIdx)}`;
+    const line3=`(${workDays} j. ouvrés)`;
+    
+    weekLabel.style.left=((i-minI)*16)+"px";
+    weekLabel.innerHTML=`${line1}<br>${line2}<br>${line3}`;
+    headInner.appendChild(weekLabel);
   }
-  for(let i=minI;i<=maxI;i++){
-    const tick=el("div","date");
-    tick.style.left=((i-minI)*16)+"px";
-    tick.textContent=fmtJJMM(i);
-    headInner.appendChild(tick);
-  }
+  
   head.appendChild(headInner);
   grid.appendChild(head);
 
@@ -427,19 +458,18 @@ function construire(records){
   rendreLegende();
   setupSlider();
   setupResize();
-  centerToday();
+  
+  // Centrer sur aujourd'hui avec délai
+  setTimeout(scrollToToday, 200);
 }
 
-function centerToday(){
+function scrollToToday(){
   const scroll=document.getElementById("scroll");
-  setTimeout(()=>{
-    const grid=document.querySelector(".grid");
-    if(grid && allData.todayOffset!==undefined){
-      const leftOffset=allData.todayOffset*16 - scroll.clientWidth/2;
-      scroll.scrollLeft=Math.max(0, leftOffset);
-      updateSlider();
-    }
-  }, 100);
+  if(allData.todayOffset===undefined) return;
+  
+  const leftPos = (allData.todayOffset * 16) - (scroll.clientWidth / 3);
+  scroll.scrollLeft = Math.max(0, leftPos);
+  updateSlider();
 }
 
 function setupSlider(){
@@ -447,22 +477,33 @@ function setupSlider(){
   const scroll=document.getElementById("scroll");
   
   slider.addEventListener("input", ()=>{
+    isSliderChanging=true;
     const pct=slider.value/100;
     const maxScroll=scroll.scrollWidth-scroll.clientWidth;
     scroll.scrollLeft=pct*maxScroll;
     updateSlider();
+    isSliderChanging=false;
   });
 }
 
 function updateSlider(){
+  if(isSliderChanging) return;
+  
   const scroll=document.getElementById("scroll");
   const slider=document.getElementById("slider");
   const maxScroll=scroll.scrollWidth-scroll.clientWidth;
-  const pct=maxScroll>0 ? (scroll.scrollLeft/maxScroll)*100 : 50;
-  slider.value=pct;
+  
+  if(maxScroll<=0){
+    slider.value=50;
+  } else {
+    const pct=(scroll.scrollLeft/maxScroll)*100;
+    slider.value=Math.max(0, Math.min(100, pct));
+  }
   
   if(allData.minI){
-    const idx=allData.minI+Math.round((scroll.scrollLeft/16));
+    const pixelsLeft=scroll.scrollLeft;
+    const dayOffset=Math.round(pixelsLeft/16);
+    const idx=allData.minI+dayOffset;
     document.getElementById("slider-date").textContent=fmtJJMM(idx);
   }
 }
@@ -475,7 +516,7 @@ function setupResize(){
   let startX, startW;
   
   col.addEventListener("mousedown", (e)=>{
-    if(e.target === col || (e.offsetX > col.clientWidth-5)){
+    if(e.offsetX > col.clientWidth-5){
       isResizing=true;
       startX=e.clientX;
       startW=col.clientWidth;
