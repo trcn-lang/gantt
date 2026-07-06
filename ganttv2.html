@@ -67,8 +67,6 @@
     transition:background 0.2s;
   }
   .btn:hover{background:#0056b3}
-  .btn-secondary{background:#666;margin-left:auto}
-  .btn-secondary:hover{background:#555}
 
   .scroll{flex:1;overflow:auto;position:relative}
 
@@ -162,7 +160,6 @@
     background:#EEE;border:1px solid var(--bordure);border-radius:10px;padding:1px 8px;
   }
 
-  /* MODAL */
   .modal-overlay{
     position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);
     display:none;align-items:center;justify-content:center;z-index:1000;
@@ -324,131 +321,103 @@ let allData={};
 
 grist.ready({requiredAccess:"full"});
 
-// Utilitaire pour convertir en array
-function ensureArray(data){
+// Convertir format columnar en rows
+function columnarToRows(data){
+  if(!data || typeof data !== 'object') return [];
   if(Array.isArray(data)) return data;
-  if(data && typeof data === 'object') return Object.values(data);
-  return [];
+  
+  // Format columnar: {id: [1,2,3], nom: ["a","b","c"]}
+  const keys = Object.keys(data);
+  if(keys.length === 0) return [];
+  
+  // Récupérer la première colonne pour connaître la longueur
+  const firstCol = data[keys[0]];
+  if(!Array.isArray(firstCol)) return [];
+  
+  const length = firstCol.length;
+  const rows = [];
+  
+  for(let i = 0; i < length; i++){
+    const row = {};
+    keys.forEach(key => {
+      row[key] = data[key][i];
+    });
+    rows.push(row);
+  }
+  
+  return rows;
 }
 
-// Charger données au démarrage
+// Charger données
 async function init(){
   try{
     document.getElementById("status").textContent="Chargement...";
-    
     console.log("=== DÉBUT CHARGEMENT ===");
     
-    // Campagnes
-    let result=await grist.docApi.fetchTable("Campagnes");
-    console.log("Campagnes RAW:", result, "Type:", typeof result, "Constructor:", result?.constructor?.name);
-    DB.campagnes=ensureArray(result);
-    console.log("✓ Campagnes chargées:", DB.campagnes.length, "rows");
+    DB.campagnes = columnarToRows(await grist.docApi.fetchTable("Campagnes"));
+    console.log("✓ Campagnes:", DB.campagnes.length);
     
-    // Jalons
-    result=await grist.docApi.fetchTable("Jalons");
-    console.log("Jalons RAW:", result);
-    DB.jalons=ensureArray(result);
-    console.log("✓ Jalons chargées:", DB.jalons.length, "rows");
+    DB.jalons = columnarToRows(await grist.docApi.fetchTable("Jalons"));
+    console.log("✓ Jalons:", DB.jalons.length);
     
-    // Taches
-    result=await grist.docApi.fetchTable("Taches");
-    console.log("Taches RAW:", result);
-    DB.taches=ensureArray(result);
-    console.log("✓ Taches chargées:", DB.taches.length, "rows");
+    DB.taches = columnarToRows(await grist.docApi.fetchTable("Taches"));
+    console.log("✓ Taches:", DB.taches.length);
     
-    // Responsables
-    result=await grist.docApi.fetchTable("Responsables");
-    console.log("Responsables RAW:", result);
-    DB.responsables=ensureArray(result);
-    console.log("✓ Responsables chargées:", DB.responsables.length, "rows");
+    DB.responsables = columnarToRows(await grist.docApi.fetchTable("Responsables"));
+    console.log("✓ Responsables:", DB.responsables.length);
     
-    // PARAMETRES
-    result=await grist.docApi.fetchTable("PARAMETRES");
-    console.log("\n=== PARAMETRES RAW ===");
-    console.log("Objet complet:", result);
-    console.log("Type:", typeof result);
-    console.log("Constructor:", result?.constructor?.name);
-    console.log("Keys:", Object.keys(result || {}));
-    if(result && !Array.isArray(result) && result[0]) console.log("Premier element:", result[0]);
+    DB.parametres = columnarToRows(await grist.docApi.fetchTable("PARAMETRES"));
+    console.log("✓ PARAMETRES:", DB.parametres.length);
+    console.log("Premier row:", DB.parametres[0]);
     
-    DB.parametres=ensureArray(result);
-    console.log("✓ PARAMETRES chargée:", DB.parametres.length, "rows");
-    
-    if(DB.parametres.length > 0){
-      console.log("Premier row:", DB.parametres[0]);
-      console.log("Colonnes:", Object.keys(DB.parametres[0]));
-    }
-    
-    console.log("=== FIN DEBUG ===\n");
-    
-    // Populate dropdowns
     populateSelects();
-    
-    // Render gantt
     construire();
     document.getElementById("status").textContent="✓ Données chargées";
   }catch(e){
-    console.error("❌ ERREUR:", e);
-    document.getElementById("status").textContent="❌ Erreur : "+e.message;
+    console.error("❌", e);
+    document.getElementById("status").textContent="❌ "+e.message;
   }
 }
 
 function populateSelects(){
-  console.log("populateSelects() appelé");
-  
-  // Sections
   const sections=DB.parametres.filter(p=>p.Section).map(p=>p.Section).filter((v,i,a)=>a.indexOf(v)===i);
-  console.log("Sections à afficher:", sections);
-  
-  const selSec=document.getElementById("field-campagne-section");
-  selSec.innerHTML='<option value="">-- Sélectionner --</option>';
-  sections.forEach(sec=>{
+  document.getElementById("field-campagne-section").innerHTML='<option value="">-- Sélectionner --</option>';
+  sections.forEach(s=>{
     const opt=document.createElement("option");
-    opt.value=sec;
-    opt.textContent=sec;
-    selSec.appendChild(opt);
+    opt.value=s;
+    opt.textContent=s;
+    document.getElementById("field-campagne-section").appendChild(opt);
   });
 
-  // Types campagne
   const types=DB.parametres.filter(p=>p.Type_Campagne).map(p=>p.Type_Campagne).filter((v,i,a)=>a.indexOf(v)===i);
-  console.log("Types à afficher:", types);
-  
-  const selType=document.getElementById("field-campagne-type");
-  selType.innerHTML='<option value="">-- Sélectionner --</option>';
+  document.getElementById("field-campagne-type").innerHTML='<option value="">-- Sélectionner --</option>';
   types.forEach(t=>{
     const opt=document.createElement("option");
     opt.value=t;
     opt.textContent=t;
-    selType.appendChild(opt);
+    document.getElementById("field-campagne-type").appendChild(opt);
   });
 
-  // Responsables
-  const selResp=document.getElementById("field-tache-resp");
-  selResp.innerHTML='<option value="">-- Aucun --</option>';
-  DB.responsables.forEach(r=>{
-    const opt=document.createElement("option");
-    opt.value=r.Nom;
-    opt.textContent=r.Nom;
-    selResp.appendChild(opt);
-  });
-
-  // Statuts
   const statuts=DB.parametres.filter(p=>p.Statut).map(p=>p.Statut).filter((v,i,a)=>a.indexOf(v)===i);
-  console.log("Statuts à afficher:", statuts);
-  
-  const selStat=document.getElementById("field-tache-statut");
-  selStat.innerHTML='<option value="">-- Sélectionner --</option>';
+  document.getElementById("field-tache-statut").innerHTML='<option value="">-- Sélectionner --</option>';
   statuts.forEach(st=>{
     const opt=document.createElement("option");
     opt.value=st;
     opt.textContent=st;
-    selStat.appendChild(opt);
+    document.getElementById("field-tache-statut").appendChild(opt);
+  });
+
+  document.getElementById("field-tache-resp").innerHTML='<option value="">-- Aucun --</option>';
+  DB.responsables.forEach(r=>{
+    const opt=document.createElement("option");
+    opt.value=r.Nom;
+    opt.textContent=r.Nom;
+    document.getElementById("field-tache-resp").appendChild(opt);
   });
 }
 
 function openModal(id, data={}){
   document.getElementById(id).classList.add("active");
-  if(data.campagne_id) document.getElementById(`${id.replace('-modal','-')}-campagne`).value=data.campagne_id;
 }
 
 function closeModal(id){
@@ -461,26 +430,13 @@ async function saveCampagne(){
   const type=document.getElementById("field-campagne-type").value;
   const desc=document.getElementById("field-campagne-desc").value.trim();
 
-  if(!nom || !section || !type){
-    alert("Veuillez remplir les champs obligatoires");
-    return;
-  }
+  if(!nom || !section || !type) { alert("Champs obligatoires"); return; }
 
   try{
-    await grist.docApi.addRecord("Campagnes", {
-      Campagne: nom,
-      Section: section,
-      Type_Campagne: type,
-      Description: desc
-    });
-    document.getElementById("field-campagne-nom").value="";
-    document.getElementById("field-campagne-desc").value="";
+    await grist.docApi.addRecord("Campagnes", {Campagne:nom, Section:section, Type_Campagne:type, Description:desc});
     closeModal("modal-campagne");
     init();
-  }catch(e){
-    alert("Erreur : "+e.message);
-    console.error(e);
-  }
+  }catch(e){ alert("Erreur: "+e.message); }
 }
 
 async function saveJalon(){
@@ -489,26 +445,13 @@ async function saveJalon(){
   const date=document.getElementById("field-jalon-date").value;
   const type=document.getElementById("field-jalon-type").value;
 
-  if(!nom || !date){
-    alert("Veuillez remplir les champs obligatoires");
-    return;
-  }
+  if(!nom || !date) { alert("Champs obligatoires"); return; }
 
   try{
-    await grist.docApi.addRecord("Jalons", {
-      Campagne: [parseInt(campagne_id)],
-      Nom: nom,
-      Date: date,
-      Type: type
-    });
-    document.getElementById("field-jalon-nom").value="";
-    document.getElementById("field-jalon-date").value="";
+    await grist.docApi.addRecord("Jalons", {Campagne:[parseInt(campagne_id)], Nom:nom, Date:date, Type:type});
     closeModal("modal-jalon");
     init();
-  }catch(e){
-    alert("Erreur : "+e.message);
-    console.error(e);
-  }
+  }catch(e){ alert("Erreur: "+e.message); }
 }
 
 async function saveTache(){
@@ -518,40 +461,30 @@ async function saveTache(){
   const fin=document.getElementById("field-tache-fin").value;
   const resp=document.getElementById("field-tache-resp").value;
   const statut=document.getElementById("field-tache-statut").value;
-  const comments=document.getElementById("field-tache-comments").value.trim();
 
-  if(!nom || !debut || !fin){
-    alert("Veuillez remplir les champs obligatoires");
-    return;
-  }
+  if(!nom || !debut || !fin) { alert("Champs obligatoires"); return; }
 
   const d1=new Date(debut);
   const d2=new Date(fin);
   const duree=Math.ceil((d2-d1)/(1000*86400))+1;
 
   try{
-    const campRecords=DB.campagnes.filter(c=>c.id===parseInt(campagne_id));
-    if(campRecords.length===0){alert("Campagne non trouvée"); return;}
-    const campagne=campRecords[0];
-
+    const camp=DB.campagnes.find(c=>c.id===parseInt(campagne_id));
+    if(!camp) { alert("Campagne non trouvée"); return; }
+    
     await grist.docApi.addRecord("Taches", {
-      Section: campagne.Section,
-      Campagne: [parseInt(campagne_id)],
-      Tache: nom,
-      Date_debut: debut,
-      Date_fin: fin,
-      Duree_jours: duree,
-      Statut: statut,
-      Responsable: resp,
-      Commentaires: comments
+      Section:camp.Section,
+      Campagne:[parseInt(campagne_id)],
+      Tache:nom,
+      Date_debut:debut,
+      Date_fin:fin,
+      Duree_jours:duree,
+      Statut:statut,
+      Responsable:resp
     });
-    document.getElementById("field-tache-nom").value="";
     closeModal("modal-tache");
     init();
-  }catch(e){
-    alert("Erreur : "+e.message);
-    console.error(e);
-  }
+  }catch(e){ alert("Erreur: "+e.message); }
 }
 
 function construire(){
@@ -559,14 +492,8 @@ function construire(){
   let minI, maxI;
   
   if(dates.length){
-    const idxs=dates.map(t=>{
-      const d1=new Date(t.Date_debut);
-      return Math.floor(d1.getTime()/86400000);
-    });
-    const idxsEnd=dates.map(t=>{
-      const d2=new Date(t.Date_fin);
-      return Math.floor(d2.getTime()/86400000);
-    });
+    const idxs=dates.map(t=>Math.floor(new Date(t.Date_debut).getTime()/86400000));
+    const idxsEnd=dates.map(t=>Math.floor(new Date(t.Date_fin).getTime()/86400000));
     minI=Math.min(...idxs);
     maxI=Math.max(...idxsEnd);
   }else{
@@ -706,9 +633,7 @@ function el(tag,cls,txt){
 }
 
 document.getElementById("btn-add-campagne").onclick=()=>openModal("modal-campagne");
-
 grist.onRecords(()=>init());
-
 init();
 </script>
 </body>
