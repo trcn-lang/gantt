@@ -140,6 +140,13 @@
   .empty{padding:40px;text-align:center;color:var(--texte-mention)}
   .err{margin:16px;padding:12px;border-radius:6px;background:#FFE9E9;
        border:1px solid #FFC5C5;color:#CE0500;font-size:13px}
+  
+  .debug{
+    position:fixed;bottom:0;right:0;background:#333;color:#0f0;
+    font-size:10px;padding:8px;max-width:300px;max-height:200px;
+    overflow:auto;font-family:monospace;z-index:9999;
+    border:1px solid #0f0;border-radius:4px;margin:4px;
+  }
 </style>
 </head>
 <body>
@@ -153,6 +160,7 @@
     <div id="content"></div>
   </div>
 </div>
+<div class="debug" id="debug"></div>
 
 <script>
 const STATUTS = [
@@ -213,16 +221,39 @@ function fmtJJMM(idx){
 }
 
 let K=null;
+let debugLog=[];
+
+function addDebug(msg){
+  debugLog.push(msg);
+  console.log(msg);
+  document.getElementById("debug").innerHTML = debugLog.slice(-20).join("<br>");
+}
 
 grist.ready({requiredAccess:"read table"});
+
 grist.onRecords(function(records){
+  addDebug("=== RECORDS REÇUS ===");
+  addDebug(`Nombre: ${records.length}`);
+  
+  if(records.length > 0) {
+    const cles = Object.keys(records[0]);
+    addDebug(`Clés: ${cles.join(", ")}`);
+    addDebug(`Record 0: ${JSON.stringify(records[0])}`);
+  }
+  
   try{ construire(records); }
-  catch(e){ erreur(e.message); console.error(e); }
+  catch(e){ 
+    addDebug(`ERREUR: ${e.message}`);
+    erreur(e.message); 
+    console.error(e); 
+  }
 });
 
 function detecterColonnes(records){
   const cles = records.length ? Object.keys(records[0]) : [];
-  return {
+  addDebug(`Détection colonnes parmi: ${cles.join(", ")}`);
+  
+  const detected = {
     section:  trouverCle(cles,"Section"),
     campagne: trouverCle(cles,"Campagne"),
     tache:    trouverCle(cles,"Tâche","Tache"),
@@ -232,6 +263,9 @@ function detecterColonnes(records){
     statut:   trouverCle(cles,"Statut"),
     resp:     trouverCle(cles,"Responsable"),
   };
+  
+  addDebug(`Colonnes détectées: ${JSON.stringify(detected)}`);
+  return detected;
 }
 
 function construire(records){
@@ -246,10 +280,16 @@ function construire(records){
 
   K=detecterColonnes(records);
 
-  const taches=records.map(r=>{
+  const taches=records.map((r,idx)=>{
     const debut=parseDate(r[K.debut]);
     let fin=parseDate(r[K.fin]);
     const duree=Number(r[K.duree])||0;
+    
+    if(idx===0) {
+      addDebug(`Record 0 - Début: ${r[K.debut]} -> ${debut}`);
+      addDebug(`Record 0 - Fin: ${r[K.fin]} -> ${fin}`);
+    }
+    
     if(debut && !fin){
       const idx=jourIndex(debut)+Math.max(0,duree-1);
       fin=new Date(idx*MS_JOUR);
@@ -267,6 +307,8 @@ function construire(records){
   });
 
   const dates=taches.filter(t=>t._di!==null);
+  addDebug(`Tâches avec dates: ${dates.length}/${taches.length}`);
+  
   let minI, maxI;
   if(dates.length){
     minI=Math.min(...dates.map(t=>t._di));
