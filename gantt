@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Diagramme de Gantt</title>
+<script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
+<style>
+  :root{
+    --bleu-france:#000091;
+    --bleu-975:#ECECFE;
+    --texte:#161616;
+    --texte-mention:#666666;
+    --bordure:#DDDDDD;
+    --fond:#FFFFFF;
+    --fond-alt:#F6F6F6;
+    --st-planifier:#929292;
+    --st-encours:#0063CB;
+    --st-attente:#B34000;
+    --st-termine:#18753C;
+    --st-annule:#CE0500;
+    --jour:16px;
+    --label-w:300px;
+    --row-h:34px;
+  }
+
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    font-family:"Marianne",-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;
+    color:var(--texte);
+    background:var(--fond);
+    font-size:14px;
+  }
+
+  .app{display:flex;flex-direction:column;height:100vh}
+
+  .topbar{
+    display:flex;align-items:center;justify-content:space-between;
+    gap:16px;padding:12px 16px;border-bottom:1px solid var(--bordure);
+    flex-wrap:wrap;
+  }
+  .topbar h1{
+    font-size:18px;font-weight:700;color:var(--bleu-france);
+    display:flex;align-items:center;gap:8px;
+  }
+  .topbar h1 .barre{width:4px;height:20px;background:var(--bleu-france);border-radius:2px}
+  .meta{font-size:12px;color:var(--texte-mention)}
+
+  .legende{display:flex;gap:14px;flex-wrap:wrap;align-items:center}
+  .legende .item{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--texte-mention)}
+  .legende .puce{width:12px;height:12px;border-radius:3px;flex:0 0 auto}
+
+  .scroll{flex:1;overflow:auto;position:relative}
+
+  .grid{
+    display:grid;
+    grid-template-columns:var(--label-w) var(--tl-w,600px);
+    align-content:start;
+  }
+
+  .corner{
+    position:sticky;top:0;left:0;z-index:5;
+    background:var(--fond);border-right:1px solid var(--bordure);
+    border-bottom:1px solid var(--bordure);
+    padding:0 12px;display:flex;align-items:center;
+    font-size:12px;font-weight:700;color:var(--texte-mention);
+    height:38px;
+  }
+  .head-track{
+    position:sticky;top:0;z-index:4;height:38px;
+    background:var(--fond);border-bottom:1px solid var(--bordure);
+  }
+  .head-inner{position:relative;height:100%}
+  .tick{
+    position:absolute;top:0;bottom:0;
+    border-left:1px solid var(--bordure);
+    padding-left:4px;font-size:11px;color:var(--texte-mention);
+    display:flex;align-items:center;white-space:nowrap;
+  }
+
+  .label{
+    position:sticky;left:0;z-index:3;background:var(--fond);
+    border-right:1px solid var(--bordure);
+    border-bottom:1px solid var(--fond-alt);
+    display:flex;align-items:center;height:var(--row-h);
+    padding:0 12px;
+  }
+  .label.section{
+    background:var(--bleu-975);color:var(--bleu-france);
+    font-weight:700;height:32px;border-bottom:1px solid var(--bordure);
+  }
+  .label.campagne{
+    font-weight:600;color:var(--texte);padding-left:20px;
+    background:var(--fond-alt);height:30px;
+  }
+  .label.tache{padding-left:28px;gap:8px}
+  .label.tache .nom{
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  }
+  .label.tache .resp{
+    font-size:11px;color:var(--texte-mention);flex:0 0 auto;
+  }
+
+  .track{
+    position:relative;height:var(--row-h);
+    border-bottom:1px solid var(--fond-alt);
+    background-image:repeating-linear-gradient(
+      to right,
+      var(--fond-alt) 0 1px,
+      transparent 1px calc(7 * var(--jour))
+    );
+  }
+  .track.section{height:32px;background:var(--bleu-975);border-bottom:1px solid var(--bordure)}
+  .track.campagne{height:30px;background:var(--fond-alt)}
+
+  .track.tache::before{
+    content:"";position:absolute;top:0;bottom:0;
+    left:calc(var(--today) * var(--jour));
+    width:2px;background:#6A6AF4;opacity:.55;z-index:0;
+  }
+  .track.tache.no-today::before{display:none}
+
+  .barre{
+    position:absolute;top:6px;height:calc(var(--row-h) - 12px);
+    border-radius:4px;z-index:1;
+    display:flex;align-items:center;padding:0 6px;
+    font-size:11px;color:#fff;white-space:nowrap;overflow:hidden;
+    cursor:default;
+  }
+  .barre.st-annule{opacity:.55;text-decoration:line-through}
+
+  .pill-plan{
+    position:absolute;top:8px;left:6px;z-index:1;
+    font-size:10px;color:var(--texte-mention);
+    background:#EEE;border:1px solid var(--bordure);
+    border-radius:10px;padding:1px 8px;
+  }
+
+  .empty{padding:40px;text-align:center;color:var(--texte-mention)}
+  .err{margin:16px;padding:12px;border-radius:6px;background:#FFE9E9;
+       border:1px solid #FFC5C5;color:#CE0500;font-size:13px}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="topbar">
+    <h1><span class="barre"></span>Diagramme de Gantt</h1>
+    <div class="legende" id="legende"></div>
+    <div class="meta" id="meta">Chargement…</div>
+  </div>
+  <div class="scroll">
+    <div id="content"></div>
+  </div>
+</div>
+
+<script>
+const STATUTS = [
+  {nom:"À planifier", cls:"st-planifier", couleur:"var(--st-planifier)"},
+  {nom:"En cours",    cls:"st-encours",   couleur:"var(--st-encours)"},
+  {nom:"En attente",  cls:"st-attente",   couleur:"var(--st-attente)"},
+  {nom:"Terminé",     cls:"st-termine",   couleur:"var(--st-termine)"},
+  {nom:"Annulé",      cls:"st-annule",    couleur:"var(--st-annule)"},
+];
+
+function statutInfo(v){
+  const s = (v||"").toString().trim();
+  return STATUTS.find(x => x.nom.toLowerCase() === s.toLowerCase())
+      || {nom:s||"—", cls:"st-planifier", couleur:"var(--st-planifier)"};
+}
+
+function norm(s){
+  return (s||"").toString().toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g,"")
+    .replace(/[^a-z0-9]/g,"");
+}
+
+function trouverCle(cles, ...cands){
+  for(const c of cands){ const n=norm(c);
+    const hit=cles.find(k=>norm(k)===n); if(hit) return hit; }
+  for(const c of cands){ const n=norm(c);
+    const hit=cles.find(k=>norm(k).includes(n)); if(hit) return hit; }
+  return null;
+}
+
+function parseDate(v){
+  if(v===null||v===undefined||v==="") return null;
+  if(typeof v==="number") return new Date(v*1000);
+  if(typeof v==="string"){
+    const s=v.trim();
+    
+    // Format Grist : MM/DD/YYYY (ex: 01/05/2026)
+    let m=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if(m){
+      const mm=+m[1], dd=+m[2], yyyy=+m[3];
+      return new Date(Date.UTC(yyyy, mm-1, dd));
+    }
+    
+    // Format ISO : YYYY-MM-DD
+    const d=new Date(s);
+    return isNaN(d.getTime())?null:d;
+  }
+  return null;
+}
+
+const MS_JOUR=86400000;
+function jourIndex(d){ return Math.floor(d.getTime()/MS_JOUR); }
+function fmtJJMM(idx){
+  const d=new Date(idx*MS_JOUR);
+  const jj=String(d.getUTCDate()).padStart(2,"0");
+  const mm=String(d.getUTCMonth()+1).padStart(2,"0");
+  return jj+"/"+mm;
+}
+
+let K=null;
+
+grist.ready({requiredAccess:"read table"});
+grist.onRecords(function(records){
+  try{ construire(records); }
+  catch(e){ erreur(e.message); console.error(e); }
+});
+
+function detecterColonnes(records){
+  const cles = records.length ? Object.keys(records[0]) : [];
+  return {
+    section:  trouverCle(cles,"Section"),
+    campagne: trouverCle(cles,"Campagne"),
+    tache:    trouverCle(cles,"Tâche","Tache"),
+    debut:    trouverCle(cles,"Date début","Date debut","datedebut","debut"),
+    fin:      trouverCle(cles,"Date fin calculée","Date fin","datefincalculee","datefin","fin"),
+    duree:    trouverCle(cles,"Durée jours ouvrés","Duree","dureejoursouvres","duree"),
+    statut:   trouverCle(cles,"Statut"),
+    resp:     trouverCle(cles,"Responsable"),
+  };
+}
+
+function construire(records){
+  const content=document.getElementById("content");
+
+  if(!records || records.length===0){
+    content.innerHTML='<div class="empty">Aucune tâche à afficher.</div>';
+    document.getElementById("meta").textContent="0 tâche";
+    rendreLegende();
+    return;
+  }
+
+  K=detecterColonnes(records);
+
+  const taches=records.map(r=>{
+    const debut=parseDate(r[K.debut]);
+    let fin=parseDate(r[K.fin]);
+    const duree=Number(r[K.duree])||0;
+    if(debut && !fin){
+      const idx=jourIndex(debut)+Math.max(0,duree-1);
+      fin=new Date(idx*MS_JOUR);
+    }
+    return {
+      section:(r[K.section]||"— Sans section").toString(),
+      campagne:(r[K.campagne]||"— Sans campagne").toString(),
+      tache:(r[K.tache]||"Sans titre").toString(),
+      debut, fin, duree,
+      statut:(r[K.statut]||"").toString(),
+      resp:(r[K.resp]||"").toString(),
+      _di: debut? jourIndex(debut):null,
+      _fi: fin?   jourIndex(fin):null,
+    };
+  });
+
+  const dates=taches.filter(t=>t._di!==null);
+  let minI, maxI;
+  if(dates.length){
+    minI=Math.min(...dates.map(t=>t._di));
+    maxI=Math.max(...dates.map(t=>t._fi));
+  }else{
+    const today=jourIndex(new Date());
+    minI=today-3; maxI=today+21;
+  }
+  minI-=2; maxI+=2;
+  while(((minI%7)+7)%7!==4) minI--;
+  const totalJours=Math.max(7,maxI-minI+1);
+  const tlW=totalJours*16;
+
+  const todayI=jourIndex(new Date());
+  const todayOffset=todayI-minI;
+  const todayVisible=(todayI>=minI && todayI<=maxI);
+
+  const sections=[];
+  const idxSec={}, idxCamp={};
+  taches.forEach(t=>{
+    if(!(t.section in idxSec)){ idxSec[t.section]=sections.length;
+      sections.push({nom:t.section,campagnes:[]}); }
+    const S=sections[idxSec[t.section]];
+    const kc=t.section+"||"+t.campagne;
+    if(!(kc in idxCamp)){ idxCamp[kc]=S.campagnes.length;
+      S.campagnes.push({nom:t.campagne,taches:[]}); }
+    S.campagnes[idxCamp[kc]].taches.push(t);
+  });
+  sections.forEach(S=>S.campagnes.forEach(C=>C.taches.sort((a,b)=>{
+    if(a._di===null && b._di===null) return 0;
+    if(a._di===null) return 1;
+    if(b._di===null) return -1;
+    return a._di-b._di;
+  })));
+
+  const grid=document.createElement("div");
+  grid.className="grid";
+  grid.style.setProperty("--tl-w", tlW+"px");
+  grid.style.setProperty("--today", todayOffset);
+
+  const corner=el("div","corner","Tâche");
+  const head=el("div","head-track");
+  const headInner=el("div","head-inner");
+  for(let i=minI;i<=maxI;i+=7){
+    const tick=el("div","tick",fmtJJMM(i));
+    tick.style.left=((i-minI)*16)+"px";
+    headInner.appendChild(tick);
+  }
+  head.appendChild(headInner);
+  grid.appendChild(corner); grid.appendChild(head);
+
+  sections.forEach(S=>{
+    grid.appendChild(el("div","label section",S.nom));
+    grid.appendChild(el("div","track section"));
+    S.campagnes.forEach(C=>{
+      grid.appendChild(el("div","label campagne",C.nom));
+      grid.appendChild(el("div","track campagne"));
+      C.taches.forEach(t=>{
+        const lab=el("div","label tache");
+        const nom=el("span","nom",t.tache); lab.appendChild(nom);
+        if(t.resp){ lab.appendChild(el("span","resp","· "+t.resp)); }
+        grid.appendChild(lab);
+
+        const track=el("div","track tache"+(todayVisible?"":" no-today"));
+        if(t._di!==null){
+          const info=statutInfo(t.statut);
+          const barre=el("div","barre "+info.cls);
+          const left=(t._di-minI)*16;
+          const largeur=Math.max(16,(t._fi-t._di+1)*16);
+          barre.style.left=left+"px";
+          barre.style.width=largeur+"px";
+          barre.style.background=info.couleur;
+          barre.textContent=t.tache;
+          barre.title=`${t.tache}\n${info.nom}`
+            +(t.resp?`\nResponsable : ${t.resp}`:"")
+            +`\n${fmtJJMM(t._di)} → ${fmtJJMM(t._fi)}`
+            +(t.duree?` (${t.duree} j ouvrés)`:"");
+          track.appendChild(barre);
+        }else{
+          track.appendChild(el("div","pill-plan","à planifier"));
+        }
+        grid.appendChild(track);
+      });
+    });
+  });
+
+  content.innerHTML="";
+  content.appendChild(grid);
+
+  const nbPlan=taches.filter(t=>t._di===null).length;
+  document.getElementById("meta").textContent=
+    `${taches.length} tâche${taches.length>1?"s":""}`
+    +(nbPlan?` · ${nbPlan} à planifier`:"")
+    +` · mis à jour ${new Date().toLocaleTimeString("fr-FR")}`;
+
+  rendreLegende();
+}
+
+function rendreLegende(){
+  const l=document.getElementById("legende");
+  l.innerHTML="";
+  STATUTS.forEach(s=>{
+    const item=el("div","item");
+    const puce=el("span","puce"); puce.style.background=s.couleur;
+    item.appendChild(puce); item.appendChild(document.createTextNode(s.nom));
+    l.appendChild(item);
+  });
+}
+
+function el(tag,cls,txt){
+  const e=document.createElement(cls?"div":tag);
+  if(cls) e.className=cls;
+  if(txt!==undefined && txt!==null) e.textContent=txt;
+  return e;
+}
+
+function erreur(msg){
+  document.getElementById("content").innerHTML=
+    '<div class="err">❌ '+msg+'</div>';
+}
+</script>
+</body>
+</html>
