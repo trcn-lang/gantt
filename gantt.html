@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="fr">
-<head> 
+<head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Rétroplanning</title>
@@ -93,13 +93,13 @@
     border-bottom:1px solid var(--bordure);
     padding:0 12px;display:flex;align-items:center;flex-direction:column;
     font-size:12px;font-weight:700;color:var(--texte-mention);
-    height:90px;
+    height:72px;
     justify-content:center;
     flex-shrink:0;
   }
 
   .head-track{
-    position:sticky;top:0;z-index:4;height:90px;
+    position:sticky;top:0;z-index:4;height:72px;
     background:var(--fond);border-bottom:1px solid var(--bordure);
   }
   .head-inner{position:relative;height:100%;}
@@ -113,6 +113,7 @@
     text-align:center;
     font-size:11px;
     overflow:hidden;
+    cursor:help;
   }
   
   .week-num{
@@ -122,25 +123,10 @@
     margin-bottom:4px;
   }
   
-  .week-start{
+  .week-date{
     font-weight:600;
     color:var(--texte);
-    margin-bottom:2px;
-    line-height:1.2;
-  }
-  
-  .week-end{
-    font-weight:600;
-    color:var(--texte);
-    margin-bottom:4px;
-    line-height:1.2;
-  }
-  
-  .week-count{
-    font-weight:400;
-    color:var(--texte-mention);
-    font-size:10px;
-    line-height:1.2;
+    line-height:1.3;
   }
 
   .label{
@@ -440,28 +426,22 @@ function construire(records){
       
       const workDays=countWorkDays(displayStartIdx, displayEndIdx);
       
+      // Tooltip au survol
+      const tooltipText=`du ${startDay} ${fmtJJMM(displayStartIdx)} au ${endDay} ${fmtJJMM(displayEndIdx)}\n(${workDays} j. ouvrés)`;
+      weekLabel.title=tooltipText;
+      
       weekLabel.style.left=((displayStartIdx-minI)*16)+"px";
       
       const numSpan=el("div");
       numSpan.className="week-num";
       numSpan.textContent=`S${wn}`;
       
-      const startSpan=el("div");
-      startSpan.className="week-start";
-      startSpan.textContent=`${startDay} ${fmtJJMM(displayStartIdx)}`;
-      
-      const endSpan=el("div");
-      endSpan.className="week-end";
-      endSpan.textContent=`${endDay} ${fmtJJMM(displayEndIdx)}`;
-      
-      const countSpan=el("div");
-      countSpan.className="week-count";
-      countSpan.textContent=`(${workDays} j. ouvrés)`;
+      const dateSpan=el("div");
+      dateSpan.className="week-date";
+      dateSpan.innerHTML=`${fmtJJMM(displayStartIdx)}<br>${fmtJJMM(displayEndIdx)}`;
       
       weekLabel.appendChild(numSpan);
-      weekLabel.appendChild(startSpan);
-      weekLabel.appendChild(endSpan);
-      weekLabel.appendChild(countSpan);
+      weekLabel.appendChild(dateSpan);
       
       headInner.appendChild(weekLabel);
     }
