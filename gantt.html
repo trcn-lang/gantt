@@ -49,20 +49,6 @@
   .legende .item{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--texte-mention)}
   .legende .puce{width:12px;height:12px;border-radius:3px;flex:0 0 auto}
 
-  .slider-container{
-    padding:8px 16px;
-    border-bottom:1px solid var(--bordure);
-    display:flex;align-items:center;gap:12px;
-  }
-  .slider-container input{
-    flex:1;
-    height:6px;
-    cursor:pointer;
-  }
-  .slider-label{
-    font-size:12px;color:var(--texte-mention);min-width:100px;
-  }
-
   .scroll{flex:1;overflow:auto;position:relative}
 
   .grid-wrapper{
@@ -77,6 +63,7 @@
     display:flex;
     flex-direction:column;
     overflow:hidden;
+    z-index:3;
   }
 
   .labels-col::after{
@@ -106,21 +93,40 @@
     border-bottom:1px solid var(--bordure);
     padding:0 12px;display:flex;align-items:center;flex-direction:column;
     font-size:12px;font-weight:700;color:var(--texte-mention);
-    height:56px;
+    height:72px;
     justify-content:center;
+    flex-shrink:0;
   }
 
   .head-track{
-    position:sticky;top:0;z-index:4;height:56px;
+    position:sticky;top:0;z-index:4;height:72px;
     background:var(--fond);border-bottom:1px solid var(--bordure);
   }
   .head-inner{position:relative;height:100%;}
   .week-label{
     position:absolute;top:0;bottom:0;
     border-left:1px solid var(--bordure);
-    padding-left:4px;padding-right:4px;font-size:9px;color:var(--bleu-france);font-weight:700;
-    display:flex;flex-direction:column;align-items:flex-start;justify-content:flex-start;
-    white-space:normal;line-height:1.1;padding-top:2px;width:112px;overflow:hidden;
+    padding-left:4px;padding-right:4px;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    white-space:normal;line-height:1.2;
+    width:112px;overflow:hidden;
+    text-align:center;
+    font-size:11px;
+  }
+  .week-num{
+    color:var(--bleu-france);
+    font-weight:700;
+    font-size:12px;
+  }
+  .week-dates{
+    color:var(--texte);
+    font-weight:700;
+    font-size:11px;
+  }
+  .week-count{
+    color:var(--texte-mention);
+    font-weight:400;
+    font-size:10px;
   }
 
   .label{
@@ -192,12 +198,6 @@
       <div class="meta" id="meta">Chargement…</div>
     </div>
   </div>
-  
-  <div class="slider-container">
-    <label class="slider-label">Navigation :</label>
-    <input type="range" id="slider" min="0" max="100" value="50">
-    <span id="slider-date" style="font-size:12px;color:var(--texte-mention);min-width:100px;"></span>
-  </div>
 
   <div class="scroll" id="scroll">
     <div class="grid-wrapper">
@@ -257,8 +257,8 @@ function getWeekNumber(d){
   return Math.ceil((((date - yearStart) / 86400000) + 1) / 7);
 }
 
-function getMondayOfWeek(dayIndex){
-  const d = new Date(dayIndex * MS_JOUR);
+function getMondayOfWeek(idx){
+  const d = new Date(idx * MS_JOUR);
   const dow = d.getUTCDay();
   const diff = d.getUTCDate() - dow + (dow === 0 ? -6 : 1);
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), diff));
@@ -285,7 +285,6 @@ function fmtJJMM(idx){
 
 let K=null;
 let allData={};
-let isSliderChanging=false;
 
 grist.ready({requiredAccess:"read table"});
 
@@ -394,32 +393,62 @@ function construire(records){
   const head=el("div","head-track");
   const headInner=el("div","head-inner");
   
-  // Affichage semaines avec labels
-  let currentWeek=null;
-  for(let i=minI;i<=maxI;i+=7){
-    const weekLabel=el("div","week-label");
-    const d=new Date(i*MS_JOUR);
-    const wn=getWeekNumber(d);
+  // Parcourir les vraies semaines calendaires
+  let mondayIdx=jourIndex(getMondayOfWeek(minI));
+  
+  while(mondayIdx<=maxI){
+    const fridayIdx=mondayIdx+4;
     
-    // Trouver lundi et vendredi
-    let mondayIdx=i;
-    let fridayIdx=i+4;
-    if(fridayIdx>maxI) fridayIdx=maxI;
+    // Vérifier s'il y a des tâches avant lundi ou après vendredi dans cette semaine
+    let displayStartIdx=mondayIdx;
+    let displayEndIdx=fridayIdx;
     
-    const mondayDate=new Date(mondayIdx*MS_JOUR);
-    const fridayDate=new Date(fridayIdx*MS_JOUR);
+    const weekTaches=taches.filter(t=>t._di!==null && t._di>=mondayIdx && t._di<=mondayIdx+6);
+    if(weekTaches.length>0){
+      const minTaskDay=Math.min(...weekTaches.map(t=>t._di));
+      const maxTaskDay=Math.max(...weekTaches.map(t=>t._fi));
+      if(minTaskDay<mondayIdx) displayStartIdx=minTaskDay;
+      if(maxTaskDay>fridayIdx) displayEndIdx=maxTaskDay;
+    }
     
-    const mondayDay=JOURS[mondayDate.getUTCDay()];
-    const fridayDay=JOURS[fridayDate.getUTCDay()];
-    const workDays=countWorkDays(mondayIdx, fridayIdx);
+    // Créer le label de semaine
+    if(displayStartIdx>=minI && displayStartIdx<=maxI){
+      const weekLabel=el("div","week-label");
+      
+      const d=new Date((mondayIdx)*MS_JOUR);
+      const wn=getWeekNumber(d);
+      
+      const startDate=new Date(displayStartIdx*MS_JOUR);
+      const endDate=new Date(displayEndIdx*MS_JOUR);
+      
+      const startDay=JOURS[startDate.getUTCDay()];
+      const endDay=JOURS[endDate.getUTCDay()];
+      
+      const workDays=countWorkDays(displayStartIdx, displayEndIdx);
+      
+      weekLabel.style.left=((displayStartIdx-minI)*16)+"px";
+      weekLabel.style.width=((displayEndIdx-displayStartIdx+1)*16)+"px";
+      
+      const numSpan=el("div");
+      numSpan.className="week-num";
+      numSpan.textContent=`S${wn}`;
+      
+      const datesSpan=el("div");
+      datesSpan.className="week-dates";
+      datesSpan.textContent=`du ${startDay} ${fmtJJMM(displayStartIdx)} au ${endDay} ${fmtJJMM(displayEndIdx)}`;
+      
+      const countSpan=el("div");
+      countSpan.className="week-count";
+      countSpan.textContent=`(${workDays} j. ouvrés)`;
+      
+      weekLabel.appendChild(numSpan);
+      weekLabel.appendChild(datesSpan);
+      weekLabel.appendChild(countSpan);
+      
+      headInner.appendChild(weekLabel);
+    }
     
-    const line1=`S${wn}`;
-    const line2=`${mondayDay} ${fmtJJMM(mondayIdx)} au ${fridayDay} ${fmtJJMM(fridayIdx)}`;
-    const line3=`(${workDays} j. ouvrés)`;
-    
-    weekLabel.style.left=((i-minI)*16)+"px";
-    weekLabel.innerHTML=`${line1}<br>${line2}<br>${line3}`;
-    headInner.appendChild(weekLabel);
+    mondayIdx+=7;
   }
   
   head.appendChild(headInner);
@@ -456,59 +485,24 @@ function construire(records){
   document.getElementById("meta").textContent=`${taches.length} tâche${taches.length>1?"s":""}`;
 
   rendreLegende();
-  setupSlider();
   setupResize();
   
-  // Centrer sur aujourd'hui avec délai
-  setTimeout(scrollToToday, 200);
+  // Centrer sur aujourd'hui
+  setTimeout(scrollToToday, 300);
 }
 
 function scrollToToday(){
   const scroll=document.getElementById("scroll");
   if(allData.todayOffset===undefined) return;
   
+  // Calculer la position pour centrer aujourd'hui au 1/3 de l'écran
   const leftPos = (allData.todayOffset * 16) - (scroll.clientWidth / 3);
-  scroll.scrollLeft = Math.max(0, leftPos);
-  updateSlider();
-}
-
-function setupSlider(){
-  const slider=document.getElementById("slider");
-  const scroll=document.getElementById("scroll");
   
-  slider.addEventListener("input", ()=>{
-    isSliderChanging=true;
-    const pct=slider.value/100;
-    const maxScroll=scroll.scrollWidth-scroll.clientWidth;
-    scroll.scrollLeft=pct*maxScroll;
-    updateSlider();
-    isSliderChanging=false;
+  // Utiliser requestAnimationFrame pour synchroniser avec le navigateur
+  requestAnimationFrame(()=>{
+    scroll.scrollLeft = Math.max(0, leftPos);
   });
 }
-
-function updateSlider(){
-  if(isSliderChanging) return;
-  
-  const scroll=document.getElementById("scroll");
-  const slider=document.getElementById("slider");
-  const maxScroll=scroll.scrollWidth-scroll.clientWidth;
-  
-  if(maxScroll<=0){
-    slider.value=50;
-  } else {
-    const pct=(scroll.scrollLeft/maxScroll)*100;
-    slider.value=Math.max(0, Math.min(100, pct));
-  }
-  
-  if(allData.minI){
-    const pixelsLeft=scroll.scrollLeft;
-    const dayOffset=Math.round(pixelsLeft/16);
-    const idx=allData.minI+dayOffset;
-    document.getElementById("slider-date").textContent=fmtJJMM(idx);
-  }
-}
-
-document.getElementById("scroll").addEventListener("scroll", updateSlider);
 
 function setupResize(){
   const col=document.getElementById("labels-col");
