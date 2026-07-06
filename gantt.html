@@ -138,16 +138,6 @@
   }
 
   .empty{padding:40px;text-align:center;color:var(--texte-mention)}
-  .err{margin:16px;padding:12px;border-radius:6px;background:#FFE9E9;
-       border:1px solid #FFC5C5;color:#CE0500;font-size:13px}
-  
-  .debug{
-    position:fixed;bottom:0;right:0;background:#222;color:#0f0;
-    font-size:10px;padding:10px;max-width:600px;max-height:400px;
-    overflow:auto;font-family:monospace;z-index:9999;
-    border:2px solid #0f0;border-radius:4px;margin:4px;
-    line-height:1.3;
-  }
 </style>
 </head>
 <body>
@@ -161,7 +151,6 @@
     <div id="content"></div>
   </div>
 </div>
-<div class="debug" id="debug">DEBUG</div>
 
 <script>
 const STATUTS = [
@@ -192,19 +181,10 @@ function trouverCle(cles, ...cands){
   return null;
 }
 
-let debugLog=[];
-function addDebug(msg){
-  debugLog.push(msg);
-  document.getElementById("debug").innerHTML = debugLog.join("<br>");
-}
-
 function parseDate(v){
-  // SIMPLE: essayer directement new Date()
   if(!v) return null;
-  const str = String(v).trim();
-  const d = new Date(str);
-  if(isNaN(d.getTime())) return null;
-  return d;
+  const d = new Date(String(v).trim());
+  return isNaN(d.getTime()) ? null : d;
 }
 
 const MS_JOUR=86400000;
@@ -221,12 +201,8 @@ let K=null;
 grist.ready({requiredAccess:"read table"});
 
 grist.onRecords(function(records){
-  addDebug("📥 RECORDS: " + records.length);
   try{ construire(records); }
-  catch(e){ 
-    addDebug("❌ " + e.message);
-    console.error(e); 
-  }
+  catch(e){ console.error(e); }
 });
 
 function detecterColonnes(records){
@@ -247,7 +223,7 @@ function construire(records){
   const content=document.getElementById("content");
 
   if(!records || records.length===0){
-    content.innerHTML='<div class="empty">Aucune tâche</div>';
+    content.innerHTML='<div class="empty">Aucune tâche à afficher.</div>';
     return;
   }
 
@@ -269,13 +245,6 @@ function construire(records){
   });
 
   const dates=taches.filter(t=>t._di!==null);
-  addDebug(`📊 ${dates.length}/${taches.length} avec dates`);
-  
-  if(dates.length > 0){
-    addDebug("✅ DATES TROUVÉES!");
-  } else {
-    addDebug("⚠️ Aucune date");
-  }
   
   let minI, maxI;
   if(dates.length){
@@ -363,11 +332,9 @@ function construire(records){
   content.innerHTML="";
   content.appendChild(grid);
 
-  const nbPlan=taches.filter(t=>t._di===null).length;
   document.getElementById("meta").textContent=
     `${taches.length} tâche${taches.length>1?"s":""}`;
 
-  addDebug("✅ RENDU");
   rendreLegende();
 }
 
