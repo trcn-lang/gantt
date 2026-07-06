@@ -142,11 +142,11 @@
        border:1px solid #FFC5C5;color:#CE0500;font-size:13px}
   
   .debug{
-    position:fixed;bottom:0;right:0;background:#222;color:#fff;
-    font-size:11px;padding:10px;max-width:500px;max-height:400px;
+    position:fixed;bottom:0;right:0;background:#222;color:#0f0;
+    font-size:10px;padding:10px;max-width:600px;max-height:400px;
     overflow:auto;font-family:monospace;z-index:9999;
-    border:2px solid #ff6b6b;border-radius:4px;margin:4px;
-    line-height:1.4;
+    border:2px solid #0f0;border-radius:4px;margin:4px;
+    line-height:1.3;
   }
 </style>
 </head>
@@ -161,7 +161,7 @@
     <div id="content"></div>
   </div>
 </div>
-<div class="debug" id="debug">DEBUG PANEL</div>
+<div class="debug" id="debug">DEBUG</div>
 
 <script>
 const STATUTS = [
@@ -195,27 +195,16 @@ function trouverCle(cles, ...cands){
 let debugLog=[];
 function addDebug(msg){
   debugLog.push(msg);
-  console.log(msg);
-  const el = document.getElementById("debug");
-  if(el) el.innerHTML = debugLog.join("<br>");
+  document.getElementById("debug").innerHTML = debugLog.join("<br>");
 }
 
 function parseDate(v){
-  if(v===null||v===undefined||v==="") return null;
-  if(typeof v==="string"){
-    const s=v.trim();
-    // ISO: YYYY-MM-DDTHH:mm:ss.sssZ
-    const iso = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
-    if(iso){
-      const d = new Date(Date.UTC(+iso[1], +iso[2]-1, +iso[3]));
-      addDebug(`✓ ISO parsed: ${s.substring(0,10)} -> ${d.toISOString().substring(0,10)}`);
-      return d;
-    }
-    // Fallback
-    const d = new Date(s);
-    if(!isNaN(d.getTime())) return d;
-  }
-  return null;
+  // SIMPLE: essayer directement new Date()
+  if(!v) return null;
+  const str = String(v).trim();
+  const d = new Date(str);
+  if(isNaN(d.getTime())) return null;
+  return d;
 }
 
 const MS_JOUR=86400000;
@@ -232,22 +221,17 @@ let K=null;
 grist.ready({requiredAccess:"read table"});
 
 grist.onRecords(function(records){
-  addDebug("📥 RECORDS REÇUS: " + records.length);
-  
-  if(records.length > 0) {
-    addDebug("Clés: " + Object.keys(records[0]).join(", "));
-  }
-  
+  addDebug("📥 RECORDS: " + records.length);
   try{ construire(records); }
   catch(e){ 
-    addDebug("❌ ERREUR: " + e.message);
+    addDebug("❌ " + e.message);
     console.error(e); 
   }
 });
 
 function detecterColonnes(records){
   const cles = records.length ? Object.keys(records[0]) : [];
-  const detected = {
+  return {
     section:  trouverCle(cles,"Section"),
     campagne: trouverCle(cles,"Campagne"),
     tache:    trouverCle(cles,"Tâche","Tache"),
@@ -257,39 +241,26 @@ function detecterColonnes(records){
     statut:   trouverCle(cles,"Statut"),
     resp:     trouverCle(cles,"Responsable"),
   };
-  
-  addDebug("Col détectées: debut=" + detected.debut + " fin=" + detected.fin);
-  return detected;
 }
 
 function construire(records){
   const content=document.getElementById("content");
 
   if(!records || records.length===0){
-    addDebug("⚠️ Aucun record");
-    content.innerHTML='<div class="empty">Aucune tâche à afficher.</div>';
-    document.getElementById("meta").textContent="0 tâche";
+    content.innerHTML='<div class="empty">Aucune tâche</div>';
     return;
   }
 
   K=detecterColonnes(records);
-  addDebug("🔍 Parsing dates...");
 
-  const taches=records.map((r,i)=>{
+  const taches=records.map((r)=>{
     const debut=parseDate(r[K.debut]);
     const fin=parseDate(r[K.fin]);
-    const duree=Number(r[K.duree])||0;
-    
-    if(i===0) {
-      addDebug(`Rec0: debut raw="${r[K.debut]}" parsed=${debut}`);
-      addDebug(`Rec0: fin raw="${r[K.fin]}" parsed=${fin}`);
-    }
-    
     return {
       section:(r[K.section]||"").toString(),
       campagne:(r[K.campagne]||"").toString(),
       tache:(r[K.tache]||"").toString(),
-      debut, fin, duree,
+      debut, fin,
       statut:(r[K.statut]||"").toString(),
       resp:(r[K.resp]||"").toString(),
       _di: debut? jourIndex(debut):null,
@@ -300,8 +271,10 @@ function construire(records){
   const dates=taches.filter(t=>t._di!==null);
   addDebug(`📊 ${dates.length}/${taches.length} avec dates`);
   
-  if(dates.length===0){
-    addDebug("⚠️ AUCUNE DATE! Affichage: à planifier");
+  if(dates.length > 0){
+    addDebug("✅ DATES TROUVÉES!");
+  } else {
+    addDebug("⚠️ Aucune date");
   }
   
   let minI, maxI;
@@ -392,9 +365,9 @@ function construire(records){
 
   const nbPlan=taches.filter(t=>t._di===null).length;
   document.getElementById("meta").textContent=
-    `${taches.length} tâche${taches.length>1?"s":""} · ${nbPlan} à planifier`;
+    `${taches.length} tâche${taches.length>1?"s":""}`;
 
-  addDebug("✅ RENDU COMPLET");
+  addDebug("✅ RENDU");
   rendreLegende();
 }
 
