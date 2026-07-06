@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Diagramme de Gantt</title>
+<title>Rétroplanning</title>
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
 <style>
   :root{
@@ -42,49 +42,97 @@
   }
   .topbar h1{
     font-size:18px;font-weight:700;color:var(--bleu-france);
-    display:flex;align-items:center;gap:8px;
   }
-  .topbar h1 .barre{width:4px;height:20px;background:var(--bleu-france);border-radius:2px}
   .meta{font-size:12px;color:var(--texte-mention)}
 
   .legende{display:flex;gap:14px;flex-wrap:wrap;align-items:center}
   .legende .item{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--texte-mention)}
   .legende .puce{width:12px;height:12px;border-radius:3px;flex:0 0 auto}
 
+  .slider-container{
+    padding:8px 16px;
+    border-bottom:1px solid var(--bordure);
+    display:flex;align-items:center;gap:12px;
+  }
+  .slider-container input{
+    flex:1;
+    height:6px;
+    cursor:pointer;
+  }
+  .slider-label{
+    font-size:12px;color:var(--texte-mention);min-width:100px;
+  }
+
   .scroll{flex:1;overflow:auto;position:relative}
+
+  .grid-wrapper{
+    display:flex;
+  }
+
+  .labels-col{
+    width:var(--label-w);
+    flex-shrink:0;
+    border-right:1px solid var(--bordure);
+    position:relative;
+    display:flex;
+    flex-direction:column;
+    overflow:hidden;
+  }
+
+  .labels-col::after{
+    content:'';
+    position:absolute;
+    right:0;top:0;bottom:0;
+    width:4px;
+    background:transparent;
+    cursor:col-resize;
+    z-index:10;
+  }
+
+  .labels-col::after:hover{
+    background:var(--bleu-france);
+  }
 
   .grid{
     display:grid;
-    grid-template-columns:var(--label-w) var(--tl-w,600px);
+    grid-template-columns:var(--tl-w,600px);
     align-content:start;
+    flex:1;
   }
 
   .corner{
     position:sticky;top:0;left:0;z-index:5;
     background:var(--fond);border-right:1px solid var(--bordure);
     border-bottom:1px solid var(--bordure);
-    padding:0 12px;display:flex;align-items:center;
+    padding:0 12px;display:flex;align-items:center;flex-direction:column;
     font-size:12px;font-weight:700;color:var(--texte-mention);
-    height:38px;
+    height:56px;
+    justify-content:center;
   }
+
   .head-track{
-    position:sticky;top:0;z-index:4;height:38px;
+    position:sticky;top:0;z-index:4;height:56px;
     background:var(--fond);border-bottom:1px solid var(--bordure);
   }
-  .head-inner{position:relative;height:100%}
-  .tick{
+  .head-inner{position:relative;height:100%;display:flex;align-items:flex-end;}
+  .week{
     position:absolute;top:0;bottom:0;
     border-left:1px solid var(--bordure);
+    padding-left:4px;font-size:10px;color:var(--bleu-france);font-weight:700;
+    display:flex;align-items:flex-start;white-space:nowrap;padding-top:2px;
+  }
+  .date{
+    position:absolute;bottom:0;
+    border-left:1px solid var(--bordure);
     padding-left:4px;font-size:11px;color:var(--texte-mention);
-    display:flex;align-items:center;white-space:nowrap;
+    display:flex;align-items:center;height:24px;white-space:nowrap;
   }
 
   .label{
-    position:sticky;left:0;z-index:3;background:var(--fond);
-    border-right:1px solid var(--bordure);
+    background:var(--fond);
     border-bottom:1px solid var(--fond-alt);
     display:flex;align-items:center;height:var(--row-h);
-    padding:0 12px;
+    padding:0 12px;overflow:hidden;
   }
   .label.section{
     background:var(--bleu-975);color:var(--bleu-france);
@@ -94,9 +142,9 @@
     font-weight:600;color:var(--texte);padding-left:20px;
     background:var(--fond-alt);height:30px;
   }
-  .label.tache{padding-left:28px;gap:8px}
+  .label.tache{padding-left:28px;gap:8px;font-size:13px;}
   .label.tache .nom{
-    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;
   }
   .label.tache .resp{
     font-size:11px;color:var(--texte-mention);flex:0 0 auto;
@@ -143,12 +191,29 @@
 <body>
 <div class="app">
   <div class="topbar">
-    <h1><span class="barre"></span>Diagramme de Gantt</h1>
-    <div class="legende" id="legende"></div>
-    <div class="meta" id="meta">Chargement…</div>
+    <h1>Rétroplanning</h1>
+    <div style="display:flex;gap:20px;align-items:center;flex:1;">
+      <div class="legende" id="legende"></div>
+      <div class="meta" id="meta">Chargement…</div>
+    </div>
   </div>
-  <div class="scroll">
-    <div id="content"></div>
+  
+  <div class="slider-container">
+    <label class="slider-label">Navigation :</label>
+    <input type="range" id="slider" min="0" max="100" value="50" style="flex:1;">
+    <span id="slider-date" style="font-size:12px;color:var(--texte-mention);min-width:100px;"></span>
+  </div>
+
+  <div class="scroll" id="scroll">
+    <div class="grid-wrapper">
+      <div class="labels-col" id="labels-col">
+        <div class="corner">Tâche</div>
+        <div id="labels"></div>
+      </div>
+      <div style="flex:1;overflow:auto;">
+        <div id="kanban" class="grid"></div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -187,6 +252,14 @@ function parseDate(v){
   return isNaN(d.getTime()) ? null : d;
 }
 
+function getWeekNumber(d){
+  const date = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+  const dayNum = date.getUTCDay() || 7;
+  date.setUTCDate(date.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
+  return Math.ceil((((date - yearStart) / 86400000) + 1) / 7);
+}
+
 const MS_JOUR=86400000;
 function jourIndex(d){ return Math.floor(d.getTime()/MS_JOUR); }
 function fmtJJMM(idx){
@@ -197,6 +270,7 @@ function fmtJJMM(idx){
 }
 
 let K=null;
+let allData={};
 
 grist.ready({requiredAccess:"read table"});
 
@@ -220,10 +294,8 @@ function detecterColonnes(records){
 }
 
 function construire(records){
-  const content=document.getElementById("content");
-
   if(!records || records.length===0){
-    content.innerHTML='<div class="empty">Aucune tâche à afficher.</div>';
+    document.getElementById("kanban").innerHTML='<div class="empty">Aucune tâche à afficher.</div>';
     return;
   }
 
@@ -244,7 +316,7 @@ function construire(records){
     };
   });
 
-  const dates=taches.filter(t=>t._di!==null);
+  const dates=taches.filter(t=>t._di!==null && t._fi!==null);
   
   let minI, maxI;
   if(dates.length){
@@ -252,16 +324,17 @@ function construire(records){
     maxI=Math.max(...dates.map(t=>t._fi));
   }else{
     const today=jourIndex(new Date());
-    minI=today-3; maxI=today+21;
+    minI=today-14; maxI=today+21;
   }
-  minI-=2; maxI+=2;
-  while(((minI%7)+7)%7!==4) minI--;
-  const totalJours=Math.max(7,maxI-minI+1);
+
+  const totalJours=maxI-minI+1;
   const tlW=totalJours*16;
 
   const todayI=jourIndex(new Date());
   const todayOffset=todayI-minI;
   const todayVisible=(todayI>=minI && todayI<=maxI);
+
+  allData={taches, minI, maxI, todayI, todayOffset, totalJours, tlW, todayVisible};
 
   const sections=[];
   const idxSec={}, idxCamp={};
@@ -281,34 +354,51 @@ function construire(records){
     return a._di-b._di;
   })));
 
+  // Rendu labels
+  const labelsDiv=document.getElementById("labels");
+  labelsDiv.innerHTML="";
+  sections.forEach(S=>{
+    labelsDiv.appendChild(el("div","label section",S.nom));
+    S.campagnes.forEach(C=>{
+      labelsDiv.appendChild(el("div","label campagne",C.nom));
+      C.taches.forEach(t=>{
+        const lab=el("div","label tache");
+        const nom=el("span","nom",t.tache); lab.appendChild(nom);
+        if(t.resp){ lab.appendChild(el("span","resp","· "+t.resp)); }
+        labelsDiv.appendChild(lab);
+      });
+    });
+  });
+
+  // Rendu timeline
   const grid=document.createElement("div");
   grid.className="grid";
   grid.style.setProperty("--tl-w", tlW+"px");
   grid.style.setProperty("--today", todayOffset);
 
-  const corner=el("div","corner","Tâche");
   const head=el("div","head-track");
   const headInner=el("div","head-inner");
   for(let i=minI;i<=maxI;i+=7){
-    const tick=el("div","tick",fmtJJMM(i));
+    const week=el("div","week");
+    week.style.left=((i-minI)*16)+"px";
+    const d=new Date(i*MS_JOUR);
+    week.textContent="S"+getWeekNumber(d);
+    headInner.appendChild(week);
+  }
+  for(let i=minI;i<=maxI;i++){
+    const tick=el("div","date");
     tick.style.left=((i-minI)*16)+"px";
+    tick.textContent=fmtJJMM(i);
     headInner.appendChild(tick);
   }
   head.appendChild(headInner);
-  grid.appendChild(corner); grid.appendChild(head);
+  grid.appendChild(head);
 
   sections.forEach(S=>{
-    grid.appendChild(el("div","label section",S.nom));
     grid.appendChild(el("div","track section"));
     S.campagnes.forEach(C=>{
-      grid.appendChild(el("div","label campagne",C.nom));
       grid.appendChild(el("div","track campagne"));
       C.taches.forEach(t=>{
-        const lab=el("div","label tache");
-        const nom=el("span","nom",t.tache); lab.appendChild(nom);
-        if(t.resp){ lab.appendChild(el("span","resp","· "+t.resp)); }
-        grid.appendChild(lab);
-
         const track=el("div","track tache"+(todayVisible?"":" no-today"));
         if(t._di!==null){
           const info=statutInfo(t.statut);
@@ -329,13 +419,81 @@ function construire(records){
     });
   });
 
-  content.innerHTML="";
-  content.appendChild(grid);
+  document.getElementById("kanban").innerHTML="";
+  document.getElementById("kanban").appendChild(grid);
 
-  document.getElementById("meta").textContent=
-    `${taches.length} tâche${taches.length>1?"s":""}`;
+  document.getElementById("meta").textContent=`${taches.length} tâche${taches.length>1?"s":""}`;
 
   rendreLegende();
+  setupSlider();
+  setupResize();
+  centerToday();
+}
+
+function centerToday(){
+  const scroll=document.getElementById("scroll");
+  setTimeout(()=>{
+    const grid=document.querySelector(".grid");
+    if(grid && allData.todayOffset!==undefined){
+      const leftOffset=allData.todayOffset*16 - scroll.clientWidth/2;
+      scroll.scrollLeft=Math.max(0, leftOffset);
+      updateSlider();
+    }
+  }, 100);
+}
+
+function setupSlider(){
+  const slider=document.getElementById("slider");
+  const scroll=document.getElementById("scroll");
+  
+  slider.addEventListener("input", ()=>{
+    const pct=slider.value/100;
+    const maxScroll=scroll.scrollWidth-scroll.clientWidth;
+    scroll.scrollLeft=pct*maxScroll;
+    updateSlider();
+  });
+}
+
+function updateSlider(){
+  const scroll=document.getElementById("scroll");
+  const slider=document.getElementById("slider");
+  const maxScroll=scroll.scrollWidth-scroll.clientWidth;
+  const pct=maxScroll>0 ? (scroll.scrollLeft/maxScroll)*100 : 50;
+  slider.value=pct;
+  
+  if(allData.minI){
+    const idx=allData.minI+Math.round((scroll.scrollLeft/16));
+    document.getElementById("slider-date").textContent=fmtJJMM(idx);
+  }
+}
+
+document.getElementById("scroll").addEventListener("scroll", updateSlider);
+
+function setupResize(){
+  const col=document.getElementById("labels-col");
+  let isResizing=false;
+  let startX, startW;
+  
+  col.addEventListener("mousedown", (e)=>{
+    if(e.target === col || (e.offsetX > col.clientWidth-5)){
+      isResizing=true;
+      startX=e.clientX;
+      startW=col.clientWidth;
+      document.body.style.cursor="col-resize";
+    }
+  });
+  
+  document.addEventListener("mousemove", (e)=>{
+    if(!isResizing) return;
+    const delta=e.clientX-startX;
+    const newW=Math.max(200, startW+delta);
+    document.documentElement.style.setProperty("--label-w", newW+"px");
+  });
+  
+  document.addEventListener("mouseup", ()=>{
+    isResizing=false;
+    document.body.style.cursor="auto";
+  });
 }
 
 function rendreLegende(){
