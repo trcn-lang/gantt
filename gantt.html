@@ -197,14 +197,21 @@ function parseDate(v){
   if(typeof v==="string"){
     const s=v.trim();
     
-    // Format Grist : MM/DD/YYYY (ex: 01/05/2026)
-    let m=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    // Format ISO : YYYY-MM-DDTHH:mm:ss.sssZ (ex: 2026-05-01T00:00:00.000Z)
+    let m=s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if(m){
+      const yyyy=+m[1], mm=+m[2], dd=+m[3];
+      return new Date(Date.UTC(yyyy, mm-1, dd));
+    }
+    
+    // Format MM/DD/YYYY (ex: 01/05/2026)
+    m=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
     if(m){
       const mm=+m[1], dd=+m[2], yyyy=+m[3];
       return new Date(Date.UTC(yyyy, mm-1, dd));
     }
     
-    // Format ISO : YYYY-MM-DD
+    // Fallback
     const d=new Date(s);
     return isNaN(d.getTime())?null:d;
   }
