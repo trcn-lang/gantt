@@ -93,40 +93,54 @@
     border-bottom:1px solid var(--bordure);
     padding:0 12px;display:flex;align-items:center;flex-direction:column;
     font-size:12px;font-weight:700;color:var(--texte-mention);
-    height:72px;
+    height:90px;
     justify-content:center;
     flex-shrink:0;
   }
 
   .head-track{
-    position:sticky;top:0;z-index:4;height:72px;
+    position:sticky;top:0;z-index:4;height:90px;
     background:var(--fond);border-bottom:1px solid var(--bordure);
   }
   .head-inner{position:relative;height:100%;}
+  
   .week-label{
     position:absolute;top:0;bottom:0;
     border-left:1px solid var(--bordure);
-    padding-left:4px;padding-right:4px;
+    width:112px;
+    padding:8px;
     display:flex;flex-direction:column;align-items:center;justify-content:center;
-    white-space:normal;line-height:1.2;
-    width:112px;overflow:hidden;
     text-align:center;
     font-size:11px;
+    overflow:hidden;
   }
+  
   .week-num{
+    font-size:13px;
+    font-weight:700;
     color:var(--bleu-france);
-    font-weight:700;
-    font-size:12px;
+    margin-bottom:4px;
   }
-  .week-dates{
+  
+  .week-start{
+    font-weight:600;
     color:var(--texte);
-    font-weight:700;
-    font-size:11px;
+    margin-bottom:2px;
+    line-height:1.2;
   }
+  
+  .week-end{
+    font-weight:600;
+    color:var(--texte);
+    margin-bottom:4px;
+    line-height:1.2;
+  }
+  
   .week-count{
-    color:var(--texte-mention);
     font-weight:400;
+    color:var(--texte-mention);
     font-size:10px;
+    line-height:1.2;
   }
 
   .label{
@@ -427,22 +441,26 @@ function construire(records){
       const workDays=countWorkDays(displayStartIdx, displayEndIdx);
       
       weekLabel.style.left=((displayStartIdx-minI)*16)+"px";
-      weekLabel.style.width=((displayEndIdx-displayStartIdx+1)*16)+"px";
       
       const numSpan=el("div");
       numSpan.className="week-num";
       numSpan.textContent=`S${wn}`;
       
-      const datesSpan=el("div");
-      datesSpan.className="week-dates";
-      datesSpan.textContent=`du ${startDay} ${fmtJJMM(displayStartIdx)} au ${endDay} ${fmtJJMM(displayEndIdx)}`;
+      const startSpan=el("div");
+      startSpan.className="week-start";
+      startSpan.textContent=`${startDay} ${fmtJJMM(displayStartIdx)}`;
+      
+      const endSpan=el("div");
+      endSpan.className="week-end";
+      endSpan.textContent=`${endDay} ${fmtJJMM(displayEndIdx)}`;
       
       const countSpan=el("div");
       countSpan.className="week-count";
       countSpan.textContent=`(${workDays} j. ouvrés)`;
       
       weekLabel.appendChild(numSpan);
-      weekLabel.appendChild(datesSpan);
+      weekLabel.appendChild(startSpan);
+      weekLabel.appendChild(endSpan);
       weekLabel.appendChild(countSpan);
       
       headInner.appendChild(weekLabel);
