@@ -101,6 +101,7 @@
   .head-track{
     position:sticky;top:0;z-index:4;height:72px;
     background:var(--fond);border-bottom:1px solid var(--bordure);
+    overflow:visible;
   }
   .head-inner{position:relative;height:100%;}
   
@@ -112,7 +113,7 @@
     display:flex;flex-direction:column;align-items:center;justify-content:center;
     text-align:center;
     font-size:11px;
-    overflow:hidden;
+    overflow:visible;
     cursor:help;
   }
   
@@ -127,6 +128,41 @@
     font-weight:600;
     color:var(--texte);
     line-height:1.3;
+  }
+
+  /* TOOLTIP PERSONNALISÉ */
+  .week-label:hover::after{
+    content:attr(data-tooltip);
+    position:absolute;
+    bottom:100%;
+    left:50%;
+    transform:translateX(-50%);
+    background:#222;
+    color:#fff;
+    padding:12px 16px;
+    border-radius:6px;
+    font-size:12px;
+    white-space:pre-line;
+    line-height:1.4;
+    z-index:100;
+    box-shadow:0 4px 12px rgba(0,0,0,0.2);
+    margin-bottom:8px;
+    pointer-events:none;
+    min-width:220px;
+    text-align:center;
+  }
+
+  /* Petite flèche du tooltip */
+  .week-label:hover::before{
+    content:'';
+    position:absolute;
+    bottom:calc(100% - 8px);
+    left:50%;
+    transform:translateX(-50%);
+    border:6px solid transparent;
+    border-top-color:#222;
+    z-index:100;
+    pointer-events:none;
   }
 
   .label{
@@ -426,9 +462,9 @@ function construire(records){
       
       const workDays=countWorkDays(displayStartIdx, displayEndIdx);
       
-      // Tooltip au survol
+      // Tooltip personnalisé
       const tooltipText=`du ${startDay} ${fmtJJMM(displayStartIdx)} au ${endDay} ${fmtJJMM(displayEndIdx)}\n(${workDays} j. ouvrés)`;
-      weekLabel.title=tooltipText;
+      weekLabel.setAttribute("data-tooltip", tooltipText);
       
       weekLabel.style.left=((displayStartIdx-minI)*16)+"px";
       
