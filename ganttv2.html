@@ -332,7 +332,9 @@ async function init(){
     DB.jalons=await grist.fetchTable("Jalons");
     DB.taches=await grist.fetchTable("Taches");
     DB.responsables=await grist.fetchTable("Responsables");
-    DB.parametres=await grist.fetchTable("parametres");
+    DB.parametres=await grist.fetchTable("PARAMETRES");
+    
+    console.log("PARAMETRES chargée:", DB.parametres);
     
     // Populate dropdowns
     populateSelects();
@@ -347,55 +349,53 @@ async function init(){
 }
 
 function populateSelects(){
-  // Sections
+  // Sections - depuis PARAMETRES
   const sections=DB.parametres.filter(p=>p.Section).map(p=>p.Section).filter((v,i,a)=>a.indexOf(v)===i);
-  const selSec=[document.getElementById("field-campagne-section")];
-  selSec.forEach(s=>{
-    s.innerHTML='<option value="">-- Sélectionner --</option>';
-    sections.forEach(sec=>{
-      const opt=document.createElement("option");
-      opt.value=sec;
-      opt.textContent=sec;
-      s.appendChild(opt);
-    });
+  console.log("Sections trouvées:", sections);
+  
+  const selSec=document.getElementById("field-campagne-section");
+  selSec.innerHTML='<option value="">-- Sélectionner --</option>';
+  sections.forEach(sec=>{
+    const opt=document.createElement("option");
+    opt.value=sec;
+    opt.textContent=sec;
+    selSec.appendChild(opt);
   });
 
-  // Types campagne
+  // Types campagne - depuis PARAMETRES
   const types=DB.parametres.filter(p=>p.Type_Campagne).map(p=>p.Type_Campagne).filter((v,i,a)=>a.indexOf(v)===i);
-  const selType=[document.getElementById("field-campagne-type")];
-  selType.forEach(s=>{
-    s.innerHTML='<option value="">-- Sélectionner --</option>';
-    types.forEach(t=>{
-      const opt=document.createElement("option");
-      opt.value=t;
-      opt.textContent=t;
-      s.appendChild(opt);
-    });
+  console.log("Types trouvés:", types);
+  
+  const selType=document.getElementById("field-campagne-type");
+  selType.innerHTML='<option value="">-- Sélectionner --</option>';
+  types.forEach(t=>{
+    const opt=document.createElement("option");
+    opt.value=t;
+    opt.textContent=t;
+    selType.appendChild(opt);
   });
 
   // Responsables
-  const selResp=[document.getElementById("field-tache-resp")];
-  selResp.forEach(s=>{
-    s.innerHTML='<option value="">-- Aucun --</option>';
-    DB.responsables.forEach(r=>{
-      const opt=document.createElement("option");
-      opt.value=r.Nom;
-      opt.textContent=r.Nom;
-      s.appendChild(opt);
-    });
+  const selResp=document.getElementById("field-tache-resp");
+  selResp.innerHTML='<option value="">-- Aucun --</option>';
+  DB.responsables.forEach(r=>{
+    const opt=document.createElement("option");
+    opt.value=r.Nom;
+    opt.textContent=r.Nom;
+    selResp.appendChild(opt);
   });
 
-  // Statuts
+  // Statuts - depuis PARAMETRES
   const statuts=DB.parametres.filter(p=>p.Statut).map(p=>p.Statut).filter((v,i,a)=>a.indexOf(v)===i);
-  const selStat=[document.getElementById("field-tache-statut")];
-  selStat.forEach(s=>{
-    s.innerHTML='<option value="">-- Sélectionner --</option>';
-    statuts.forEach(st=>{
-      const opt=document.createElement("option");
-      opt.value=st;
-      opt.textContent=st;
-      s.appendChild(opt);
-    });
+  console.log("Statuts trouvés:", statuts);
+  
+  const selStat=document.getElementById("field-tache-statut");
+  selStat.innerHTML='<option value="">-- Sélectionner --</option>';
+  statuts.forEach(st=>{
+    const opt=document.createElement("option");
+    opt.value=st;
+    opt.textContent=st;
+    selStat.appendChild(opt);
   });
 }
 
@@ -427,6 +427,7 @@ async function saveCampagne(){
       Description: desc
     });
     document.getElementById("field-campagne-nom").value="";
+    document.getElementById("field-campagne-desc").value="";
     closeModal("modal-campagne");
     init(); // Reload
   }catch(e){
@@ -453,6 +454,7 @@ async function saveJalon(){
       Type: type
     });
     document.getElementById("field-jalon-nom").value="";
+    document.getElementById("field-jalon-date").value="";
     closeModal("modal-jalon");
     init();
   }catch(e){
