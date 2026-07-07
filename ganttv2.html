@@ -17,10 +17,11 @@
     --st-faire:#929292;
     --st-encours:#0063CB;
     --st-termine:#18753C;
-    --jalon:#D97706;
+    --jalon:#B45300;
     --jour:16px;
     --label-w:300px;
     --row-h:34px;
+    --camp-h:46px;
   }
 
   *{box-sizing:border-box;margin:0;padding:0}
@@ -101,7 +102,10 @@
     background:var(--fond);border-bottom:1px solid var(--fond-alt);
     display:flex;align-items:center;height:var(--row-h);padding:0 12px;overflow:hidden;position:relative;
   }
-  .label.campagne{background:var(--bleu-975);color:var(--bleu-france);font-weight:700;height:32px;border-bottom:1px solid var(--bordure)}
+  .label.campagne{
+    background:var(--bleu-975);color:var(--bleu-france);font-weight:700;
+    height:var(--camp-h);border-bottom:1px solid var(--bordure);
+  }
   .label.tache{padding-left:12px;font-size:13px;gap:8px}
   .label.tache .nom{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
   .label.tache .resp{font-size:11px;color:var(--texte-mention);flex:0 0 auto}
@@ -119,7 +123,9 @@
     position:relative;height:var(--row-h);border-bottom:1px solid var(--fond-alt);
     background-image:repeating-linear-gradient(to right,var(--fond-alt) 0 1px,transparent 1px calc(7 * var(--jour)));
   }
-  .track.campagne{height:32px;background:var(--bleu-975);border-bottom:1px solid var(--bordure)}
+  .track.campagne{
+    height:var(--camp-h);background:var(--bleu-975);border-bottom:1px solid var(--bordure);
+  }
 
   .track.tache::before{
     content:"";position:absolute;top:0;bottom:0;left:calc(var(--today) * var(--jour));
@@ -138,9 +144,18 @@
     background:var(--jalon);opacity:0.55;pointer-events:none;
   }
 
-  /* Repère losange en haut de la ligne (dans la bande campagne), seul élément survolable */
+  /* Nom du jalon, affiché en permanence au-dessus du losange, dans la bande campagne */
+  .jalon-name{
+    position:absolute;top:3px;z-index:4;
+    transform:translateX(-50%);
+    font-size:10px;font-weight:700;color:var(--jalon);
+    white-space:nowrap;pointer-events:none;
+    line-height:1.2;
+  }
+
+  /* Repère losange, sous le nom, seul élément survolable pour l'infobulle détaillée */
   .jalon-marker{
-    position:absolute;top:10px;width:11px;height:11px;z-index:4;
+    position:absolute;top:26px;width:11px;height:11px;z-index:4;
     background:var(--jalon);transform:translateX(-50%) rotate(45deg);
     border:1.5px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,0.3);
     cursor:help;
@@ -556,7 +571,7 @@ function construire(){
       campGroup.appendChild(track);
     });
 
-    // Jalons : ligne fine + repère losange en haut, avec infobulle nom + date
+    // Jalons : ligne fine + nom permanent au-dessus + losange, avec infobulle détaillée au survol
     DB.jalons.filter(j=>refId(j.Campagne)===camp.id).forEach(jalon=>{
       const dIdx=dayIndex(jalon.Date);
       if(dIdx!==null && dIdx>=minI && dIdx<=maxI){
@@ -565,6 +580,10 @@ function construire(){
         const jalonLine=el("div","jalon-line");
         jalonLine.style.left=leftPx;
         campGroup.appendChild(jalonLine);
+
+        const nameEl=el("div","jalon-name",jalon.Nom);
+        nameEl.style.left=leftPx;
+        campGroup.appendChild(nameEl);
 
         const marker=el("div","jalon-marker");
         marker.style.left=leftPx;
