@@ -20,6 +20,8 @@
     --jalon-majeur:#B1332A;
     --jalon-livrable:#B45300;
     --jalon-etape:#5E5F62;
+    --alerte-retard:#CE0500;
+    --alerte-proche:#B45300;
     --jour:16px;
     --label-w:300px;
     --row-h:34px;
@@ -71,7 +73,7 @@
     display:flex;flex-direction:column;overflow:hidden;z-index:3;
   }
 
-  .grid{display:grid;grid-template-columns:var(--tl-w,600px);align-content:start;flex:1}
+  .grid{display:grid;grid-template-columns:var(--tl-w,600px);align-content:start;flex:1;position:relative}
 
   .corner{
     position:sticky;top:0;left:0;z-index:5;
@@ -147,6 +149,17 @@
     transition:filter 0.15s;
   }
   .barre:hover{filter:brightness(0.9)}
+  .barre.bloquee::after{
+    content:"";position:absolute;inset:0;border-radius:4px;pointer-events:none;
+    background-image:repeating-linear-gradient(45deg, rgba(255,255,255,.4) 0 4px, transparent 4px 8px);
+  }
+  .barre.retard{box-shadow:0 0 0 2px var(--alerte-retard) inset}
+  .barre.proche{box-shadow:0 0 0 2px var(--alerte-proche) inset}
+  .lock-badge{
+    position:relative;font-size:10px;z-index:2;margin-right:2px;flex-shrink:0;
+  }
+
+  .arrows-svg{position:absolute;top:0;left:0;pointer-events:none;z-index:2}
 
   .jalon-line{
     position:absolute;top:38px;bottom:0;width:2px;z-index:3;
@@ -176,16 +189,22 @@
     box-shadow:0 1px 3px rgba(0,0,0,0.3);
     transition:filter 0.15s;
   }
+  .jalon-marker-diamond.en-attente{opacity:0.4;border-style:dashed;border-width:2px}
   .jalon-marker-wrap:hover .jalon-marker-diamond{filter:brightness(0.85)}
   .jalon-marker-wrap:hover::after{
     content:attr(data-tooltip);position:absolute;top:14px;left:0;transform:translateX(-50%);
     background:#222;color:#fff;padding:8px 12px;border-radius:6px;font-size:12px;
-    white-space:nowrap;line-height:1.4;z-index:200;box-shadow:0 4px 12px rgba(0,0,0,0.2);
-    pointer-events:none;
+    white-space:pre-line;line-height:1.4;z-index:200;box-shadow:0 4px 12px rgba(0,0,0,0.2);
+    pointer-events:none;text-align:center;
   }
   .jalon-marker-wrap:hover::before{
     content:'';position:absolute;top:6px;left:0;transform:translateX(-50%);
     border:5px solid transparent;border-bottom-color:#222;z-index:200;pointer-events:none;
+  }
+  .jalon-badge{
+    position:absolute;top:38px;z-index:4;transform:translateX(-50%);
+    font-size:9px;font-weight:700;color:var(--texte-mention);background:#fff;
+    border:1px solid var(--bordure);border-radius:8px;padding:0 5px;white-space:nowrap;
   }
 
   .pill-plan{
@@ -210,6 +229,10 @@
   }
   .form-group input[readonly]{background:var(--fond-alt);color:var(--texte-mention)}
   .form-group textarea{resize:vertical;min-height:80px}
+  .info-blocage{
+    font-size:12px;color:var(--alerte-retard);background:#FFE9E9;border:1px solid #FFC5C5;
+    border-radius:4px;padding:8px 10px;margin-bottom:16px;display:none;
+  }
   .form-actions{display:flex;gap:8px;margin-top:24px;justify-content:flex-end}
   .form-actions.with-delete{justify-content:space-between}
   .btn-cancel{background:#ccc;color:#000}
@@ -244,7 +267,7 @@
   </div>
 </div>
 
-<!-- MODALE CAMPAGNE (création + édition) -->
+<!-- MODALE CAMPAGNE -->
 <div class="modal-overlay" id="modal-campagne">
   <div class="modal">
     <h2 id="modal-campagne-title">Nouvelle Campagne</h2>
@@ -263,7 +286,7 @@
   </div>
 </div>
 
-<!-- MODALE JALON (création + édition) -->
+<!-- MODALE JALON -->
 <div class="modal-overlay" id="modal-jalon">
   <div class="modal">
     <h2 id="modal-jalon-title">Nouveau Jalon</h2>
@@ -284,12 +307,13 @@
   </div>
 </div>
 
-<!-- MODALE TACHE (création + édition) -->
+<!-- MODALE TACHE -->
 <div class="modal-overlay" id="modal-tache">
   <div class="modal">
     <h2 id="modal-tache-title">Nouvelle Tâche</h2>
     <input type="hidden" id="field-tache-id">
     <input type="hidden" id="field-tache-campagne">
+    <div class="info-blocage" id="info-blocage"></div>
     <div class="form-group"><label>Tâche *</label><input type="text" id="field-tache-nom" placeholder="ex: Publication liste"></div>
     <div class="form-group"><label>Date début *</label><input type="date" id="field-tache-debut"></div>
     <div class="form-group"><label>Date fin *</label><input type="date" id="field-tache-fin"></div>
@@ -308,6 +332,8 @@
 </div>
 
 <script>
+const ROW_H=34, CAMP_H=46, HEAD_H=72;
+
 const STATUTS = [
   {nom:"À faire",   cls:"st-faire",    couleur:"var(--st-faire)"},
   {nom:"En cours",  cls:"st-encours",  couleur:"var(--st-encours)"},
@@ -347,6 +373,15 @@ function refId(v){
   if(Array.isArray(v)) return v[1];
   return v;
 }
+// Résout une référence liste (Predecesseurs, Taches_requises) quel que soit son encodage brut
+function refIdList(v){
+  if(v===null||v===undefined) return [];
+  if(Array.isArray(v)){
+    if(v.length && v[0]==="L") return v.slice(1).filter(x=>typeof x==="number");
+    return v.filter(x=>typeof x==="number");
+  }
+  return [];
+}
 function resolveRef(table, id, col){
   const rid=refId(id);
   if(rid===null||rid===undefined) return null;
@@ -367,6 +402,33 @@ function toDateInput(v){
   const jj=String(d.getUTCDate()).padStart(2,"0");
   const mm=String(d.getUTCMonth()+1).padStart(2,"0");
   return `${d.getUTCFullYear()}-${mm}-${jj}`;
+}
+
+// Liste des noms de tâches prédécesseurs non encore Terminées (vide = pas bloquée)
+function calculerBlocage(t){
+  const predIds = refIdList(t.Predecesseurs).filter(pid=>pid!==t.id);
+  const bloquantes=[];
+  predIds.forEach(pid=>{
+    const pred=DB.taches.find(x=>x.id===pid);
+    if(!pred) return;
+    const predStatut=resolveRef(DB.parametres, pred.Statut, "Statut");
+    if(norm(predStatut)!==norm("Terminé")) bloquantes.push(pred.Tache);
+  });
+  return bloquantes;
+}
+
+// Niveau de risque de délai, proportionnel à la durée (seuil = 25% de la durée, mini 1 jour)
+function calculerRisque(t, statutTexte, todayIdx){
+  if(norm(statutTexte)===norm("Terminé")) return {niveau:"ok", joursRestants:null};
+  const dIdx=dayIndex(t.Date_debut);
+  if(dIdx===null) return {niveau:"ok", joursRestants:null};
+  const duree=t.Duree_jours||1;
+  const finIdx=dIdx+duree-1;
+  const joursRestants=finIdx-todayIdx;
+  const seuil=Math.max(1, Math.ceil(duree*0.25));
+  if(joursRestants<0) return {niveau:"retard", joursRestants};
+  if(joursRestants<=seuil) return {niveau:"proche", joursRestants};
+  return {niveau:"ok", joursRestants};
 }
 
 let DB={};
@@ -456,7 +518,7 @@ function findRespId(nom){
   return r?r.id:null;
 }
 
-/* ---------- CAMPAGNE : créer / éditer / supprimer ---------- */
+/* ---------- CAMPAGNE ---------- */
 
 function openCampagneCreate(){
   document.getElementById("field-campagne-id").value="";
@@ -522,7 +584,7 @@ async function deleteCampagne(){
   }catch(e){ alert("Erreur: "+e.message); console.error(e); }
 }
 
-/* ---------- JALON : créer / éditer / supprimer ---------- */
+/* ---------- JALON ---------- */
 
 function openJalonCreate(campagneId){
   document.getElementById("field-jalon-id").value="";
@@ -563,13 +625,9 @@ async function saveJalon(){
       Type:type
     };
     if(id){
-      await grist.docApi.applyUserActions([
-        ["UpdateRecord","Jalons",parseInt(id),values]
-      ]);
+      await grist.docApi.applyUserActions([["UpdateRecord","Jalons",parseInt(id),values]]);
     }else{
-      await grist.docApi.applyUserActions([
-        ["AddRecord","Jalons",null,values]
-      ]);
+      await grist.docApi.applyUserActions([["AddRecord","Jalons",null,values]]);
     }
     closeModal("modal-jalon");
     init();
@@ -587,7 +645,7 @@ async function deleteJalon(){
   }catch(e){ alert("Erreur: "+e.message); console.error(e); }
 }
 
-/* ---------- TACHE : créer / éditer / supprimer ---------- */
+/* ---------- TACHE ---------- */
 
 function openTacheCreate(campagneId){
   document.getElementById("field-tache-id").value="";
@@ -599,6 +657,7 @@ function openTacheCreate(campagneId){
   document.getElementById("field-tache-resp").value="";
   document.getElementById("field-tache-statut").value="";
   document.getElementById("field-tache-comments").value="";
+  document.getElementById("info-blocage").style.display="none";
   document.getElementById("modal-tache-title").textContent="Nouvelle Tâche";
   document.getElementById("btn-save-tache").textContent="Créer";
   document.getElementById("btn-delete-tache").style.display="none";
@@ -627,6 +686,16 @@ function openTacheEdit(t){
   document.getElementById("field-tache-resp").value=resolveRef(DB.responsables, t.Responsable, "Nom")||"";
   document.getElementById("field-tache-statut").value=resolveRef(DB.parametres, t.Statut, "Statut")||"";
   document.getElementById("field-tache-comments").value=t.Commentaires||"";
+
+  const bloquantes=calculerBlocage(t);
+  const infoDiv=document.getElementById("info-blocage");
+  if(bloquantes.length){
+    infoDiv.textContent="🔒 Bloquée par : "+bloquantes.join(", ");
+    infoDiv.style.display="block";
+  }else{
+    infoDiv.style.display="none";
+  }
+
   document.getElementById("modal-tache-title").textContent="Modifier la tâche";
   document.getElementById("btn-save-tache").textContent="Enregistrer";
   document.getElementById("btn-delete-tache").style.display="inline-block";
@@ -726,6 +795,9 @@ function construire(){
   head.appendChild(headInner);
   grid.appendChild(head);
 
+  const taskPositions={};
+  let yCursor=HEAD_H;
+
   DB.campagnes.forEach(camp=>{
     const campGroup=el("div","camp-group");
 
@@ -744,6 +816,7 @@ function construire(){
 
     const trackCamp=el("div","track campagne");
     campGroup.appendChild(trackCamp);
+    yCursor += CAMP_H;
 
     DB.taches.filter(t=>refId(t.Campagne)===camp.id).forEach(t=>{
       const statutTexte=resolveRef(DB.parametres, t.Statut, "Statut");
@@ -756,18 +829,42 @@ function construire(){
 
       const track=el("div","track tache");
       const dIdx=dayIndex(t.Date_debut);
+      const rowCenterY = yCursor + ROW_H/2;
+
       if(dIdx!==null){
         if(dIdx<=maxI){
           const info=statutInfo(statutTexte);
+          const bloquantes=calculerBlocage(t);
+          const risque=calculerRisque(t, statutTexte, todayI);
+
           const barre=el("div","barre "+info.cls);
-          barre.style.left=((dIdx-minI)*16)+"px";
+          const leftPx=(dIdx-minI)*16;
           const duree=t.Duree_jours||1;
-          barre.style.width=(Math.max(16,duree*16))+"px";
+          const widthPx=Math.max(16,duree*16);
+          barre.style.left=leftPx+"px";
+          barre.style.width=widthPx+"px";
           barre.style.background=cssVarValue(info.couleur);
-          barre.textContent=t.Tache;
-          if(t.Commentaires) barre.title=t.Commentaires;
+
+          if(bloquantes.length) barre.classList.add("bloquee");
+          if(risque.niveau==="retard") barre.classList.add("retard");
+          else if(risque.niveau==="proche") barre.classList.add("proche");
+
+          if(bloquantes.length){
+            barre.appendChild(el("span","lock-badge","🔒"));
+          }
+          barre.appendChild(document.createTextNode(t.Tache));
+
+          let tip=`${t.Tache}\n${statutTexte}`;
+          if(bloquantes.length) tip+=`\n🔒 Bloquée par : ${bloquantes.join(", ")}`;
+          if(risque.niveau==="retard") tip+=`\n⚠️ En retard de ${Math.abs(risque.joursRestants)} j`;
+          else if(risque.niveau==="proche") tip+=`\n⏳ Échéance dans ${risque.joursRestants} j`;
+          if(t.Commentaires) tip+=`\n${t.Commentaires}`;
+          barre.title=tip;
+
           barre.onclick=(e)=>{ e.stopPropagation(); openTacheEdit(t); };
           track.appendChild(barre);
+
+          taskPositions[t.id]={x1:leftPx, x2:leftPx+widthPx, y:rowCenterY};
         }
       }else{
         const pill=el("div","pill-plan","à planifier");
@@ -776,6 +873,7 @@ function construire(){
         track.appendChild(pill);
       }
       campGroup.appendChild(track);
+      yCursor += ROW_H;
     });
 
     DB.jalons.filter(j=>refId(j.Campagne)===camp.id).forEach(jalon=>{
@@ -783,6 +881,14 @@ function construire(){
       if(dIdx!==null && dIdx>=minI && dIdx<=maxI){
         const leftPx=((dIdx-minI)*16)+"px";
         const couleur=cssVarValue(jalonCouleur(jalon.Type));
+
+        const reqIds=refIdList(jalon.Taches_requises);
+        const total=reqIds.length;
+        const done=reqIds.filter(rid=>{
+          const tq=DB.taches.find(x=>x.id===rid);
+          if(!tq) return false;
+          return norm(resolveRef(DB.parametres, tq.Statut, "Statut"))===norm("Terminé");
+        }).length;
 
         const jalonLine=el("div","jalon-line");
         jalonLine.style.left=leftPx;
@@ -800,17 +906,63 @@ function construire(){
 
         const markerWrap=el("div","jalon-marker-wrap");
         markerWrap.style.left=leftPx;
-        markerWrap.setAttribute("data-tooltip", `${jalon.Nom}${typeTxt}\n${dateTxt}`);
+        let tipJalon=`${jalon.Nom}${typeTxt}\n${dateTxt}`;
+        if(total>0) tipJalon+=`\n${done}/${total} tâches requises Terminées`;
+        markerWrap.setAttribute("data-tooltip", tipJalon);
         markerWrap.onclick=(e)=>{ e.stopPropagation(); openJalonEdit(jalon); };
-        const diamond=el("div","jalon-marker-diamond");
+        const diamond=el("div","jalon-marker-diamond"+(total>0 && done<total ? " en-attente":""));
         diamond.style.background=couleur;
         markerWrap.appendChild(diamond);
         campGroup.appendChild(markerWrap);
+
+        if(total>0){
+          const badge=el("div","jalon-badge",`${done}/${total}`);
+          badge.style.left=leftPx;
+          campGroup.appendChild(badge);
+        }
       }
     });
 
     grid.appendChild(campGroup);
   });
+
+  // Flèches de dépendance (superposées après coup, une fois toutes les positions connues)
+  const svgNS="http://www.w3.org/2000/svg";
+  const svg=document.createElementNS(svgNS,"svg");
+  svg.setAttribute("class","arrows-svg");
+  svg.setAttribute("width", tlW);
+  svg.setAttribute("height", yCursor);
+  const defs=document.createElementNS(svgNS,"defs");
+  defs.innerHTML=`
+    <marker id="arrow-normal" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#8888a0"/>
+    </marker>
+    <marker id="arrow-conflit" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="${cssVarValue('var(--alerte-retard)')}"/>
+    </marker>`;
+  svg.appendChild(defs);
+
+  DB.taches.forEach(t=>{
+    const succPos=taskPositions[t.id];
+    if(!succPos) return;
+    const predIds=refIdList(t.Predecesseurs).filter(pid=>pid!==t.id);
+    predIds.forEach(pid=>{
+      const predPos=taskPositions[pid];
+      if(!predPos) return;
+      const x1=predPos.x2, y1=predPos.y, x2=succPos.x1, y2=succPos.y;
+      const conflit = x2 < x1;
+      const midX = conflit ? x1+10 : Math.min(x1+10, Math.max(x1+2, x2-4));
+      const path=document.createElementNS(svgNS,"path");
+      path.setAttribute("d", `M ${x1} ${y1} L ${midX} ${y1} L ${midX} ${y2} L ${x2} ${y2}`);
+      path.setAttribute("fill","none");
+      path.setAttribute("stroke", conflit ? cssVarValue('var(--alerte-retard)') : "#8888a0");
+      path.setAttribute("stroke-width","1.5");
+      if(conflit) path.setAttribute("stroke-dasharray","4,3");
+      path.setAttribute("marker-end", conflit ? "url(#arrow-conflit)" : "url(#arrow-normal)");
+      svg.appendChild(path);
+    });
+  });
+  grid.appendChild(svg);
 
   document.getElementById("kanban").innerHTML="";
   document.getElementById("kanban").appendChild(grid);
@@ -847,6 +999,8 @@ function rendreLegende(){
     item.appendChild(document.createTextNode(label));
     l.appendChild(item);
   });
+  l.appendChild(el("div","item","🔒 Bloquée par une dépendance"));
+  l.appendChild(el("div","item","⚠️ Retard  ⏳ Échéance proche"));
 }
 function el(tag,cls,txt){
   const e=document.createElement(cls?"div":tag);
