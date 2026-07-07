@@ -17,6 +17,7 @@
     --st-planifier:#929292;
     --st-encours:#0063CB;
     --st-attente:#B34000;
+    --st-valide:#18753C;
     --st-termine:#18753C;
     --st-annule:#CE0500;
     --jour:16px;
@@ -40,9 +41,7 @@
     gap:16px;padding:12px 16px;border-bottom:1px solid var(--bordure);
     flex-wrap:wrap;
   }
-  .topbar h1{
-    font-size:18px;font-weight:700;color:var(--bleu-france);
-  }
+  .topbar h1{font-size:18px;font-weight:700;color:var(--bleu-france);}
   .meta{font-size:12px;color:var(--texte-mention)}
 
   .legende{display:flex;gap:14px;flex-wrap:wrap;align-items:center}
@@ -50,41 +49,23 @@
   .legende .puce{width:12px;height:12px;border-radius:3px;flex:0 0 auto}
 
   .toolbar{
-    padding:12px 16px;
-    border-bottom:1px solid var(--bordure);
-    display:flex;gap:8px;
-    flex-wrap:wrap;
+    padding:12px 16px;border-bottom:1px solid var(--bordure);
+    display:flex;gap:8px;flex-wrap:wrap;
   }
 
   .btn{
-    padding:8px 16px;
-    background:var(--bleu-france);
-    color:#fff;
-    border:none;
-    border-radius:4px;
-    cursor:pointer;
-    font-size:13px;font-weight:600;
-    transition:background 0.2s;
+    padding:8px 16px;background:var(--bleu-france);color:#fff;border:none;
+    border-radius:4px;cursor:pointer;font-size:13px;font-weight:600;transition:background 0.2s;
   }
   .btn:hover{background:#0056b3}
 
   .scroll{flex:1;overflow:auto;position:relative}
-
   .grid-wrapper{display:flex}
 
   .labels-col{
-    width:var(--label-w);
-    flex-shrink:0;
-    border-right:1px solid var(--bordure);
-    display:flex;flex-direction:column;overflow:hidden;
-    z-index:3;
+    width:var(--label-w);flex-shrink:0;border-right:1px solid var(--bordure);
+    display:flex;flex-direction:column;overflow:hidden;z-index:3;
   }
-
-  .labels-col::after{
-    content:'';position:absolute;right:0;top:0;bottom:0;width:4px;
-    background:transparent;cursor:col-resize;z-index:10;
-  }
-  .labels-col::after:hover{background:var(--bleu-france)}
 
   .grid{display:grid;grid-template-columns:var(--tl-w,600px);align-content:start;flex:1}
 
@@ -97,7 +78,7 @@
 
   .head-track{position:sticky;top:0;z-index:4;height:72px;background:var(--fond);border-bottom:1px solid var(--bordure)}
   .head-inner{position:relative;height:100%}
-  
+
   .week-label{
     position:absolute;top:0;bottom:0;border-left:1px solid var(--bordure);
     width:112px;padding:8px;display:flex;flex-direction:column;
@@ -125,9 +106,7 @@
   .label.tache .nom{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
   .label.tache .resp{font-size:11px;color:var(--texte-mention);flex:0 0 auto}
 
-  .label-actions{
-    position:absolute;right:8px;display:none;gap:4px;
-  }
+  .label-actions{position:absolute;right:8px;display:none;gap:4px;}
   .label:hover .label-actions{display:flex}
   .btn-tiny{padding:2px 6px;font-size:10px;background:#666;color:#fff;border:none;border-radius:3px;cursor:pointer}
   .btn-tiny:hover{background:#333}
@@ -151,9 +130,7 @@
     white-space:nowrap;overflow:hidden;cursor:pointer;
   }
 
-  .jalon{
-    position:absolute;top:50%;transform:translateY(-50%);font-size:18px;z-index:2;cursor:pointer;
-  }
+  .jalon{position:absolute;top:50%;transform:translateY(-50%);font-size:18px;z-index:2;cursor:pointer;}
 
   .pill-plan{
     position:absolute;top:8px;left:6px;z-index:1;font-size:10px;color:var(--texte-mention);
@@ -165,7 +142,6 @@
     display:none;align-items:center;justify-content:center;z-index:1000;
   }
   .modal-overlay.active{display:flex}
-
   .modal{
     background:#fff;border-radius:8px;padding:24px;max-width:500px;width:90%;max-height:90vh;overflow-y:auto;
     box-shadow:0 8px 32px rgba(0,0,0,0.2);
@@ -176,12 +152,11 @@
   .form-group input,.form-group textarea,.form-group select{
     width:100%;padding:8px 12px;border:1px solid var(--bordure);border-radius:4px;font-size:13px;
   }
+  .form-group input[readonly]{background:var(--fond-alt);color:var(--texte-mention)}
   .form-group textarea{resize:vertical;min-height:80px}
   .form-actions{display:flex;gap:8px;margin-top:24px;justify-content:flex-end}
   .btn-cancel{background:#ccc;color:#000}
   .btn-cancel:hover{background:#aaa}
-
-  .empty{padding:40px;text-align:center;color:var(--texte-mention)}
 </style>
 </head>
 <body>
@@ -216,22 +191,10 @@
 <div class="modal-overlay" id="modal-campagne">
   <div class="modal">
     <h2>Nouvelle Campagne</h2>
-    <div class="form-group">
-      <label>Nom *</label>
-      <input type="text" id="field-campagne-nom" placeholder="ex: Avancement de grade 2025">
-    </div>
-    <div class="form-group">
-      <label>Section *</label>
-      <select id="field-campagne-section"></select>
-    </div>
-    <div class="form-group">
-      <label>Type Campagne *</label>
-      <select id="field-campagne-type"></select>
-    </div>
-    <div class="form-group">
-      <label>Description</label>
-      <textarea id="field-campagne-desc" placeholder="Description optionnelle"></textarea>
-    </div>
+    <div class="form-group"><label>Nom *</label><input type="text" id="field-campagne-nom" placeholder="ex: Avancement de grade 2025"></div>
+    <div class="form-group"><label>Section *</label><select id="field-campagne-section"></select></div>
+    <div class="form-group"><label>Type Campagne *</label><select id="field-campagne-type"></select></div>
+    <div class="form-group"><label>Description</label><textarea id="field-campagne-desc" placeholder="Description optionnelle"></textarea></div>
     <div class="form-actions">
       <button class="btn btn-cancel" onclick="closeModal('modal-campagne')">Annuler</button>
       <button class="btn" onclick="saveCampagne()">Créer</button>
@@ -243,21 +206,10 @@
   <div class="modal">
     <h2>Nouveau Jalon</h2>
     <input type="hidden" id="field-jalon-campagne">
-    <div class="form-group">
-      <label>Nom du jalon *</label>
-      <input type="text" id="field-jalon-nom" placeholder="ex: Lancement">
-    </div>
-    <div class="form-group">
-      <label>Date *</label>
-      <input type="date" id="field-jalon-date">
-    </div>
-    <div class="form-group">
-      <label>Type</label>
-      <select id="field-jalon-type">
-        <option>Jalon majeur</option>
-        <option>Livrable</option>
-        <option>Étape</option>
-      </select>
+    <div class="form-group"><label>Nom du jalon *</label><input type="text" id="field-jalon-nom" placeholder="ex: Lancement"></div>
+    <div class="form-group"><label>Date *</label><input type="date" id="field-jalon-date"></div>
+    <div class="form-group"><label>Type</label>
+      <select id="field-jalon-type"><option>Jalon majeur</option><option>Livrable</option><option>Étape</option></select>
     </div>
     <div class="form-actions">
       <button class="btn btn-cancel" onclick="closeModal('modal-jalon')">Annuler</button>
@@ -270,34 +222,13 @@
   <div class="modal">
     <h2>Nouvelle Tâche</h2>
     <input type="hidden" id="field-tache-campagne">
-    <div class="form-group">
-      <label>Tâche *</label>
-      <input type="text" id="field-tache-nom" placeholder="ex: Publication liste">
-    </div>
-    <div class="form-group">
-      <label>Date début *</label>
-      <input type="date" id="field-tache-debut">
-    </div>
-    <div class="form-group">
-      <label>Date fin *</label>
-      <input type="date" id="field-tache-fin">
-    </div>
-    <div class="form-group">
-      <label>Durée (jours)</label>
-      <input type="number" id="field-tache-duree" placeholder="Calculé auto" min="1">
-    </div>
-    <div class="form-group">
-      <label>Responsable</label>
-      <select id="field-tache-resp"></select>
-    </div>
-    <div class="form-group">
-      <label>Statut</label>
-      <select id="field-tache-statut"></select>
-    </div>
-    <div class="form-group">
-      <label>Commentaires</label>
-      <textarea id="field-tache-comments" placeholder="Notes optionnelles"></textarea>
-    </div>
+    <div class="form-group"><label>Tâche *</label><input type="text" id="field-tache-nom" placeholder="ex: Publication liste"></div>
+    <div class="form-group"><label>Date début *</label><input type="date" id="field-tache-debut"></div>
+    <div class="form-group"><label>Date fin *</label><input type="date" id="field-tache-fin"></div>
+    <div class="form-group"><label>Durée (jours ouvrés)</label><input type="number" id="field-tache-duree" readonly placeholder="calculée automatiquement"></div>
+    <div class="form-group"><label>Responsable</label><select id="field-tache-resp"></select></div>
+    <div class="form-group"><label>Statut</label><select id="field-tache-statut"></select></div>
+    <div class="form-group"><label>Commentaires</label><textarea id="field-tache-comments" placeholder="Notes optionnelles"></textarea></div>
     <div class="form-actions">
       <button class="btn btn-cancel" onclick="closeModal('modal-tache')">Annuler</button>
       <button class="btn" onclick="saveTache()">Créer</button>
@@ -306,70 +237,70 @@
 </div>
 
 <script>
+// Statuts : matching insensible aux accents/casse (point 3)
 const STATUTS = [
   {nom:"À planifier", cls:"st-planifier", couleur:"var(--st-planifier)"},
   {nom:"En cours",    cls:"st-encours",   couleur:"var(--st-encours)"},
   {nom:"En attente",  cls:"st-attente",   couleur:"var(--st-attente)"},
+  {nom:"Validé",      cls:"st-valide",    couleur:"var(--st-valide)"},
   {nom:"Terminé",     cls:"st-termine",   couleur:"var(--st-termine)"},
   {nom:"Annulé",      cls:"st-annule",    couleur:"var(--st-annule)"},
 ];
 
-const JOURS=['Dimanche','Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
+function norm(s){
+  return String(s||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").trim();
+}
+function statutInfo(s){
+  return STATUTS.find(x=>norm(x.nom)===norm(s)) || {nom:s||"—",cls:"st-planifier",couleur:"var(--st-planifier)"};
+}
+
+// Parse date robuste : gère nombre (secondes Grist) ET chaîne (point 1)
+function parseDate(v){
+  if(v===null||v===undefined||v==="") return null;
+  if(typeof v==="number") return new Date(v*1000);
+  const d=new Date(String(v).trim());
+  return isNaN(d.getTime())?null:d;
+}
+function dayIndex(v){
+  const d=parseDate(v);
+  return d?Math.floor(d.getTime()/86400000):null;
+}
+// Normalise une référence Grist (entier OU ["L", id])
+function refId(v){
+  if(Array.isArray(v)) return v[1];
+  return v;
+}
 
 let DB={};
 let allData={};
 
 grist.ready({requiredAccess:"full"});
 
-// Convertir format columnar en rows
 function columnarToRows(data){
-  if(!data || typeof data !== 'object') return [];
+  if(!data || typeof data!=="object") return [];
   if(Array.isArray(data)) return data;
-  
-  // Format columnar: {id: [1,2,3], nom: ["a","b","c"]}
-  const keys = Object.keys(data);
-  if(keys.length === 0) return [];
-  
-  // Récupérer la première colonne pour connaître la longueur
-  const firstCol = data[keys[0]];
+  const keys=Object.keys(data);
+  if(keys.length===0) return [];
+  const firstCol=data[keys[0]];
   if(!Array.isArray(firstCol)) return [];
-  
-  const length = firstCol.length;
-  const rows = [];
-  
-  for(let i = 0; i < length; i++){
-    const row = {};
-    keys.forEach(key => {
-      row[key] = data[key][i];
-    });
+  const rows=[];
+  for(let i=0;i<firstCol.length;i++){
+    const row={};
+    keys.forEach(k=>row[k]=data[k][i]);
     rows.push(row);
   }
-  
   return rows;
 }
 
-// Charger données
 async function init(){
   try{
     document.getElementById("status").textContent="Chargement...";
-    console.log("=== DÉBUT CHARGEMENT ===");
-    
-    DB.campagnes = columnarToRows(await grist.docApi.fetchTable("Campagnes"));
-    console.log("✓ Campagnes:", DB.campagnes.length);
-    
-    DB.jalons = columnarToRows(await grist.docApi.fetchTable("Jalons"));
-    console.log("✓ Jalons:", DB.jalons.length);
-    
-    DB.taches = columnarToRows(await grist.docApi.fetchTable("Taches"));
-    console.log("✓ Taches:", DB.taches.length);
-    
+    DB.campagnes    = columnarToRows(await grist.docApi.fetchTable("Campagnes"));
+    DB.jalons       = columnarToRows(await grist.docApi.fetchTable("Jalons"));
+    DB.taches       = columnarToRows(await grist.docApi.fetchTable("Tâches"));
     DB.responsables = columnarToRows(await grist.docApi.fetchTable("Responsables"));
-    console.log("✓ Responsables:", DB.responsables.length);
-    
-    DB.parametres = columnarToRows(await grist.docApi.fetchTable("PARAMETRES"));
-    console.log("✓ PARAMETRES:", DB.parametres.length);
-    console.log("Premier row:", DB.parametres[0]);
-    
+    DB.parametres   = columnarToRows(await grist.docApi.fetchTable("PARAMETRES"));
+    if(DB.taches.length) console.log("Première tâche:", DB.taches[0]);
     populateSelects();
     construire();
     document.getElementById("status").textContent="✓ Données chargées";
@@ -379,49 +310,46 @@ async function init(){
   }
 }
 
+function fillSelect(id, values, placeholder){
+  const sel=document.getElementById(id);
+  sel.innerHTML=`<option value="">${placeholder}</option>`;
+  values.forEach(v=>{
+    const opt=document.createElement("option");
+    opt.value=v; opt.textContent=v;
+    sel.appendChild(opt);
+  });
+}
+function uniq(arr){ return arr.filter((v,i,a)=>a.indexOf(v)===i); }
+
 function populateSelects(){
-  const sections=DB.parametres.filter(p=>p.Section).map(p=>p.Section).filter((v,i,a)=>a.indexOf(v)===i);
-  document.getElementById("field-campagne-section").innerHTML='<option value="">-- Sélectionner --</option>';
-  sections.forEach(s=>{
-    const opt=document.createElement("option");
-    opt.value=s;
-    opt.textContent=s;
-    document.getElementById("field-campagne-section").appendChild(opt);
-  });
-
-  const types=DB.parametres.filter(p=>p.Type_Campagne).map(p=>p.Type_Campagne).filter((v,i,a)=>a.indexOf(v)===i);
-  document.getElementById("field-campagne-type").innerHTML='<option value="">-- Sélectionner --</option>';
-  types.forEach(t=>{
-    const opt=document.createElement("option");
-    opt.value=t;
-    opt.textContent=t;
-    document.getElementById("field-campagne-type").appendChild(opt);
-  });
-
-  const statuts=DB.parametres.filter(p=>p.Statut).map(p=>p.Statut).filter((v,i,a)=>a.indexOf(v)===i);
-  document.getElementById("field-tache-statut").innerHTML='<option value="">-- Sélectionner --</option>';
-  statuts.forEach(st=>{
-    const opt=document.createElement("option");
-    opt.value=st;
-    opt.textContent=st;
-    document.getElementById("field-tache-statut").appendChild(opt);
-  });
-
-  document.getElementById("field-tache-resp").innerHTML='<option value="">-- Aucun --</option>';
-  DB.responsables.forEach(r=>{
-    const opt=document.createElement("option");
-    opt.value=r.Nom;
-    opt.textContent=r.Nom;
-    document.getElementById("field-tache-resp").appendChild(opt);
-  });
+  fillSelect("field-campagne-section", uniq(DB.parametres.filter(p=>p.Section).map(p=>p.Section)), "-- Sélectionner --");
+  fillSelect("field-campagne-type",    uniq(DB.parametres.filter(p=>p.Type_Campagne).map(p=>p.Type_Campagne)), "-- Sélectionner --");
+  fillSelect("field-tache-statut",     uniq(DB.parametres.filter(p=>p.Statut).map(p=>p.Statut)), "-- Sélectionner --");
+  fillSelect("field-tache-resp",       DB.responsables.map(r=>r.Nom), "-- Aucun --");
 }
 
-function openModal(id, data={}){
-  document.getElementById(id).classList.add("active");
-}
+function openModal(id){ document.getElementById(id).classList.add("active"); }
+function closeModal(id){ document.getElementById(id).classList.remove("active"); }
 
-function closeModal(id){
-  document.getElementById(id).classList.remove("active");
+// Durée jours ouvrés (lun-ven) entre deux dates incluses
+function joursOuvres(d1, d2){
+  let n=0;
+  const cur=new Date(d1);
+  while(cur<=d2){
+    const j=cur.getDay();
+    if(j!==0 && j!==6) n++;
+    cur.setDate(cur.getDate()+1);
+  }
+  return n;
+}
+// Recalcul auto affiché dans la modale
+function majDuree(){
+  const debut=document.getElementById("field-tache-debut").value;
+  const fin=document.getElementById("field-tache-fin").value;
+  if(debut && fin){
+    const n=joursOuvres(new Date(debut), new Date(fin));
+    document.getElementById("field-tache-duree").value = n>0?n:"";
+  }
 }
 
 async function saveCampagne(){
@@ -429,83 +357,93 @@ async function saveCampagne(){
   const section=document.getElementById("field-campagne-section").value;
   const type=document.getElementById("field-campagne-type").value;
   const desc=document.getElementById("field-campagne-desc").value.trim();
-
-  if(!nom || !section || !type) { alert("Champs obligatoires"); return; }
-
+  if(!nom || !section || !type){ alert("Champs obligatoires"); return; }
   try{
-    await grist.docApi.addRecord("Campagnes", {Campagne:nom, Section:section, Type_Campagne:type, Description:desc});
+    await grist.docApi.applyUserActions([
+      ["AddRecord","Campagnes",null,{Campagne:nom, Section:section, Type_Campagne:type, Description:desc}]
+    ]);
+    document.getElementById("field-campagne-nom").value="";
+    document.getElementById("field-campagne-desc").value="";
     closeModal("modal-campagne");
     init();
-  }catch(e){ alert("Erreur: "+e.message); }
+  }catch(e){ alert("Erreur: "+e.message); console.error(e); }
 }
 
 async function saveJalon(){
-  const campagne_id=document.getElementById("field-jalon-campagne").value;
+  const campagne_id=parseInt(document.getElementById("field-jalon-campagne").value);
   const nom=document.getElementById("field-jalon-nom").value.trim();
   const date=document.getElementById("field-jalon-date").value;
   const type=document.getElementById("field-jalon-type").value;
-
-  if(!nom || !date) { alert("Champs obligatoires"); return; }
-
+  if(!nom || !date){ alert("Champs obligatoires"); return; }
   try{
-    await grist.docApi.addRecord("Jalons", {Campagne:[parseInt(campagne_id)], Nom:nom, Date:date, Type:type});
+    await grist.docApi.applyUserActions([
+      ["AddRecord","Jalons",null,{
+        Campagne:campagne_id,
+        Nom:nom,
+        Date:Math.floor(new Date(date).getTime()/1000), // écriture en secondes (point 2)
+        Type:type
+      }]
+    ]);
+    document.getElementById("field-jalon-nom").value="";
+    document.getElementById("field-jalon-date").value="";
     closeModal("modal-jalon");
     init();
-  }catch(e){ alert("Erreur: "+e.message); }
+  }catch(e){ alert("Erreur: "+e.message); console.error(e); }
 }
 
 async function saveTache(){
-  const campagne_id=document.getElementById("field-tache-campagne").value;
+  const campagne_id=parseInt(document.getElementById("field-tache-campagne").value);
   const nom=document.getElementById("field-tache-nom").value.trim();
   const debut=document.getElementById("field-tache-debut").value;
   const fin=document.getElementById("field-tache-fin").value;
   const resp=document.getElementById("field-tache-resp").value;
   const statut=document.getElementById("field-tache-statut").value;
+  const comments=document.getElementById("field-tache-comments").value.trim(); // point 4
+  if(!nom || !debut || !fin){ alert("Champs obligatoires"); return; }
 
-  if(!nom || !debut || !fin) { alert("Champs obligatoires"); return; }
-
-  const d1=new Date(debut);
-  const d2=new Date(fin);
-  const duree=Math.ceil((d2-d1)/(1000*86400))+1;
+  const duree=joursOuvres(new Date(debut), new Date(fin)); // point 5
 
   try{
-    const camp=DB.campagnes.find(c=>c.id===parseInt(campagne_id));
-    if(!camp) { alert("Campagne non trouvée"); return; }
-    
-    await grist.docApi.addRecord("Taches", {
-      Section:camp.Section,
-      Campagne:[parseInt(campagne_id)],
-      Tache:nom,
-      Date_debut:debut,
-      Date_fin:fin,
-      Duree_jours:duree,
-      Statut:statut,
-      Responsable:resp
-    });
+    const camp=DB.campagnes.find(c=>c.id===campagne_id);
+    if(!camp){ alert("Campagne non trouvée"); return; }
+    await grist.docApi.applyUserActions([
+      ["AddRecord","Tâches",null,{
+        Section:camp.Section,
+        Campagne:campagne_id,
+        Tache:nom,
+        Date_debut:Math.floor(new Date(debut).getTime()/1000), // secondes (point 2)
+        Date_fin:Math.floor(new Date(fin).getTime()/1000),
+        Duree_jours:duree,
+        Statut:statut,
+        Responsable:resp,
+        Commentaires:comments
+      }]
+    ]);
+    document.getElementById("field-tache-nom").value="";
+    document.getElementById("field-tache-debut").value="";
+    document.getElementById("field-tache-fin").value="";
+    document.getElementById("field-tache-duree").value="";
+    document.getElementById("field-tache-comments").value="";
     closeModal("modal-tache");
     init();
-  }catch(e){ alert("Erreur: "+e.message); }
+  }catch(e){ alert("Erreur: "+e.message); console.error(e); }
 }
 
 function construire(){
-  const dates=DB.taches.filter(t=>t.Date_debut && t.Date_fin);
+  const dates=DB.taches.filter(t=>dayIndex(t.Date_debut)!==null && dayIndex(t.Date_fin)!==null);
   let minI, maxI;
-  
   if(dates.length){
-    const idxs=dates.map(t=>Math.floor(new Date(t.Date_debut).getTime()/86400000));
-    const idxsEnd=dates.map(t=>Math.floor(new Date(t.Date_fin).getTime()/86400000));
-    minI=Math.min(...idxs);
-    maxI=Math.max(...idxsEnd);
+    minI=Math.min(...dates.map(t=>dayIndex(t.Date_debut)));
+    maxI=Math.max(...dates.map(t=>dayIndex(t.Date_fin)));
   }else{
-    const today=Math.floor(new Date().getTime()/86400000);
+    const today=Math.floor(Date.now()/86400000);
     minI=today-14; maxI=today+21;
   }
 
   const totalJours=maxI-minI+1;
   const tlW=totalJours*16;
-  const todayI=Math.floor(new Date().getTime()/86400000);
+  const todayI=Math.floor(Date.now()/86400000);
   const todayOffset=todayI-minI;
-
   allData={minI, maxI, todayI, todayOffset, totalJours, tlW};
 
   const labelsDiv=document.getElementById("labels");
@@ -513,18 +451,15 @@ function construire(){
   grid.className="grid";
   grid.style.setProperty("--tl-w", tlW+"px");
   grid.style.setProperty("--today", todayOffset);
-
   labelsDiv.innerHTML="";
 
   const head=el("div","head-track");
   const headInner=el("div","head-inner");
-  
   for(let i=minI;i<=maxI;i+=7){
     const wn=getWeekNumber(new Date(i*86400000));
     const label=el("div","week-label");
     label.style.left=((i-minI)*16)+"px";
-    const start=fmtJJMM(i);
-    const end=fmtJJMM(i+4);
+    const start=fmtJJMM(i), end=fmtJJMM(i+4);
     label.innerHTML=`<div class="week-num">S${wn}</div><div class="week-date">${start}<br>${end}</div>`;
     label.setAttribute("data-tooltip",`du Lundi ${start} au Vendredi ${end}\n(5 j. ouvrés)`);
     headInner.appendChild(label);
@@ -536,51 +471,45 @@ function construire(){
     const labCamp=el("div","label campagne");
     labCamp.innerHTML=`<span>${camp.Campagne}</span>`;
     const actions=el("div","label-actions");
-    const btnJalon=el("button","btn-tiny add");
-    btnJalon.textContent="🚩";
+    const btnJalon=el("button","btn-tiny add"); btnJalon.textContent="🚩";
     btnJalon.onclick=()=>{ document.getElementById("field-jalon-campagne").value=camp.id; openModal("modal-jalon"); };
-    const btnTache=el("button","btn-tiny add");
-    btnTache.textContent="+";
+    const btnTache=el("button","btn-tiny add"); btnTache.textContent="+";
     btnTache.onclick=()=>{ document.getElementById("field-tache-campagne").value=camp.id; openModal("modal-tache"); };
-    actions.appendChild(btnJalon);
-    actions.appendChild(btnTache);
+    actions.appendChild(btnJalon); actions.appendChild(btnTache);
     labCamp.appendChild(actions);
     labelsDiv.appendChild(labCamp);
 
     const trackCamp=el("div","track campagne");
     grid.appendChild(trackCamp);
 
-    const jalonscamp=DB.jalons.filter(j=>j.Campagne && j.Campagne[0]===camp.id);
-    jalonscamp.forEach(jalon=>{
-      const dIdx=Math.floor(new Date(jalon.Date).getTime()/86400000);
-      if(dIdx>=minI && dIdx<=maxI){
-        const jalonEl=el("div","jalon");
-        jalonEl.textContent="🚩";
+    DB.jalons.filter(j=>refId(j.Campagne)===camp.id).forEach(jalon=>{
+      const dIdx=dayIndex(jalon.Date);
+      if(dIdx!==null && dIdx>=minI && dIdx<=maxI){
+        const jalonEl=el("div","jalon"); jalonEl.textContent="🚩";
         jalonEl.style.left=((dIdx-minI)*16)+"px";
         jalonEl.title=jalon.Nom;
         trackCamp.appendChild(jalonEl);
       }
     });
 
-    const tachescamp=DB.taches.filter(t=>t.Campagne && t.Campagne[0]===camp.id);
-    tachescamp.forEach(t=>{
+    DB.taches.filter(t=>refId(t.Campagne)===camp.id).forEach(t=>{
       const labTask=el("div","label tache");
-      const nom=el("span","nom",t.Tache);
-      labTask.appendChild(nom);
+      labTask.appendChild(el("span","nom",t.Tache));
       if(t.Responsable) labTask.appendChild(el("span","resp","· "+t.Responsable));
       labelsDiv.appendChild(labTask);
 
       const track=el("div","track tache");
-      if(t.Date_debut){
-        const dIdx=Math.floor(new Date(t.Date_debut).getTime()/86400000);
-        const fIdx=Math.floor(new Date(t.Date_fin).getTime()/86400000);
+      const dIdx=dayIndex(t.Date_debut);
+      const fIdx=dayIndex(t.Date_fin);
+      if(dIdx!==null){
         if(dIdx<=maxI){
-          const info=STATUTS.find(s=>s.nom===t.Statut)||{nom:"—",cls:"st-planifier",couleur:"var(--st-planifier)"};
+          const info=statutInfo(t.Statut);
           const barre=el("div","barre "+info.cls);
           barre.style.left=((dIdx-minI)*16)+"px";
-          barre.style.width=(Math.max(16,(fIdx-dIdx+1)*16))+"px";
+          barre.style.width=(Math.max(16,((fIdx!==null?fIdx:dIdx)-dIdx+1)*16))+"px";
           barre.style.background=info.couleur;
           barre.textContent=t.Tache;
+          if(t.Commentaires) barre.title=t.Commentaires;
           track.appendChild(barre);
         }
       }else{
@@ -604,27 +533,21 @@ function getWeekNumber(d){
   const yearStart=new Date(Date.UTC(date.getUTCFullYear(),0,1));
   return Math.ceil((((date-yearStart)/86400000)+1)/7);
 }
-
 function fmtJJMM(idx){
   const d=new Date(idx*86400000);
-  const jj=String(d.getUTCDate()).padStart(2,"0");
-  const mm=String(d.getUTCMonth()+1).padStart(2,"0");
-  return jj+"/"+mm;
+  return String(d.getUTCDate()).padStart(2,"0")+"/"+String(d.getUTCMonth()+1).padStart(2,"0");
 }
-
 function rendreLegende(){
   const l=document.getElementById("legende");
   l.innerHTML="";
   STATUTS.forEach(s=>{
     const item=el("div","item");
-    const puce=el("span","puce");
-    puce.style.background=s.couleur;
+    const puce=el("span","puce"); puce.style.background=s.couleur;
     item.appendChild(puce);
     item.appendChild(document.createTextNode(s.nom));
     l.appendChild(item);
   });
 }
-
 function el(tag,cls,txt){
   const e=document.createElement(cls?"div":tag);
   if(cls)e.className=cls;
@@ -633,6 +556,8 @@ function el(tag,cls,txt){
 }
 
 document.getElementById("btn-add-campagne").onclick=()=>openModal("modal-campagne");
+document.getElementById("field-tache-debut").addEventListener("change", majDuree);
+document.getElementById("field-tache-fin").addEventListener("change", majDuree);
 grist.onRecords(()=>init());
 init();
 </script>
