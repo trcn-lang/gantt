@@ -99,7 +99,7 @@
     display:flex;align-items:center;height:var(--row-h);padding:0 12px;overflow:hidden;position:relative;
   }
   .label.campagne{background:var(--bleu-975);color:var(--bleu-france);font-weight:700;height:32px;border-bottom:1px solid var(--bordure)}
-  .label.tache{padding-left:28px;font-size:13px;gap:8px}
+  .label.tache{padding-left:12px;font-size:13px;gap:8px}
   .label.tache .nom{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
   .label.tache .resp{font-size:11px;color:var(--texte-mention);flex:0 0 auto}
 
@@ -126,8 +126,17 @@
     display:flex;align-items:center;padding:0 6px;font-size:11px;color:#fff;
     white-space:nowrap;overflow:hidden;cursor:pointer;
   }
+  .barre.st-faire{background:var(--st-faire) !important}
+  .barre.st-encours{background:var(--st-encours) !important}
+  .barre.st-termine{background:var(--st-termine) !important}
 
-  .jalon{position:absolute;top:50%;transform:translateY(-50%);font-size:18px;z-index:2;cursor:pointer;}
+  .jalon{
+    position:absolute;top:0;bottom:0;width:1px;z-index:2;
+    background:#D97706;opacity:0.7;cursor:pointer;
+  }
+  .jalon::before{
+    content:"🚩";position:absolute;top:-8px;left:-8px;font-size:16px;cursor:pointer;
+  }
 
   .pill-plan{
     position:absolute;top:8px;left:6px;z-index:1;font-size:10px;color:var(--texte-mention);
@@ -401,7 +410,6 @@ async function saveTache(){
         Campagne:campagne_id,
         Tache:nom,
         Date_debut:Math.floor(new Date(debut).getTime()/1000),
-        Date_fin:Math.floor(new Date(fin).getTime()/1000),
         Duree_jours:duree,
         Statut:statut,
         Responsable:resp,
@@ -419,11 +427,12 @@ async function saveTache(){
 }
 
 function construire(){
-  const dates=DB.taches.filter(t=>dayIndex(t.Date_debut)!==null && dayIndex(t.Date_fin)!==null);
+  const dates=DB.taches.filter(t=>dayIndex(t.Date_debut)!==null);
   let minI, maxI;
   if(dates.length){
     minI=Math.min(...dates.map(t=>dayIndex(t.Date_debut)));
-    maxI=Math.max(...dates.map(t=>dayIndex(t.Date_fin)));
+    const durees=dates.map(t=>dayIndex(t.Date_debut)+(t.Duree_jours||1)-1);
+    maxI=Math.max(...durees);
   }else{
     const today=Math.floor(Date.now()/86400000);
     minI=today-14; maxI=today+21;
@@ -474,7 +483,7 @@ function construire(){
     DB.jalons.filter(j=>refId(j.Campagne)===camp.id).forEach(jalon=>{
       const dIdx=dayIndex(jalon.Date);
       if(dIdx!==null && dIdx>=minI && dIdx<=maxI){
-        const jalonEl=el("div","jalon"); jalonEl.textContent="🚩";
+        const jalonEl=el("div","jalon");
         jalonEl.style.left=((dIdx-minI)*16)+"px";
         jalonEl.title=jalon.Nom;
         trackCamp.appendChild(jalonEl);
@@ -489,14 +498,13 @@ function construire(){
 
       const track=el("div","track tache");
       const dIdx=dayIndex(t.Date_debut);
-      const fIdx=dayIndex(t.Date_fin);
       if(dIdx!==null){
         if(dIdx<=maxI){
           const info=statutInfo(t.Statut);
           const barre=el("div","barre "+info.cls);
           barre.style.left=((dIdx-minI)*16)+"px";
-          barre.style.width=(Math.max(16,((fIdx!==null?fIdx:dIdx)-dIdx+1)*16))+"px";
-          barre.style.background=info.couleur;
+          const duree=t.Duree_jours||1;
+          barre.style.width=(Math.max(16,duree*16))+"px";
           barre.textContent=t.Tache;
           if(t.Commentaires) barre.title=t.Commentaires;
           track.appendChild(barre);
