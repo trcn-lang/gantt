@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kanban par Responsable</title>
+<script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
+<style>
+  :root{
+    --bleu-france:#000091;
+    --bleu-975:#ECECFE;
+    --texte:#161616;
+    --texte-mention:#666666;
+    --bordure:#DDDDDD;
+    --fond:#FFFFFF;
+    --fond-alt:#F6F6F6;
+    --st-faire:#929292;
+    --st-encours:#0063CB;
+    --st-termine:#18753C;
+    --label-w:200px;
+    --col-w:300px;
+  }
+
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    font-family:"Marianne",-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;
+    color:var(--texte);
+    background:var(--fond);
+    font-size:14px;
+  }
+
+  .app{display:flex;flex-direction:column;height:100vh}
+
+  .topbar{
+    display:flex;align-items:center;justify-content:space-between;
+    gap:16px;padding:12px 16px;border-bottom:1px solid var(--bordure);
+    flex-wrap:wrap;
+  }
+  .topbar h1{font-size:18px;font-weight:700;color:var(--bleu-france);}
+  .meta{font-size:12px;color:var(--texte-mention)}
+
+  .legende{display:flex;gap:14px;flex-wrap:wrap;align-items:center}
+  .legende .item{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--texte-mention)}
+  .legende .puce{width:12px;height:12px;border-radius:3px;flex:0 0 auto}
+
+  .toolbar{
+    padding:12px 16px;border-bottom:1px solid var(--bordure);
+    display:flex;gap:8px;flex-wrap:wrap;align-items:center;
+  }
+  .toolbar select{
+    padding:6px 10px;border:1px solid var(--bordure);border-radius:4px;font-size:13px;background:#fff;
+  }
+  .toolbar label{font-size:12px;color:var(--texte-mention);font-weight:600}
+
+  .btn{
+    padding:8px 16px;background:var(--bleu-france);color:#fff;border:none;
+    border-radius:4px;cursor:pointer;font-size:13px;font-weight:600;transition:background 0.2s;
+  }
+  .btn:hover{background:#0056b3}
+  .btn-danger{background:#CE0500}
+  .btn-danger:hover{background:#a80400}
+  .btn-cancel{background:#ccc;color:#000}
+  .btn-cancel:hover{background:#aaa}
+
+  .scroll{flex:1;overflow:auto;position:relative}
+
+  .matrix{
+    display:grid;
+    grid-template-columns:var(--label-w) repeat(var(--n-cols,3), minmax(var(--col-w), 1fr));
+    align-content:start;
+    min-width:fit-content;
+  }
+
+  .corner{
+    position:sticky;top:0;left:0;z-index:6;
+    background:var(--fond);border-right:1px solid var(--bordure);border-bottom:1px solid var(--bordure);
+    padding:0 12px;display:flex;align-items:center;font-size:12px;font-weight:700;color:var(--texte-mention);
+    height:56px;flex-shrink:0;
+  }
+
+  .col-header{
+    position:sticky;top:0;z-index:5;
+    background:var(--fond);border-bottom:1px solid var(--bordure);border-left:1px solid var(--bordure);
+    height:56px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;
+  }
+  .col-header .nom{font-size:13px;font-weight:700}
+  .col-header .count{
+    font-size:11px;color:#fff;background:var(--texte-mention);border-radius:10px;padding:1px 8px;
+  }
+
+  .row-label{
+    position:sticky;left:0;z-index:4;
+    background:var(--bleu-975);border-right:1px solid var(--bordure);border-bottom:1px solid var(--bordure);
+    padding:10px 12px;display:flex;flex-direction:column;justify-content:center;gap:2px;
+    min-height:80px;
+  }
+  .row-label.non-assigne{background:var(--fond-alt)}
+  .row-label .nom{font-size:13px;font-weight:700;color:var(--bleu-france)}
+  .row-label.non-assigne .nom{color:var(--texte-mention);font-style:italic}
+  .row-label .count{font-size:11px;color:var(--texte-mention)}
+
+  .cell{
+    border-bottom:1px solid var(--bordure);border-left:1px solid var(--bordure);
+    padding:8px;display:flex;flex-direction:column;gap:8px;min-height:80px;
+    transition:background 0.15s;
+  }
+  .cell.drag-over{background:var(--bleu-975)}
+
+  .card{
+    background:#fff;border:1px solid var(--bordure);border-left:4px solid var(--st-faire);
+    border-radius:6px;padding:8px 10px;cursor:grab;
+    box-shadow:0 1px 2px rgba(0,0,0,0.06);transition:box-shadow 0.15s, transform 0.15s;
+  }
+  .card:hover{box-shadow:0 3px 8px rgba(0,0,0,0.12);transform:translateY(-1px)}
+  .card.dragging{opacity:0.4}
+  .card.st-encours{border-left-color:var(--st-encours)}
+  .card.st-termine{border-left-color:var(--st-termine)}
+  .card .titre{font-size:13px;font-weight:700;margin-bottom:4px;line-height:1.3}
+  .card .badge-camp{
+    display:inline-block;font-size:10px;color:var(--bleu-france);background:var(--bleu-975);
+    border-radius:10px;padding:1px 8px;margin-bottom:4px;
+  }
+  .card .dates{font-size:11px;color:var(--texte-mention);display:flex;align-items:center;gap:4px}
+  .card .comment-icon{font-size:11px;color:var(--texte-mention);margin-left:4px;cursor:help}
+
+  .btn-add-cell{
+    background:none;border:1px dashed var(--bordure);color:var(--texte-mention);
+    border-radius:4px;padding:6px;font-size:12px;cursor:pointer;text-align:center;
+  }
+  .btn-add-cell:hover{background:var(--fond-alt);border-color:var(--bleu-france);color:var(--bleu-france)}
+
+  .modal-overlay{
+    position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);
+    display:none;align-items:center;justify-content:center;z-index:1000;
+  }
+  .modal-overlay.active{display:flex}
+  .modal{
+    background:#fff;border-radius:8px;padding:24px;max-width:500px;width:90%;max-height:90vh;overflow-y:auto;
+    box-shadow:0 8px 32px rgba(0,0,0,0.2);
+  }
+  .modal h2{font-size:18px;margin-bottom:16px;color:var(--bleu-france)}
+  .form-group{margin-bottom:16px}
+  .form-group label{display:block;font-weight:600;margin-bottom:6px;font-size:13px}
+  .form-group input,.form-group textarea,.form-group select{
+    width:100%;padding:8px 12px;border:1px solid var(--bordure);border-radius:4px;font-size:13px;
+  }
+  .form-group input[readonly]{background:var(--fond-alt);color:var(--texte-mention)}
+  .form-group textarea{resize:vertical;min-height:70px}
+  .form-actions{display:flex;gap:8px;margin-top:24px;justify-content:space-between}
+  .form-actions .right{display:flex;gap:8px}
+
+  .empty-state{padding:40px;text-align:center;color:var(--texte-mention)}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="topbar">
+    <h1>Kanban par Responsable</h1>
+    <div style="display:flex;gap:20px;align-items:center;flex:1;">
+      <div class="legende" id="legende"></div>
+      <div class="meta" id="meta">Chargement…</div>
+    </div>
+  </div>
+
+  <div class="toolbar">
+    <button class="btn" id="btn-add-tache">+ Tâche</button>
+    <label>Campagne :</label>
+    <select id="filtre-campagne"><option value="">Toutes</option></select>
+    <span style="margin-left:auto;font-size:12px;color:var(--texte-mention)" id="status"></span>
+  </div>
+
+  <div class="scroll" id="scroll">
+    <div class="matrix" id="matrix"></div>
+  </div>
+</div>
+
+<!-- MODALE TACHE (création + édition) -->
+<div class="modal-overlay" id="modal-tache">
+  <div class="modal">
+    <h2 id="modal-tache-title">Nouvelle Tâche</h2>
+    <input type="hidden" id="field-tache-id">
+    <div class="form-group"><label>Tâche *</label><input type="text" id="field-tache-nom" placeholder="ex: Publication liste"></div>
+    <div class="form-group"><label>Campagne *</label><select id="field-tache-campagne"></select></div>
+    <div class="form-group"><label>Date début *</label><input type="date" id="field-tache-debut"></div>
+    <div class="form-group"><label>Date fin *</label><input type="date" id="field-tache-fin"></div>
+    <div class="form-group"><label>Durée (jours ouvrés)</label><input type="number" id="field-tache-duree" readonly placeholder="calculée automatiquement"></div>
+    <div class="form-group"><label>Responsable</label><select id="field-tache-resp"></select></div>
+    <div class="form-group"><label>Statut</label><select id="field-tache-statut"></select></div>
+    <div class="form-group"><label>Commentaires</label><textarea id="field-tache-comments" placeholder="Notes optionnelles"></textarea></div>
+    <div class="form-actions">
+      <button class="btn btn-danger" id="btn-delete-tache" style="display:none" onclick="deleteTache()">Supprimer</button>
+      <div class="right">
+        <button class="btn btn-cancel" onclick="closeModal('modal-tache')">Annuler</button>
+        <button class="btn" id="btn-save-tache" onclick="saveTache()">Créer</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const STATUTS = [
+  {nom:"À faire",   cls:"st-faire",    couleur:"var(--st-faire)"},
+  {nom:"En cours",  cls:"st-encours",  couleur:"var(--st-encours)"},
+  {nom:"Terminé",   cls:"st-termine",  couleur:"var(--st-termine)"},
+];
+const NON_ASSIGNE = {id:null, Nom:"Non assigné"};
+
+function norm(s){
+  return String(s||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").trim();
+}
+function statutInfo(s){
+  return STATUTS.find(x=>norm(x.nom)===norm(s)) || STATUTS[0];
+}
+function cssVarValue(v){
+  return getComputedStyle(document.documentElement).getPropertyValue(v.replace("var(","").replace(")","").trim())||v;
+}
+function parseDate(v){
+  if(v===null||v===undefined||v==="") return null;
+  if(typeof v==="number") return new Date(v*1000);
+  const d=new Date(String(v).trim());
+  return isNaN(d.getTime())?null:d;
+}
+function dayIndex(v){
+  const d=parseDate(v);
+  return d?Math.floor(d.getTime()/86400000):null;
+}
+function refId(v){
+  if(Array.isArray(v)) return v[1];
+  return v;
+}
+function resolveRef(table, id, col){
+  const rid=refId(id);
+  if(rid===null||rid===undefined) return null;
+  const ligne=table.find(row=>row.id===rid);
+  return ligne?ligne[col]:null;
+}
+function fmtJJMM(v){
+  const d=parseDate(v);
+  if(!d) return "";
+  return String(d.getUTCDate()).padStart(2,"0")+"/"+String(d.getUTCMonth()+1).padStart(2,"0");
+}
+function toDateInput(v){
+  const d=parseDate(v);
+  if(!d) return "";
+  const jj=String(d.getUTCDate()).padStart(2,"0");
+  const mm=String(d.getUTCMonth()+1).padStart(2,"0");
+  return `${d.getUTCFullYear()}-${mm}-${jj}`;
+}
+function joursOuvres(d1, d2){
+  let n=0;
+  const cur=new Date(d1);
+  while(cur<=d2){
+    const j=cur.getDay();
+    if(j!==0 && j!==6) n++;
+    cur.setDate(cur.getDate()+1);
+  }
+  return n;
+}
+
+let DB={};
+let draggedTaskId=null;
+let filtreCampagne="";
+
+grist.ready({requiredAccess:"full"});
+
+function columnarToRows(data){
+  if(!data || typeof data!=="object") return [];
+  if(Array.isArray(data)) return data;
+  const keys=Object.keys(data);
+  if(keys.length===0) return [];
+  const firstCol=data[keys[0]];
+  if(!Array.isArray(firstCol)) return [];
+  const rows=[];
+  for(let i=0;i<firstCol.length;i++){
+    const row={};
+    keys.forEach(k=>row[k]=data[k][i]);
+    rows.push(row);
+  }
+  return rows;
+}
+
+async function init(){
+  try{
+    document.getElementById("status").textContent="Chargement...";
+    DB.campagnes    = columnarToRows(await grist.docApi.fetchTable("Campagnes"));
+    DB.taches       = columnarToRows(await grist.docApi.fetchTable("Taches"));
+    DB.responsables = columnarToRows(await grist.docApi.fetchTable("Responsables"));
+    DB.parametres   = columnarToRows(await grist.docApi.fetchTable("PARAMETRES"));
+    populateSelects();
+    construire();
+    document.getElementById("status").textContent="✓ Données chargées";
+  }catch(e){
+    console.error("❌", e);
+    document.getElementById("status").textContent="❌ "+e.message;
+  }
+}
+
+function fillSelect(id, values, placeholder){
+  const sel=document.getElementById(id);
+  const prev=sel.value;
+  sel.innerHTML=`<option value="">${placeholder}</option>`;
+  values.forEach(v=>{
+    const opt=document.createElement("option");
+    opt.value=v.value; opt.textContent=v.label;
+    sel.appendChild(opt);
+  });
+  if(prev) sel.value=prev;
+}
+function uniq(arr){ return arr.filter((v,i,a)=>a.indexOf(v)===i); }
+
+function populateSelects(){
+  fillSelect("field-tache-campagne", DB.campagnes.map(c=>({value:c.id, label:c.Campagne})), "-- Sélectionner --");
+  fillSelect("field-tache-statut", STATUTS.map(s=>({value:s.nom, label:s.nom})), "-- Sélectionner --");
+  fillSelect("field-tache-resp", DB.responsables.map(r=>({value:r.Nom, label:r.Nom})), "-- Aucun --");
+
+  const filtreSel=document.getElementById("filtre-campagne");
+  const prev=filtreSel.value;
+  filtreSel.innerHTML='<option value="">Toutes</option>';
+  DB.campagnes.forEach(c=>{
+    const opt=document.createElement("option");
+    opt.value=c.id; opt.textContent=c.Campagne;
+    filtreSel.appendChild(opt);
+  });
+  filtreSel.value=prev;
+}
+
+function openModal(id){ document.getElementById(id).classList.add("active"); }
+function closeModal(id){ document.getElementById(id).classList.remove("active"); }
+
+function majDuree(){
+  const debut=document.getElementById("field-tache-debut").value;
+  const fin=document.getElementById("field-tache-fin").value;
+  if(debut && fin){
+    const n=joursOuvres(new Date(debut), new Date(fin));
+    document.getElementById("field-tache-duree").value = n>0?n:"";
+  }
+}
+
+function findParamId(col, valeur){
+  const ligne=DB.parametres.find(p=>p[col]===valeur);
+  return ligne?ligne.id:null;
+}
+function findRespId(nom){
+  const r=DB.responsables.find(x=>x.Nom===nom);
+  return r?r.id:null;
+}
+
+function openTacheCreate(statutNom, respNom){
+  document.getElementById("field-tache-id").value="";
+  document.getElementById("field-tache-nom").value="";
+  document.getElementById("field-tache-campagne").value="";
+  document.getElementById("field-tache-debut").value="";
+  document.getElementById("field-tache-fin").value="";
+  document.getElementById("field-tache-duree").value="";
+  document.getElementById("field-tache-resp").value=respNom||"";
+  document.getElementById("field-tache-statut").value=statutNom||"À faire";
+  document.getElementById("field-tache-comments").value="";
+  document.getElementById("modal-tache-title").textContent="Nouvelle Tâche";
+  document.getElementById("btn-save-tache").textContent="Créer";
+  document.getElementById("btn-delete-tache").style.display="none";
+  openModal("modal-tache");
+}
+
+function openTacheEdit(t){
+  const debutDate=parseDate(t.Date_debut);
+  const duree=t.Duree_jours||1;
+  let finDate=debutDate?new Date(debutDate):null;
+  if(finDate && duree>1){
+    let restant=duree-1;
+    while(restant>0){
+      finDate.setDate(finDate.getDate()+1);
+      const j=finDate.getDay();
+      if(j!==0 && j!==6) restant--;
+    }
+  }
+  document.getElementById("field-tache-id").value=t.id;
+  document.getElementById("field-tache-nom").value=t.Tache||"";
+  document.getElementById("field-tache-campagne").value=refId(t.Campagne)||"";
+  document.getElementById("field-tache-debut").value=toDateInput(t.Date_debut);
+  document.getElementById("field-tache-fin").value=finDate?toDateInput(Math.floor(finDate.getTime()/1000)):"";
+  document.getElementById("field-tache-duree").value=duree;
+  document.getElementById("field-tache-resp").value=resolveRef(DB.responsables, t.Responsable, "Nom")||"";
+  document.getElementById("field-tache-statut").value=resolveRef(DB.parametres, t.Statut, "Statut")||"";
+  document.getElementById("field-tache-comments").value=t.Commentaires||"";
+  document.getElementById("modal-tache-title").textContent="Modifier la tâche";
+  document.getElementById("btn-save-tache").textContent="Enregistrer";
+  document.getElementById("btn-delete-tache").style.display="inline-block";
+  openModal("modal-tache");
+}
+
+async function saveTache(){
+  const id=document.getElementById("field-tache-id").value;
+  const nom=document.getElementById("field-tache-nom").value.trim();
+  const campagne_id=parseInt(document.getElementById("field-tache-campagne").value);
+  const debut=document.getElementById("field-tache-debut").value;
+  const fin=document.getElementById("field-tache-fin").value;
+  const resp=document.getElementById("field-tache-resp").value;
+  const statut=document.getElementById("field-tache-statut").value;
+  const comments=document.getElementById("field-tache-comments").value.trim();
+  if(!nom || !campagne_id || !debut || !fin){ alert("Champs obligatoires : Tâche, Campagne, dates"); return; }
+
+  const duree=joursOuvres(new Date(debut), new Date(fin));
+
+  try{
+    const camp=DB.campagnes.find(c=>c.id===campagne_id);
+    if(!camp){ alert("Campagne non trouvée"); return; }
+
+    const statutId=findParamId("Statut", statut);
+    const respId=findRespId(resp);
+
+    const values={
+      Section:refId(camp.Section),
+      Campagne:campagne_id,
+      Tache:nom,
+      Date_debut:Math.floor(new Date(debut).getTime()/1000),
+      Duree_jours:duree,
+      Statut:statutId,
+      Responsable:respId,
+      Commentaires:comments
+    };
+
+    if(id){
+      await grist.docApi.applyUserActions([["UpdateRecord","Taches",parseInt(id),values]]);
+    }else{
+      await grist.docApi.applyUserActions([["AddRecord","Taches",null,values]]);
+    }
+    closeModal("modal-tache");
+    init();
+  }catch(e){ alert("Erreur: "+e.message); console.error(e); }
+}
+
+async function deleteTache(){
+  const id=parseInt(document.getElementById("field-tache-id").value);
+  if(!id) return;
+  if(!confirm("Supprimer cette tâche ?")) return;
+  try{
+    await grist.docApi.applyUserActions([["RemoveRecord","Taches",id]]);
+    closeModal("modal-tache");
+    init();
+  }catch(e){ alert("Erreur: "+e.message); console.error(e); }
+}
+
+async function deplacerTache(taskId, statutNom, respId){
+  try{
+    const statutId=findParamId("Statut", statutNom);
+    await grist.docApi.applyUserActions([
+      ["UpdateRecord","Taches",taskId,{Statut:statutId, Responsable:respId}]
+    ]);
+    init();
+  }catch(e){ alert("Erreur: "+e.message); console.error(e); }
+}
+
+/* ---------- Construction du Kanban matriciel ---------- */
+
+function construire(){
+  filtreCampagne = document.getElementById("filtre-campagne").value;
+
+  const lignes = [...DB.responsables, NON_ASSIGNE];
+
+  const matrix = document.getElementById("matrix");
+  matrix.innerHTML = "";
+  matrix.style.setProperty("--n-cols", STATUTS.length);
+
+  // Coin haut-gauche
+  matrix.appendChild(el("div", "corner", "Responsable"));
+
+  // En-têtes de colonnes (statuts)
+  STATUTS.forEach(s=>{
+    const header = el("div", "col-header");
+    header.style.borderTop = `3px solid ${cssVarValue(s.couleur)}`;
+    const nomEl = el("span", "nom", s.nom);
+    header.appendChild(nomEl);
+    matrix.appendChild(header);
+  });
+
+  let tachesVisibles = 0;
+
+  lignes.forEach(resp=>{
+    const isNonAssigne = resp.id === null;
+
+    // Tâches de cette ligne, filtrées par campagne si besoin
+    const tachesLigne = DB.taches.filter(t=>{
+      const rid = refId(t.Responsable);
+      const matchResp = isNonAssigne ? (rid===null || rid===undefined) : rid===resp.id;
+      const matchCamp = !filtreCampagne || refId(t.Campagne)===parseInt(filtreCampagne);
+      return matchResp && matchCamp;
+    });
+
+    // Label de ligne
+    const label = el("div", "row-label"+(isNonAssigne?" non-assigne":""));
+    label.appendChild(el("span", "nom", resp.Nom));
+    label.appendChild(el("span", "count", `${tachesLigne.length} tâche${tachesLigne.length>1?"s":""}`));
+    matrix.appendChild(label);
+
+    // Une cellule par statut
+    STATUTS.forEach(s=>{
+      const cell = el("div", "cell");
+      cell.dataset.statut = s.nom;
+      cell.dataset.respId = resp.id===null ? "" : resp.id;
+
+      const tachesCell = tachesLigne.filter(t=>{
+        const statutTexte = resolveRef(DB.parametres, t.Statut, "Statut");
+        return norm(statutInfo(statutTexte).nom) === norm(s.nom);
+      });
+
+      tachesCell.forEach(t=>{
+        tachesVisibles++;
+        const camp = DB.campagnes.find(c=>c.id===refId(t.Campagne));
+        const card = el("div", "card "+s.cls);
+        card.draggable = true;
+
+        const titre = el("div", "titre", t.Tache);
+        card.appendChild(titre);
+
+        if(camp) card.appendChild(el("span", "badge-camp", camp.Campagne));
+
+        const dIdx = dayIndex(t.Date_debut);
+        if(dIdx!==null){
+          const duree = t.Duree_jours||1;
+          const dates = el("div", "dates", `${fmtJJMM(t.Date_debut)} · ${duree} j`);
+          if(t.Commentaires){
+            const icon = el("span", "comment-icon", "💬");
+            icon.title = t.Commentaires;
+            dates.appendChild(icon);
+          }
+          card.appendChild(dates);
+        }
+
+        card.onclick = () => openTacheEdit(t);
+
+        card.addEventListener("dragstart", (e)=>{
+          draggedTaskId = t.id;
+          card.classList.add("dragging");
+          e.dataTransfer.effectAllowed = "move";
+        });
+        card.addEventListener("dragend", ()=>{
+          card.classList.remove("dragging");
+          draggedTaskId = null;
+        });
+
+        cell.appendChild(card);
+      });
+
+      const btnAdd = el("button", "btn-add-cell", "+ Ajouter");
+      btnAdd.onclick = () => openTacheCreate(s.nom, isNonAssigne ? "" : resp.Nom);
+      cell.appendChild(btnAdd);
+
+      cell.addEventListener("dragover", (e)=>{
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+        cell.classList.add("drag-over");
+      });
+      cell.addEventListener("dragleave", ()=>{
+        cell.classList.remove("drag-over");
+      });
+      cell.addEventListener("drop", (e)=>{
+        e.preventDefault();
+        cell.classList.remove("drag-over");
+        if(draggedTaskId===null) return;
+        const respId = cell.dataset.respId === "" ? null : parseInt(cell.dataset.respId);
+        deplacerTache(draggedTaskId, cell.dataset.statut, respId);
+      });
+
+      matrix.appendChild(cell);
+    });
+  });
+
+  document.getElementById("meta").textContent = `${tachesVisibles} tâche(s) affichée(s) · ${DB.responsables.length} responsable(s)`;
+  rendreLegende();
+}
+
+function rendreLegende(){
+  const l=document.getElementById("legende");
+  l.innerHTML="";
+  STATUTS.forEach(s=>{
+    const item=el("div","item");
+    const puce=el("span","puce"); puce.style.background=cssVarValue(s.couleur);
+    item.appendChild(puce);
+    item.appendChild(document.createTextNode(s.nom));
+    l.appendChild(item);
+  });
+}
+
+function el(tag,cls,txt){
+  const e=document.createElement(cls?"div":tag);
+  if(cls)e.className=cls;
+  if(txt!==undefined&&txt!==null)e.textContent=txt;
+  return e;
+}
+
+document.getElementById("btn-add-tache").onclick = () => openTacheCreate();
+document.getElementById("filtre-campagne").addEventListener("change", construire);
+document.getElementById("field-tache-debut").addEventListener("change", majDuree);
+document.getElementById("field-tache-fin").addEventListener("change", majDuree);
+grist.onRecords(()=>init());
+init();
+</script>
+</body>
+</html>
