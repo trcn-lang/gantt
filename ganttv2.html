@@ -17,6 +17,7 @@
     --st-faire:#929292;
     --st-encours:#0063CB;
     --st-termine:#18753C;
+    --jalon:#D97706;
     --jour:16px;
     --label-w:300px;
     --row-h:34px;
@@ -44,6 +45,7 @@
   .legende{display:flex;gap:14px;flex-wrap:wrap;align-items:center}
   .legende .item{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--texte-mention)}
   .legende .puce{width:12px;height:12px;border-radius:3px;flex:0 0 auto}
+  .legende .puce.jalon-puce{border-radius:0;transform:rotate(45deg);background:var(--jalon)}
 
   .toolbar{
     padding:12px 16px;border-bottom:1px solid var(--bordure);
@@ -81,7 +83,6 @@
     width:112px;padding:8px;display:flex;flex-direction:column;
     align-items:center;justify-content:center;text-align:center;font-size:11px;cursor:help;
   }
-  /* Tooltip affiché EN DESSOUS de l'en-tête (au-dessus, il sortait de la zone visible) */
   .week-label:hover::after{
     content:attr(data-tooltip);position:absolute;top:100%;left:50%;transform:translateX(-50%);
     background:#222;color:#fff;padding:12px 16px;border-radius:6px;font-size:12px;
@@ -112,7 +113,6 @@
   .btn-tiny.add{background:var(--bleu-france)}
   .btn-tiny.add:hover{background:#0056b3}
 
-  /* Groupe = campagne + toutes ses tâches. Conteneur positionné pour que la ligne de jalon s'étire dessus */
   .camp-group{position:relative}
 
   .track{
@@ -132,10 +132,28 @@
     white-space:nowrap;overflow:hidden;cursor:pointer;
   }
 
-  /* Jalon = simple ligne verticale fine, étirée sur tout le groupe (campagne + tâches) */
+  /* Jalon : ligne fine sur toute la hauteur du groupe */
   .jalon-line{
     position:absolute;top:0;bottom:0;width:2px;z-index:3;
-    background:#D97706;opacity:0.75;cursor:help;transform:translateX(-1px);
+    background:var(--jalon);opacity:0.55;pointer-events:none;
+  }
+
+  /* Repère losange en haut de la ligne (dans la bande campagne), seul élément survolable */
+  .jalon-marker{
+    position:absolute;top:10px;width:11px;height:11px;z-index:4;
+    background:var(--jalon);transform:translateX(-50%) rotate(45deg);
+    border:1.5px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,0.3);
+    cursor:help;
+  }
+  .jalon-marker:hover::after{
+    content:attr(data-tooltip);position:absolute;top:22px;left:50%;transform:translateX(-50%) rotate(-45deg);
+    background:#222;color:#fff;padding:8px 12px;border-radius:6px;font-size:12px;
+    white-space:nowrap;line-height:1.4;z-index:200;box-shadow:0 4px 12px rgba(0,0,0,0.2);
+    pointer-events:none;
+  }
+  .jalon-marker:hover::before{
+    content:'';position:absolute;top:14px;left:50%;transform:translateX(-50%) rotate(-45deg);
+    border:5px solid transparent;border-bottom-color:#222;z-index:200;pointer-events:none;
   }
 
   .pill-plan{
@@ -275,6 +293,14 @@ function resolveRef(table, id, col){
   if(rid===null||rid===undefined) return null;
   const ligne=table.find(row=>row.id===rid);
   return ligne?ligne[col]:null;
+}
+function fmtJourComplet(v){
+  const d=parseDate(v);
+  if(!d) return "";
+  const jours=['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi'];
+  const jj=String(d.getUTCDate()).padStart(2,"0");
+  const mm=String(d.getUTCMonth()+1).padStart(2,"0");
+  return `${jours[d.getUTCDay()]} ${jj}/${mm}`;
 }
 
 let DB={};
@@ -485,7 +511,6 @@ function construire(){
   grid.appendChild(head);
 
   DB.campagnes.forEach(camp=>{
-    // Wrapper qui regroupe la ligne de campagne + toutes ses tâches
     const campGroup=el("div","camp-group");
 
     const labCamp=el("div","label campagne");
@@ -531,15 +556,22 @@ function construire(){
       campGroup.appendChild(track);
     });
 
-    // Jalons : ligne verticale ajoutée APRÈS les tâches, elle s'étire automatiquement
-    // sur toute la hauteur du groupe (campagne + tâches) grâce à top:0;bottom:0
+    // Jalons : ligne fine + repère losange en haut, avec infobulle nom + date
     DB.jalons.filter(j=>refId(j.Campagne)===camp.id).forEach(jalon=>{
       const dIdx=dayIndex(jalon.Date);
       if(dIdx!==null && dIdx>=minI && dIdx<=maxI){
-        const jalonEl=el("div","jalon-line");
-        jalonEl.style.left=((dIdx-minI)*16)+"px";
-        jalonEl.title=jalon.Nom;
-        campGroup.appendChild(jalonEl);
+        const leftPx=((dIdx-minI)*16)+"px";
+
+        const jalonLine=el("div","jalon-line");
+        jalonLine.style.left=leftPx;
+        campGroup.appendChild(jalonLine);
+
+        const marker=el("div","jalon-marker");
+        marker.style.left=leftPx;
+        const dateTxt=fmtJourComplet(jalon.Date);
+        const typeTxt=jalon.Type?` (${jalon.Type})`:"";
+        marker.setAttribute("data-tooltip", `${jalon.Nom}${typeTxt}\n${dateTxt}`);
+        campGroup.appendChild(marker);
       }
     });
 
@@ -574,6 +606,11 @@ function rendreLegende(){
     item.appendChild(document.createTextNode(s.nom));
     l.appendChild(item);
   });
+  const jalonItem=el("div","item");
+  const jalonPuce=el("span","puce jalon-puce");
+  jalonItem.appendChild(jalonPuce);
+  jalonItem.appendChild(document.createTextNode("Jalon"));
+  l.appendChild(jalonItem);
 }
 function el(tag,cls,txt){
   const e=document.createElement(cls?"div":tag);
