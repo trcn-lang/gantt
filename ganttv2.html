@@ -138,13 +138,13 @@
     white-space:nowrap;overflow:hidden;cursor:pointer;
   }
 
-  /* Jalon : ligne fine sur toute la hauteur du groupe */
+  /* Jalon : la ligne démarre SOUS le losange (pas depuis le haut), pour ne pas traverser le nom */
   .jalon-line{
-    position:absolute;top:0;bottom:0;width:2px;z-index:3;
+    position:absolute;top:38px;bottom:0;width:2px;z-index:3;
     background:var(--jalon);opacity:0.55;pointer-events:none;
   }
 
-  /* Nom du jalon, affiché en permanence au-dessus du losange, dans la bande campagne */
+  /* Nom du jalon, en permanence au-dessus du losange */
   .jalon-name{
     position:absolute;top:3px;z-index:4;
     transform:translateX(-50%);
@@ -153,21 +153,31 @@
     line-height:1.2;
   }
 
-  /* Repère losange, sous le nom, seul élément survolable pour l'infobulle détaillée */
-  .jalon-marker{
-    position:absolute;top:26px;width:11px;height:11px;z-index:4;
-    background:var(--jalon);transform:translateX(-50%) rotate(45deg);
-    border:1.5px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,0.3);
+  /* Conteneur de positionnement seul (translation), non tourné : centrage exact garanti */
+  .jalon-marker-wrap{
+    position:absolute;top:26px;z-index:4;
+    width:0;height:0;
+    transform:translateX(-50%);
     cursor:help;
   }
-  .jalon-marker:hover::after{
-    content:attr(data-tooltip);position:absolute;top:22px;left:50%;transform:translateX(-50%) rotate(-45deg);
+  /* Losange : centré sur le conteneur via margin négatif fixe, tourné indépendamment */
+  .jalon-marker-diamond{
+    position:absolute;top:0;left:0;
+    width:11px;height:11px;
+    margin-top:-5.5px;margin-left:-5.5px;
+    background:var(--jalon);
+    transform:rotate(45deg);
+    border:1.5px solid #fff;
+    box-shadow:0 1px 3px rgba(0,0,0,0.3);
+  }
+  .jalon-marker-wrap:hover::after{
+    content:attr(data-tooltip);position:absolute;top:14px;left:0;transform:translateX(-50%);
     background:#222;color:#fff;padding:8px 12px;border-radius:6px;font-size:12px;
     white-space:nowrap;line-height:1.4;z-index:200;box-shadow:0 4px 12px rgba(0,0,0,0.2);
     pointer-events:none;
   }
-  .jalon-marker:hover::before{
-    content:'';position:absolute;top:14px;left:50%;transform:translateX(-50%) rotate(-45deg);
+  .jalon-marker-wrap:hover::before{
+    content:'';position:absolute;top:6px;left:0;transform:translateX(-50%);
     border:5px solid transparent;border-bottom-color:#222;z-index:200;pointer-events:none;
   }
 
@@ -571,7 +581,7 @@ function construire(){
       campGroup.appendChild(track);
     });
 
-    // Jalons : ligne fine + nom permanent au-dessus + losange, avec infobulle détaillée au survol
+    // Jalons : ligne (démarre sous le losange) + nom permanent + losange centré via conteneur dédié
     DB.jalons.filter(j=>refId(j.Campagne)===camp.id).forEach(jalon=>{
       const dIdx=dayIndex(jalon.Date);
       if(dIdx!==null && dIdx>=minI && dIdx<=maxI){
@@ -585,12 +595,15 @@ function construire(){
         nameEl.style.left=leftPx;
         campGroup.appendChild(nameEl);
 
-        const marker=el("div","jalon-marker");
-        marker.style.left=leftPx;
         const dateTxt=fmtJourComplet(jalon.Date);
         const typeTxt=jalon.Type?` (${jalon.Type})`:"";
-        marker.setAttribute("data-tooltip", `${jalon.Nom}${typeTxt}\n${dateTxt}`);
-        campGroup.appendChild(marker);
+
+        const markerWrap=el("div","jalon-marker-wrap");
+        markerWrap.style.left=leftPx;
+        markerWrap.setAttribute("data-tooltip", `${jalon.Nom}${typeTxt}\n${dateTxt}`);
+        const diamond=el("div","jalon-marker-diamond");
+        markerWrap.appendChild(diamond);
+        campGroup.appendChild(markerWrap);
       }
     });
 
