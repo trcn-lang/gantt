@@ -237,7 +237,6 @@
 </div>
 
 <script>
-// Statuts : matching insensible aux accents/casse (point 3)
 const STATUTS = [
   {nom:"À planifier", cls:"st-planifier", couleur:"var(--st-planifier)"},
   {nom:"En cours",    cls:"st-encours",   couleur:"var(--st-encours)"},
@@ -254,7 +253,6 @@ function statutInfo(s){
   return STATUTS.find(x=>norm(x.nom)===norm(s)) || {nom:s||"—",cls:"st-planifier",couleur:"var(--st-planifier)"};
 }
 
-// Parse date robuste : gère nombre (secondes Grist) ET chaîne (point 1)
 function parseDate(v){
   if(v===null||v===undefined||v==="") return null;
   if(typeof v==="number") return new Date(v*1000);
@@ -265,7 +263,6 @@ function dayIndex(v){
   const d=parseDate(v);
   return d?Math.floor(d.getTime()/86400000):null;
 }
-// Normalise une référence Grist (entier OU ["L", id])
 function refId(v){
   if(Array.isArray(v)) return v[1];
   return v;
@@ -297,7 +294,7 @@ async function init(){
     document.getElementById("status").textContent="Chargement...";
     DB.campagnes    = columnarToRows(await grist.docApi.fetchTable("Campagnes"));
     DB.jalons       = columnarToRows(await grist.docApi.fetchTable("Jalons"));
-    DB.taches       = columnarToRows(await grist.docApi.fetchTable("Tâches"));
+    DB.taches       = columnarToRows(await grist.docApi.fetchTable("Taches"));
     DB.responsables = columnarToRows(await grist.docApi.fetchTable("Responsables"));
     DB.parametres   = columnarToRows(await grist.docApi.fetchTable("PARAMETRES"));
     if(DB.taches.length) console.log("Première tâche:", DB.taches[0]);
@@ -331,7 +328,6 @@ function populateSelects(){
 function openModal(id){ document.getElementById(id).classList.add("active"); }
 function closeModal(id){ document.getElementById(id).classList.remove("active"); }
 
-// Durée jours ouvrés (lun-ven) entre deux dates incluses
 function joursOuvres(d1, d2){
   let n=0;
   const cur=new Date(d1);
@@ -342,7 +338,6 @@ function joursOuvres(d1, d2){
   }
   return n;
 }
-// Recalcul auto affiché dans la modale
 function majDuree(){
   const debut=document.getElementById("field-tache-debut").value;
   const fin=document.getElementById("field-tache-fin").value;
@@ -380,7 +375,7 @@ async function saveJalon(){
       ["AddRecord","Jalons",null,{
         Campagne:campagne_id,
         Nom:nom,
-        Date:Math.floor(new Date(date).getTime()/1000), // écriture en secondes (point 2)
+        Date:Math.floor(new Date(date).getTime()/1000),
         Type:type
       }]
     ]);
@@ -398,20 +393,20 @@ async function saveTache(){
   const fin=document.getElementById("field-tache-fin").value;
   const resp=document.getElementById("field-tache-resp").value;
   const statut=document.getElementById("field-tache-statut").value;
-  const comments=document.getElementById("field-tache-comments").value.trim(); // point 4
+  const comments=document.getElementById("field-tache-comments").value.trim();
   if(!nom || !debut || !fin){ alert("Champs obligatoires"); return; }
 
-  const duree=joursOuvres(new Date(debut), new Date(fin)); // point 5
+  const duree=joursOuvres(new Date(debut), new Date(fin));
 
   try{
     const camp=DB.campagnes.find(c=>c.id===campagne_id);
     if(!camp){ alert("Campagne non trouvée"); return; }
     await grist.docApi.applyUserActions([
-      ["AddRecord","Tâches",null,{
+      ["AddRecord","Taches",null,{
         Section:camp.Section,
         Campagne:campagne_id,
         Tache:nom,
-        Date_debut:Math.floor(new Date(debut).getTime()/1000), // secondes (point 2)
+        Date_debut:Math.floor(new Date(debut).getTime()/1000),
         Date_fin:Math.floor(new Date(fin).getTime()/1000),
         Duree_jours:duree,
         Statut:statut,
