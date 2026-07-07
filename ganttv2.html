@@ -14,12 +14,9 @@
     --bordure:#DDDDDD;
     --fond:#FFFFFF;
     --fond-alt:#F6F6F6;
-    --st-planifier:#929292;
-    --st-encours:#0063CB;
-    --st-attente:#B34000;
-    --st-valide:#18753C;
-    --st-termine:#18753C;
-    --st-annule:#CE0500;
+    --st-faire:#929292;        /* gris */
+    --st-encours:#0063CB;      /* bleu */
+    --st-termine:#18753C;      /* vert */
     --jour:16px;
     --label-w:300px;
     --row-h:34px;
@@ -238,19 +235,16 @@
 
 <script>
 const STATUTS = [
-  {nom:"À planifier", cls:"st-planifier", couleur:"var(--st-planifier)"},
-  {nom:"En cours",    cls:"st-encours",   couleur:"var(--st-encours)"},
-  {nom:"En attente",  cls:"st-attente",   couleur:"var(--st-attente)"},
-  {nom:"Validé",      cls:"st-valide",    couleur:"var(--st-valide)"},
-  {nom:"Terminé",     cls:"st-termine",   couleur:"var(--st-termine)"},
-  {nom:"Annulé",      cls:"st-annule",    couleur:"var(--st-annule)"},
+  {nom:"À faire",   cls:"st-faire",    couleur:"var(--st-faire)"},
+  {nom:"En cours",  cls:"st-encours",  couleur:"var(--st-encours)"},
+  {nom:"Terminé",   cls:"st-termine",  couleur:"var(--st-termine)"},
 ];
 
 function norm(s){
   return String(s||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").trim();
 }
 function statutInfo(s){
-  return STATUTS.find(x=>norm(x.nom)===norm(s)) || {nom:s||"—",cls:"st-planifier",couleur:"var(--st-planifier)"};
+  return STATUTS.find(x=>norm(x.nom)===norm(s)) || {nom:s||"—",cls:"st-faire",couleur:"var(--st-faire)"};
 }
 
 function parseDate(v){
