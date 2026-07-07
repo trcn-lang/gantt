@@ -17,7 +17,9 @@
     --st-faire:#929292;
     --st-encours:#0063CB;
     --st-termine:#18753C;
-    --jalon:#B45300;
+    --jalon-majeur:#B1332A;
+    --jalon-livrable:#B45300;
+    --jalon-etape:#5E5F62;
     --jour:16px;
     --label-w:300px;
     --row-h:34px;
@@ -46,7 +48,7 @@
   .legende{display:flex;gap:14px;flex-wrap:wrap;align-items:center}
   .legende .item{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--texte-mention)}
   .legende .puce{width:12px;height:12px;border-radius:3px;flex:0 0 auto}
-  .legende .puce.jalon-puce{border-radius:0;transform:rotate(45deg);background:var(--jalon)}
+  .legende .puce.jalon-puce{border-radius:0;transform:rotate(45deg)}
 
   .toolbar{
     padding:12px 16px;border-bottom:1px solid var(--bordure);
@@ -58,6 +60,8 @@
     border-radius:4px;cursor:pointer;font-size:13px;font-weight:600;transition:background 0.2s;
   }
   .btn:hover{background:#0056b3}
+  .btn-danger{background:#CE0500}
+  .btn-danger:hover{background:#a80400}
 
   .scroll{flex:1;overflow:auto;position:relative}
   .grid-wrapper{display:flex}
@@ -106,6 +110,10 @@
     background:var(--bleu-975);color:var(--bleu-france);font-weight:700;
     height:var(--camp-h);border-bottom:1px solid var(--bordure);
   }
+  .label.campagne .nom-campagne{
+    cursor:pointer;border-radius:3px;padding:2px 4px;margin:-2px -4px;
+  }
+  .label.campagne .nom-campagne:hover{background:rgba(0,0,145,0.08);text-decoration:underline}
   .label.tache{padding-left:12px;font-size:13px;gap:8px}
   .label.tache .nom{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
   .label.tache .resp{font-size:11px;color:var(--texte-mention);flex:0 0 auto}
@@ -136,36 +144,33 @@
     position:absolute;top:6px;height:calc(var(--row-h) - 12px);border-radius:4px;z-index:1;
     display:flex;align-items:center;padding:0 6px;font-size:11px;color:#fff;
     white-space:nowrap;overflow:hidden;cursor:pointer;
+    transition:filter 0.15s;
   }
+  .barre:hover{filter:brightness(0.9)}
 
-  /* Jalon : la ligne démarre SOUS le losange (pas depuis le haut), pour ne pas traverser le nom */
   .jalon-line{
     position:absolute;top:38px;bottom:0;width:2px;z-index:3;
-    background:var(--jalon);opacity:0.55;pointer-events:none;
+    opacity:0.55;pointer-events:none;
   }
 
-  /* Nom du jalon, en permanence au-dessus du losange */
   .jalon-name{
     position:absolute;top:3px;z-index:4;
     transform:translateX(-50%);
-    font-size:10px;font-weight:700;color:var(--jalon);
+    font-size:10px;font-weight:700;
     white-space:nowrap;pointer-events:none;
     line-height:1.2;
   }
 
-  /* Conteneur de positionnement seul (translation), non tourné : centrage exact garanti */
   .jalon-marker-wrap{
     position:absolute;top:26px;z-index:4;
     width:0;height:0;
     transform:translateX(-50%);
-    cursor:help;
+    cursor:pointer;
   }
-  /* Losange : centré sur le conteneur via margin négatif fixe, tourné indépendamment */
   .jalon-marker-diamond{
     position:absolute;top:0;left:0;
     width:11px;height:11px;
     margin-top:-5.5px;margin-left:-5.5px;
-    background:var(--jalon);
     transform:rotate(45deg);
     border:1.5px solid #fff;
     box-shadow:0 1px 3px rgba(0,0,0,0.3);
@@ -204,6 +209,7 @@
   .form-group input[readonly]{background:var(--fond-alt);color:var(--texte-mention)}
   .form-group textarea{resize:vertical;min-height:80px}
   .form-actions{display:flex;gap:8px;margin-top:24px;justify-content:flex-end}
+  .form-actions.with-delete{justify-content:space-between}
   .btn-cancel{background:#ccc;color:#000}
   .btn-cancel:hover{background:#aaa}
 </style>
@@ -236,21 +242,26 @@
   </div>
 </div>
 
-<!-- MODALES -->
+<!-- MODALE CAMPAGNE (création + édition) -->
 <div class="modal-overlay" id="modal-campagne">
   <div class="modal">
-    <h2>Nouvelle Campagne</h2>
+    <h2 id="modal-campagne-title">Nouvelle Campagne</h2>
+    <input type="hidden" id="field-campagne-id">
     <div class="form-group"><label>Nom *</label><input type="text" id="field-campagne-nom" placeholder="ex: Avancement de grade 2025"></div>
     <div class="form-group"><label>Section *</label><select id="field-campagne-section"></select></div>
     <div class="form-group"><label>Type Campagne *</label><select id="field-campagne-type"></select></div>
     <div class="form-group"><label>Description</label><textarea id="field-campagne-desc" placeholder="Description optionnelle"></textarea></div>
-    <div class="form-actions">
-      <button class="btn btn-cancel" onclick="closeModal('modal-campagne')">Annuler</button>
-      <button class="btn" onclick="saveCampagne()">Créer</button>
+    <div class="form-actions" id="modal-campagne-actions">
+      <button class="btn btn-danger" id="btn-delete-campagne" style="display:none" onclick="deleteCampagne()">Supprimer</button>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-cancel" onclick="closeModal('modal-campagne')">Annuler</button>
+        <button class="btn" id="btn-save-campagne" onclick="saveCampagne()">Créer</button>
+      </div>
     </div>
   </div>
 </div>
 
+<!-- MODALE JALON -->
 <div class="modal-overlay" id="modal-jalon">
   <div class="modal">
     <h2>Nouveau Jalon</h2>
@@ -267,9 +278,11 @@
   </div>
 </div>
 
+<!-- MODALE TACHE (création + édition) -->
 <div class="modal-overlay" id="modal-tache">
   <div class="modal">
-    <h2>Nouvelle Tâche</h2>
+    <h2 id="modal-tache-title">Nouvelle Tâche</h2>
+    <input type="hidden" id="field-tache-id">
     <input type="hidden" id="field-tache-campagne">
     <div class="form-group"><label>Tâche *</label><input type="text" id="field-tache-nom" placeholder="ex: Publication liste"></div>
     <div class="form-group"><label>Date début *</label><input type="date" id="field-tache-debut"></div>
@@ -278,9 +291,12 @@
     <div class="form-group"><label>Responsable</label><select id="field-tache-resp"></select></div>
     <div class="form-group"><label>Statut</label><select id="field-tache-statut"></select></div>
     <div class="form-group"><label>Commentaires</label><textarea id="field-tache-comments" placeholder="Notes optionnelles"></textarea></div>
-    <div class="form-actions">
-      <button class="btn btn-cancel" onclick="closeModal('modal-tache')">Annuler</button>
-      <button class="btn" onclick="saveTache()">Créer</button>
+    <div class="form-actions" id="modal-tache-actions">
+      <button class="btn btn-danger" id="btn-delete-tache" style="display:none" onclick="deleteTache()">Supprimer</button>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-cancel" onclick="closeModal('modal-tache')">Annuler</button>
+        <button class="btn" id="btn-save-tache" onclick="saveTache()">Créer</button>
+      </div>
     </div>
   </div>
 </div>
@@ -292,11 +308,23 @@ const STATUTS = [
   {nom:"Terminé",   cls:"st-termine",  couleur:"var(--st-termine)"},
 ];
 
+const JALON_COULEURS = {
+  "jalon majeur": "var(--jalon-majeur)",
+  "livrable":     "var(--jalon-livrable)",
+  "etape":        "var(--jalon-etape)",
+};
+function jalonCouleur(type){
+  return JALON_COULEURS[norm(type)] || "var(--jalon-livrable)";
+}
+
 function norm(s){
   return String(s||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").trim();
 }
 function statutInfo(s){
   return STATUTS.find(x=>norm(x.nom)===norm(s)) || {nom:s||"—",cls:"st-faire",couleur:"var(--st-faire)"};
+}
+function cssVarValue(v){
+  return getComputedStyle(document.documentElement).getPropertyValue(v.replace("var(","").replace(")","").trim())||v;
 }
 
 function parseDate(v){
@@ -326,6 +354,13 @@ function fmtJourComplet(v){
   const jj=String(d.getUTCDate()).padStart(2,"0");
   const mm=String(d.getUTCMonth()+1).padStart(2,"0");
   return `${jours[d.getUTCDay()]} ${jj}/${mm}`;
+}
+function toDateInput(v){
+  const d=parseDate(v);
+  if(!d) return "";
+  const jj=String(d.getUTCDate()).padStart(2,"0");
+  const mm=String(d.getUTCMonth()+1).padStart(2,"0");
+  return `${d.getUTCFullYear()}-${mm}-${jj}`;
 }
 
 let DB={};
@@ -357,7 +392,6 @@ async function init(){
     DB.taches       = columnarToRows(await grist.docApi.fetchTable("Taches"));
     DB.responsables = columnarToRows(await grist.docApi.fetchTable("Responsables"));
     DB.parametres   = columnarToRows(await grist.docApi.fetchTable("PARAMETRES"));
-    if(DB.taches.length) console.log("Première tâche:", DB.taches[0]);
     populateSelects();
     construire();
     document.getElementById("status").textContent="✓ Données chargées";
@@ -416,22 +450,73 @@ function findRespId(nom){
   return r?r.id:null;
 }
 
+/* ---------- CAMPAGNE : créer / éditer / supprimer ---------- */
+
+function openCampagneCreate(){
+  document.getElementById("field-campagne-id").value="";
+  document.getElementById("field-campagne-nom").value="";
+  document.getElementById("field-campagne-section").value="";
+  document.getElementById("field-campagne-type").value="";
+  document.getElementById("field-campagne-desc").value="";
+  document.getElementById("modal-campagne-title").textContent="Nouvelle Campagne";
+  document.getElementById("btn-save-campagne").textContent="Créer";
+  document.getElementById("btn-delete-campagne").style.display="none";
+  openModal("modal-campagne");
+}
+
+function openCampagneEdit(camp){
+  document.getElementById("field-campagne-id").value=camp.id;
+  document.getElementById("field-campagne-nom").value=camp.Campagne||"";
+  document.getElementById("field-campagne-section").value=resolveRef(DB.parametres, camp.Section, "Section")||"";
+  document.getElementById("field-campagne-type").value=resolveRef(DB.parametres, camp.Type_Campagne, "Type_Campagne")||camp.Type_Campagne||"";
+  document.getElementById("field-campagne-desc").value=camp.Description||"";
+  document.getElementById("modal-campagne-title").textContent="Modifier la campagne";
+  document.getElementById("btn-save-campagne").textContent="Enregistrer";
+  document.getElementById("btn-delete-campagne").style.display="inline-block";
+  openModal("modal-campagne");
+}
+
 async function saveCampagne(){
+  const id=document.getElementById("field-campagne-id").value;
   const nom=document.getElementById("field-campagne-nom").value.trim();
   const section=document.getElementById("field-campagne-section").value;
   const type=document.getElementById("field-campagne-type").value;
   const desc=document.getElementById("field-campagne-desc").value.trim();
   if(!nom || !section || !type){ alert("Champs obligatoires"); return; }
   try{
-    await grist.docApi.applyUserActions([
-      ["AddRecord","Campagnes",null,{Campagne:nom, Section:section, Type_Campagne:type, Description:desc}]
-    ]);
-    document.getElementById("field-campagne-nom").value="";
-    document.getElementById("field-campagne-desc").value="";
+    if(id){
+      await grist.docApi.applyUserActions([
+        ["UpdateRecord","Campagnes",parseInt(id),{Campagne:nom, Section:section, Type_Campagne:type, Description:desc}]
+      ]);
+    }else{
+      await grist.docApi.applyUserActions([
+        ["AddRecord","Campagnes",null,{Campagne:nom, Section:section, Type_Campagne:type, Description:desc}]
+      ]);
+    }
     closeModal("modal-campagne");
     init();
   }catch(e){ alert("Erreur: "+e.message); console.error(e); }
 }
+
+async function deleteCampagne(){
+  const id=parseInt(document.getElementById("field-campagne-id").value);
+  if(!id) return;
+  const tachesLiees=DB.taches.filter(t=>refId(t.Campagne)===id);
+  const jalonsLies=DB.jalons.filter(j=>refId(j.Campagne)===id);
+  const msg=`Cette campagne contient ${tachesLiees.length} tâche(s) et ${jalonsLies.length} jalon(s). Tout supprimer ?`;
+  if(!confirm(msg)) return;
+  try{
+    const actions=[];
+    tachesLiees.forEach(t=>actions.push(["RemoveRecord","Taches",t.id]));
+    jalonsLies.forEach(j=>actions.push(["RemoveRecord","Jalons",j.id]));
+    actions.push(["RemoveRecord","Campagnes",id]);
+    await grist.docApi.applyUserActions(actions);
+    closeModal("modal-campagne");
+    init();
+  }catch(e){ alert("Erreur: "+e.message); console.error(e); }
+}
+
+/* ---------- JALON : créer ---------- */
 
 async function saveJalon(){
   const campagne_id=parseInt(document.getElementById("field-jalon-campagne").value);
@@ -455,7 +540,56 @@ async function saveJalon(){
   }catch(e){ alert("Erreur: "+e.message); console.error(e); }
 }
 
+/* ---------- TACHE : créer / éditer / supprimer ---------- */
+
+function openTacheCreate(campagneId){
+  document.getElementById("field-tache-id").value="";
+  document.getElementById("field-tache-campagne").value=campagneId;
+  document.getElementById("field-tache-nom").value="";
+  document.getElementById("field-tache-debut").value="";
+  document.getElementById("field-tache-fin").value="";
+  document.getElementById("field-tache-duree").value="";
+  document.getElementById("field-tache-resp").value="";
+  document.getElementById("field-tache-statut").value="";
+  document.getElementById("field-tache-comments").value="";
+  document.getElementById("modal-tache-title").textContent="Nouvelle Tâche";
+  document.getElementById("btn-save-tache").textContent="Créer";
+  document.getElementById("btn-delete-tache").style.display="none";
+  openModal("modal-tache");
+}
+
+function openTacheEdit(t){
+  const debutDate=parseDate(t.Date_debut);
+  const duree=t.Duree_jours||1;
+  let finIdx=dayIndex(t.Date_debut);
+  // Estime la date de fin en ajoutant (duree-1) jours ouvrés depuis le début
+  let finDate=debutDate?new Date(debutDate):null;
+  if(finDate && duree>1){
+    let restant=duree-1;
+    while(restant>0){
+      finDate.setDate(finDate.getDate()+1);
+      const j=finDate.getDay();
+      if(j!==0 && j!==6) restant--;
+    }
+  }
+
+  document.getElementById("field-tache-id").value=t.id;
+  document.getElementById("field-tache-campagne").value=refId(t.Campagne);
+  document.getElementById("field-tache-nom").value=t.Tache||"";
+  document.getElementById("field-tache-debut").value=toDateInput(t.Date_debut);
+  document.getElementById("field-tache-fin").value=finDate?toDateInput(Math.floor(finDate.getTime()/1000)):"";
+  document.getElementById("field-tache-duree").value=duree;
+  document.getElementById("field-tache-resp").value=resolveRef(DB.responsables, t.Responsable, "Nom")||"";
+  document.getElementById("field-tache-statut").value=resolveRef(DB.parametres, t.Statut, "Statut")||"";
+  document.getElementById("field-tache-comments").value=t.Commentaires||"";
+  document.getElementById("modal-tache-title").textContent="Modifier la tâche";
+  document.getElementById("btn-save-tache").textContent="Enregistrer";
+  document.getElementById("btn-delete-tache").style.display="inline-block";
+  openModal("modal-tache");
+}
+
 async function saveTache(){
+  const id=document.getElementById("field-tache-id").value;
   const campagne_id=parseInt(document.getElementById("field-tache-campagne").value);
   const nom=document.getElementById("field-tache-nom").value.trim();
   const debut=document.getElementById("field-tache-debut").value;
@@ -474,27 +608,39 @@ async function saveTache(){
     const statutId=findParamId("Statut", statut);
     const respId=findRespId(resp);
 
-    await grist.docApi.applyUserActions([
-      ["AddRecord","Taches",null,{
-        Section:refId(camp.Section),
-        Campagne:campagne_id,
-        Tache:nom,
-        Date_debut:Math.floor(new Date(debut).getTime()/1000),
-        Duree_jours:duree,
-        Statut:statutId,
-        Responsable:respId,
-        Commentaires:comments
-      }]
-    ]);
-    document.getElementById("field-tache-nom").value="";
-    document.getElementById("field-tache-debut").value="";
-    document.getElementById("field-tache-fin").value="";
-    document.getElementById("field-tache-duree").value="";
-    document.getElementById("field-tache-comments").value="";
+    const values={
+      Section:refId(camp.Section),
+      Campagne:campagne_id,
+      Tache:nom,
+      Date_debut:Math.floor(new Date(debut).getTime()/1000),
+      Duree_jours:duree,
+      Statut:statutId,
+      Responsable:respId,
+      Commentaires:comments
+    };
+
+    if(id){
+      await grist.docApi.applyUserActions([["UpdateRecord","Taches",parseInt(id),values]]);
+    }else{
+      await grist.docApi.applyUserActions([["AddRecord","Taches",null,values]]);
+    }
     closeModal("modal-tache");
     init();
   }catch(e){ alert("Erreur: "+e.message); console.error(e); }
 }
+
+async function deleteTache(){
+  const id=parseInt(document.getElementById("field-tache-id").value);
+  if(!id) return;
+  if(!confirm("Supprimer cette tâche ?")) return;
+  try{
+    await grist.docApi.applyUserActions([["RemoveRecord","Taches",id]]);
+    closeModal("modal-tache");
+    init();
+  }catch(e){ alert("Erreur: "+e.message); console.error(e); }
+}
+
+/* ---------- Construction du Gantt ---------- */
 
 function construire(){
   const dates=DB.taches.filter(t=>dayIndex(t.Date_debut)!==null);
@@ -539,12 +685,14 @@ function construire(){
     const campGroup=el("div","camp-group");
 
     const labCamp=el("div","label campagne");
-    labCamp.innerHTML=`<span>${camp.Campagne}</span>`;
+    const nomSpan=el("span","nom-campagne",camp.Campagne);
+    nomSpan.onclick=(e)=>{ e.stopPropagation(); openCampagneEdit(camp); };
+    labCamp.appendChild(nomSpan);
     const actions=el("div","label-actions");
     const btnJalon=el("button","btn-tiny add"); btnJalon.textContent="🚩";
     btnJalon.onclick=()=>{ document.getElementById("field-jalon-campagne").value=camp.id; openModal("modal-jalon"); };
     const btnTache=el("button","btn-tiny add"); btnTache.textContent="+";
-    btnTache.onclick=()=>{ document.getElementById("field-tache-campagne").value=camp.id; openModal("modal-tache"); };
+    btnTache.onclick=()=>{ openTacheCreate(camp.id); };
     actions.appendChild(btnJalon); actions.appendChild(btnTache);
     labCamp.appendChild(actions);
     labelsDiv.appendChild(labCamp);
@@ -570,29 +718,35 @@ function construire(){
           barre.style.left=((dIdx-minI)*16)+"px";
           const duree=t.Duree_jours||1;
           barre.style.width=(Math.max(16,duree*16))+"px";
-          barre.style.background=getComputedStyle(document.documentElement).getPropertyValue(info.couleur.replace("var(","").replace(")","").trim())||info.couleur;
+          barre.style.background=cssVarValue(info.couleur);
           barre.textContent=t.Tache;
           if(t.Commentaires) barre.title=t.Commentaires;
+          barre.onclick=(e)=>{ e.stopPropagation(); openTacheEdit(t); };
           track.appendChild(barre);
         }
       }else{
-        track.appendChild(el("div","pill-plan","à planifier"));
+        const pill=el("div","pill-plan","à planifier");
+        pill.style.cursor="pointer";
+        pill.onclick=(e)=>{ e.stopPropagation(); openTacheEdit(t); };
+        track.appendChild(pill);
       }
       campGroup.appendChild(track);
     });
 
-    // Jalons : ligne (démarre sous le losange) + nom permanent + losange centré via conteneur dédié
     DB.jalons.filter(j=>refId(j.Campagne)===camp.id).forEach(jalon=>{
       const dIdx=dayIndex(jalon.Date);
       if(dIdx!==null && dIdx>=minI && dIdx<=maxI){
         const leftPx=((dIdx-minI)*16)+"px";
+        const couleur=cssVarValue(jalonCouleur(jalon.Type));
 
         const jalonLine=el("div","jalon-line");
         jalonLine.style.left=leftPx;
+        jalonLine.style.background=couleur;
         campGroup.appendChild(jalonLine);
 
         const nameEl=el("div","jalon-name",jalon.Nom);
         nameEl.style.left=leftPx;
+        nameEl.style.color=couleur;
         campGroup.appendChild(nameEl);
 
         const dateTxt=fmtJourComplet(jalon.Date);
@@ -602,6 +756,7 @@ function construire(){
         markerWrap.style.left=leftPx;
         markerWrap.setAttribute("data-tooltip", `${jalon.Nom}${typeTxt}\n${dateTxt}`);
         const diamond=el("div","jalon-marker-diamond");
+        diamond.style.background=couleur;
         markerWrap.appendChild(diamond);
         campGroup.appendChild(markerWrap);
       }
@@ -638,11 +793,13 @@ function rendreLegende(){
     item.appendChild(document.createTextNode(s.nom));
     l.appendChild(item);
   });
-  const jalonItem=el("div","item");
-  const jalonPuce=el("span","puce jalon-puce");
-  jalonItem.appendChild(jalonPuce);
-  jalonItem.appendChild(document.createTextNode("Jalon"));
-  l.appendChild(jalonItem);
+  [["Jalon majeur","var(--jalon-majeur)"],["Livrable","var(--jalon-livrable)"],["Étape","var(--jalon-etape)"]].forEach(([label,couleur])=>{
+    const item=el("div","item");
+    const puce=el("span","puce jalon-puce"); puce.style.background=couleur;
+    item.appendChild(puce);
+    item.appendChild(document.createTextNode(label));
+    l.appendChild(item);
+  });
 }
 function el(tag,cls,txt){
   const e=document.createElement(cls?"div":tag);
@@ -651,7 +808,7 @@ function el(tag,cls,txt){
   return e;
 }
 
-document.getElementById("btn-add-campagne").onclick=()=>openModal("modal-campagne");
+document.getElementById("btn-add-campagne").onclick=()=>openCampagneCreate();
 document.getElementById("field-tache-debut").addEventListener("change", majDuree);
 document.getElementById("field-tache-fin").addEventListener("change", majDuree);
 grist.onRecords(()=>init());
