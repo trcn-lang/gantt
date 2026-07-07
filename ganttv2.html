@@ -157,7 +157,7 @@
     position:absolute;top:3px;z-index:4;
     transform:translateX(-50%);
     font-size:10px;font-weight:700;
-    white-space:nowrap;pointer-events:none;
+    white-space:nowrap;cursor:pointer;
     line-height:1.2;
   }
 
@@ -174,7 +174,9 @@
     transform:rotate(45deg);
     border:1.5px solid #fff;
     box-shadow:0 1px 3px rgba(0,0,0,0.3);
+    transition:filter 0.15s;
   }
+  .jalon-marker-wrap:hover .jalon-marker-diamond{filter:brightness(0.85)}
   .jalon-marker-wrap:hover::after{
     content:attr(data-tooltip);position:absolute;top:14px;left:0;transform:translateX(-50%);
     background:#222;color:#fff;padding:8px 12px;border-radius:6px;font-size:12px;
@@ -261,19 +263,23 @@
   </div>
 </div>
 
-<!-- MODALE JALON -->
+<!-- MODALE JALON (création + édition) -->
 <div class="modal-overlay" id="modal-jalon">
   <div class="modal">
-    <h2>Nouveau Jalon</h2>
+    <h2 id="modal-jalon-title">Nouveau Jalon</h2>
+    <input type="hidden" id="field-jalon-id">
     <input type="hidden" id="field-jalon-campagne">
     <div class="form-group"><label>Nom du jalon *</label><input type="text" id="field-jalon-nom" placeholder="ex: Lancement"></div>
     <div class="form-group"><label>Date *</label><input type="date" id="field-jalon-date"></div>
     <div class="form-group"><label>Type</label>
       <select id="field-jalon-type"><option>Jalon majeur</option><option>Livrable</option><option>Étape</option></select>
     </div>
-    <div class="form-actions">
-      <button class="btn btn-cancel" onclick="closeModal('modal-jalon')">Annuler</button>
-      <button class="btn" onclick="saveJalon()">Créer</button>
+    <div class="form-actions" id="modal-jalon-actions">
+      <button class="btn btn-danger" id="btn-delete-jalon" style="display:none" onclick="deleteJalon()">Supprimer</button>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-cancel" onclick="closeModal('modal-jalon')">Annuler</button>
+        <button class="btn" id="btn-save-jalon" onclick="saveJalon()">Créer</button>
+      </div>
     </div>
   </div>
 </div>
@@ -516,25 +522,66 @@ async function deleteCampagne(){
   }catch(e){ alert("Erreur: "+e.message); console.error(e); }
 }
 
-/* ---------- JALON : créer ---------- */
+/* ---------- JALON : créer / éditer / supprimer ---------- */
+
+function openJalonCreate(campagneId){
+  document.getElementById("field-jalon-id").value="";
+  document.getElementById("field-jalon-campagne").value=campagneId;
+  document.getElementById("field-jalon-nom").value="";
+  document.getElementById("field-jalon-date").value="";
+  document.getElementById("field-jalon-type").value="";
+  document.getElementById("modal-jalon-title").textContent="Nouveau Jalon";
+  document.getElementById("btn-save-jalon").textContent="Créer";
+  document.getElementById("btn-delete-jalon").style.display="none";
+  openModal("modal-jalon");
+}
+
+function openJalonEdit(jalon){
+  document.getElementById("field-jalon-id").value=jalon.id;
+  document.getElementById("field-jalon-campagne").value=refId(jalon.Campagne);
+  document.getElementById("field-jalon-nom").value=jalon.Nom||"";
+  document.getElementById("field-jalon-date").value=toDateInput(jalon.Date);
+  document.getElementById("field-jalon-type").value=jalon.Type||"";
+  document.getElementById("modal-jalon-title").textContent="Modifier le jalon";
+  document.getElementById("btn-save-jalon").textContent="Enregistrer";
+  document.getElementById("btn-delete-jalon").style.display="inline-block";
+  openModal("modal-jalon");
+}
 
 async function saveJalon(){
+  const id=document.getElementById("field-jalon-id").value;
   const campagne_id=parseInt(document.getElementById("field-jalon-campagne").value);
   const nom=document.getElementById("field-jalon-nom").value.trim();
   const date=document.getElementById("field-jalon-date").value;
   const type=document.getElementById("field-jalon-type").value;
   if(!nom || !date){ alert("Champs obligatoires"); return; }
   try{
-    await grist.docApi.applyUserActions([
-      ["AddRecord","Jalons",null,{
-        Campagne:campagne_id,
-        Nom:nom,
-        Date:Math.floor(new Date(date).getTime()/1000),
-        Type:type
-      }]
-    ]);
-    document.getElementById("field-jalon-nom").value="";
-    document.getElementById("field-jalon-date").value="";
+    const values={
+      Campagne:campagne_id,
+      Nom:nom,
+      Date:Math.floor(new Date(date).getTime()/1000),
+      Type:type
+    };
+    if(id){
+      await grist.docApi.applyUserActions([
+        ["UpdateRecord","Jalons",parseInt(id),values]
+      ]);
+    }else{
+      await grist.docApi.applyUserActions([
+        ["AddRecord","Jalons",null,values]
+      ]);
+    }
+    closeModal("modal-jalon");
+    init();
+  }catch(e){ alert("Erreur: "+e.message); console.error(e); }
+}
+
+async function deleteJalon(){
+  const id=parseInt(document.getElementById("field-jalon-id").value);
+  if(!id) return;
+  if(!confirm("Supprimer ce jalon ?")) return;
+  try{
+    await grist.docApi.applyUserActions([["RemoveRecord","Jalons",id]]);
     closeModal("modal-jalon");
     init();
   }catch(e){ alert("Erreur: "+e.message); console.error(e); }
@@ -561,8 +608,6 @@ function openTacheCreate(campagneId){
 function openTacheEdit(t){
   const debutDate=parseDate(t.Date_debut);
   const duree=t.Duree_jours||1;
-  let finIdx=dayIndex(t.Date_debut);
-  // Estime la date de fin en ajoutant (duree-1) jours ouvrés depuis le début
   let finDate=debutDate?new Date(debutDate):null;
   if(finDate && duree>1){
     let restant=duree-1;
@@ -690,7 +735,7 @@ function construire(){
     labCamp.appendChild(nomSpan);
     const actions=el("div","label-actions");
     const btnJalon=el("button","btn-tiny add"); btnJalon.textContent="🚩";
-    btnJalon.onclick=()=>{ document.getElementById("field-jalon-campagne").value=camp.id; openModal("modal-jalon"); };
+    btnJalon.onclick=()=>{ openJalonCreate(camp.id); };
     const btnTache=el("button","btn-tiny add"); btnTache.textContent="+";
     btnTache.onclick=()=>{ openTacheCreate(camp.id); };
     actions.appendChild(btnJalon); actions.appendChild(btnTache);
@@ -747,6 +792,7 @@ function construire(){
         const nameEl=el("div","jalon-name",jalon.Nom);
         nameEl.style.left=leftPx;
         nameEl.style.color=couleur;
+        nameEl.onclick=(e)=>{ e.stopPropagation(); openJalonEdit(jalon); };
         campGroup.appendChild(nameEl);
 
         const dateTxt=fmtJourComplet(jalon.Date);
@@ -755,6 +801,7 @@ function construire(){
         const markerWrap=el("div","jalon-marker-wrap");
         markerWrap.style.left=leftPx;
         markerWrap.setAttribute("data-tooltip", `${jalon.Nom}${typeTxt}\n${dateTxt}`);
+        markerWrap.onclick=(e)=>{ e.stopPropagation(); openJalonEdit(jalon); };
         const diamond=el("div","jalon-marker-diamond");
         diamond.style.background=couleur;
         markerWrap.appendChild(diamond);
