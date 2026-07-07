@@ -17,6 +17,8 @@
     --st-faire:#929292;
     --st-encours:#0063CB;
     --st-termine:#18753C;
+    --alerte-retard:#CE0500;
+    --alerte-proche:#B45300;
     --label-w:200px;
     --col-w:300px;
   }
@@ -85,9 +87,6 @@
     height:56px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;
   }
   .col-header .nom{font-size:13px;font-weight:700}
-  .col-header .count{
-    font-size:11px;color:#fff;background:var(--texte-mention);border-radius:10px;padding:1px 8px;
-  }
 
   .row-label{
     position:sticky;left:0;z-index:4;
@@ -109,20 +108,24 @@
 
   .card{
     background:#fff;border:1px solid var(--bordure);border-left:4px solid var(--st-faire);
-    border-radius:6px;padding:8px 10px;cursor:grab;
+    border-radius:6px;padding:8px 10px;cursor:grab;position:relative;
     box-shadow:0 1px 2px rgba(0,0,0,0.06);transition:box-shadow 0.15s, transform 0.15s;
   }
   .card:hover{box-shadow:0 3px 8px rgba(0,0,0,0.12);transform:translateY(-1px)}
   .card.dragging{opacity:0.4}
   .card.st-encours{border-left-color:var(--st-encours)}
   .card.st-termine{border-left-color:var(--st-termine)}
-  .card .titre{font-size:13px;font-weight:700;margin-bottom:4px;line-height:1.3}
+  .card.retard{box-shadow:0 0 0 2px var(--alerte-retard) inset}
+  .card.proche{box-shadow:0 0 0 2px var(--alerte-proche) inset}
+  .card .badges-risque{position:absolute;top:6px;right:8px;font-size:11px;display:flex;gap:2px}
+  .card .titre{font-size:13px;font-weight:700;margin-bottom:4px;line-height:1.3;padding-right:24px}
   .card .badge-camp{
     display:inline-block;font-size:10px;color:var(--bleu-france);background:var(--bleu-975);
     border-radius:10px;padding:1px 8px;margin-bottom:4px;
   }
   .card .dates{font-size:11px;color:var(--texte-mention);display:flex;align-items:center;gap:4px}
   .card .comment-icon{font-size:11px;color:var(--texte-mention);margin-left:4px;cursor:help}
+  .card .blocage-info{font-size:10px;color:var(--alerte-retard);margin-top:4px}
 
   .btn-add-cell{
     background:none;border:1px dashed var(--bordure);color:var(--texte-mention);
@@ -147,10 +150,12 @@
   }
   .form-group input[readonly]{background:var(--fond-alt);color:var(--texte-mention)}
   .form-group textarea{resize:vertical;min-height:70px}
+  .info-blocage{
+    font-size:12px;color:var(--alerte-retard);background:#FFE9E9;border:1px solid #FFC5C5;
+    border-radius:4px;padding:8px 10px;margin-bottom:16px;display:none;
+  }
   .form-actions{display:flex;gap:8px;margin-top:24px;justify-content:space-between}
   .form-actions .right{display:flex;gap:8px}
-
-  .empty-state{padding:40px;text-align:center;color:var(--texte-mention)}
 </style>
 </head>
 <body>
@@ -175,11 +180,12 @@
   </div>
 </div>
 
-<!-- MODALE TACHE (création + édition) -->
+<!-- MODALE TACHE -->
 <div class="modal-overlay" id="modal-tache">
   <div class="modal">
     <h2 id="modal-tache-title">Nouvelle Tâche</h2>
     <input type="hidden" id="field-tache-id">
+    <div class="info-blocage" id="info-blocage"></div>
     <div class="form-group"><label>Tâche *</label><input type="text" id="field-tache-nom" placeholder="ex: Publication liste"></div>
     <div class="form-group"><label>Campagne *</label><select id="field-tache-campagne"></select></div>
     <div class="form-group"><label>Date début *</label><input type="date" id="field-tache-debut"></div>
@@ -229,6 +235,14 @@ function refId(v){
   if(Array.isArray(v)) return v[1];
   return v;
 }
+function refIdList(v){
+  if(v===null||v===undefined) return [];
+  if(Array.isArray(v)){
+    if(v.length && v[0]==="L") return v.slice(1).filter(x=>typeof x==="number");
+    return v.filter(x=>typeof x==="number");
+  }
+  return [];
+}
 function resolveRef(table, id, col){
   const rid=refId(id);
   if(rid===null||rid===undefined) return null;
@@ -256,6 +270,30 @@ function joursOuvres(d1, d2){
     cur.setDate(cur.getDate()+1);
   }
   return n;
+}
+
+function calculerBlocage(t){
+  const predIds = refIdList(t.Predecesseurs).filter(pid=>pid!==t.id);
+  const bloquantes=[];
+  predIds.forEach(pid=>{
+    const pred=DB.taches.find(x=>x.id===pid);
+    if(!pred) return;
+    const predStatut=resolveRef(DB.parametres, pred.Statut, "Statut");
+    if(norm(predStatut)!==norm("Terminé")) bloquantes.push(pred.Tache);
+  });
+  return bloquantes;
+}
+function calculerRisque(t, statutTexte, todayIdx){
+  if(norm(statutTexte)===norm("Terminé")) return {niveau:"ok", joursRestants:null};
+  const dIdx=dayIndex(t.Date_debut);
+  if(dIdx===null) return {niveau:"ok", joursRestants:null};
+  const duree=t.Duree_jours||1;
+  const finIdx=dIdx+duree-1;
+  const joursRestants=finIdx-todayIdx;
+  const seuil=Math.max(1, Math.ceil(duree*0.25));
+  if(joursRestants<0) return {niveau:"retard", joursRestants};
+  if(joursRestants<=seuil) return {niveau:"proche", joursRestants};
+  return {niveau:"ok", joursRestants};
 }
 
 let DB={};
@@ -307,7 +345,6 @@ function fillSelect(id, values, placeholder){
   });
   if(prev) sel.value=prev;
 }
-function uniq(arr){ return arr.filter((v,i,a)=>a.indexOf(v)===i); }
 
 function populateSelects(){
   fillSelect("field-tache-campagne", DB.campagnes.map(c=>({value:c.id, label:c.Campagne})), "-- Sélectionner --");
@@ -356,6 +393,7 @@ function openTacheCreate(statutNom, respNom){
   document.getElementById("field-tache-resp").value=respNom||"";
   document.getElementById("field-tache-statut").value=statutNom||"À faire";
   document.getElementById("field-tache-comments").value="";
+  document.getElementById("info-blocage").style.display="none";
   document.getElementById("modal-tache-title").textContent="Nouvelle Tâche";
   document.getElementById("btn-save-tache").textContent="Créer";
   document.getElementById("btn-delete-tache").style.display="none";
@@ -383,6 +421,16 @@ function openTacheEdit(t){
   document.getElementById("field-tache-resp").value=resolveRef(DB.responsables, t.Responsable, "Nom")||"";
   document.getElementById("field-tache-statut").value=resolveRef(DB.parametres, t.Statut, "Statut")||"";
   document.getElementById("field-tache-comments").value=t.Commentaires||"";
+
+  const bloquantes=calculerBlocage(t);
+  const infoDiv=document.getElementById("info-blocage");
+  if(bloquantes.length){
+    infoDiv.textContent="🔒 Bloquée par : "+bloquantes.join(", ");
+    infoDiv.style.display="block";
+  }else{
+    infoDiv.style.display="none";
+  }
+
   document.getElementById("modal-tache-title").textContent="Modifier la tâche";
   document.getElementById("btn-save-tache").textContent="Enregistrer";
   document.getElementById("btn-delete-tache").style.display="inline-block";
@@ -455,6 +503,7 @@ async function deplacerTache(taskId, statutNom, respId){
 
 function construire(){
   filtreCampagne = document.getElementById("filtre-campagne").value;
+  const todayI = Math.floor(Date.now()/86400000);
 
   const lignes = [...DB.responsables, NON_ASSIGNE];
 
@@ -462,15 +511,12 @@ function construire(){
   matrix.innerHTML = "";
   matrix.style.setProperty("--n-cols", STATUTS.length);
 
-  // Coin haut-gauche
   matrix.appendChild(el("div", "corner", "Responsable"));
 
-  // En-têtes de colonnes (statuts)
   STATUTS.forEach(s=>{
     const header = el("div", "col-header");
     header.style.borderTop = `3px solid ${cssVarValue(s.couleur)}`;
-    const nomEl = el("span", "nom", s.nom);
-    header.appendChild(nomEl);
+    header.appendChild(el("span", "nom", s.nom));
     matrix.appendChild(header);
   });
 
@@ -479,7 +525,6 @@ function construire(){
   lignes.forEach(resp=>{
     const isNonAssigne = resp.id === null;
 
-    // Tâches de cette ligne, filtrées par campagne si besoin
     const tachesLigne = DB.taches.filter(t=>{
       const rid = refId(t.Responsable);
       const matchResp = isNonAssigne ? (rid===null || rid===undefined) : rid===resp.id;
@@ -487,13 +532,11 @@ function construire(){
       return matchResp && matchCamp;
     });
 
-    // Label de ligne
     const label = el("div", "row-label"+(isNonAssigne?" non-assigne":""));
     label.appendChild(el("span", "nom", resp.Nom));
     label.appendChild(el("span", "count", `${tachesLigne.length} tâche${tachesLigne.length>1?"s":""}`));
     matrix.appendChild(label);
 
-    // Une cellule par statut
     STATUTS.forEach(s=>{
       const cell = el("div", "cell");
       cell.dataset.statut = s.nom;
@@ -507,12 +550,22 @@ function construire(){
       tachesCell.forEach(t=>{
         tachesVisibles++;
         const camp = DB.campagnes.find(c=>c.id===refId(t.Campagne));
+        const statutTexte = resolveRef(DB.parametres, t.Statut, "Statut");
+        const bloquantes = calculerBlocage(t);
+        const risque = calculerRisque(t, statutTexte, todayI);
+
         const card = el("div", "card "+s.cls);
         card.draggable = true;
+        if(risque.niveau==="retard") card.classList.add("retard");
+        else if(risque.niveau==="proche") card.classList.add("proche");
 
-        const titre = el("div", "titre", t.Tache);
-        card.appendChild(titre);
+        const badges = el("div", "badges-risque");
+        if(bloquantes.length) badges.appendChild(el("span","","🔒"));
+        if(risque.niveau==="retard") badges.appendChild(el("span","","⚠️"));
+        else if(risque.niveau==="proche") badges.appendChild(el("span","","⏳"));
+        if(badges.children.length) card.appendChild(badges);
 
+        card.appendChild(el("div", "titre", t.Tache));
         if(camp) card.appendChild(el("span", "badge-camp", camp.Campagne));
 
         const dIdx = dayIndex(t.Date_debut);
@@ -526,6 +579,16 @@ function construire(){
           }
           card.appendChild(dates);
         }
+
+        if(bloquantes.length){
+          card.appendChild(el("div", "blocage-info", "🔒 "+bloquantes.join(", ")));
+        }
+
+        let tip = `${t.Tache}\n${statutTexte}`;
+        if(bloquantes.length) tip += `\n🔒 Bloquée par : ${bloquantes.join(", ")}`;
+        if(risque.niveau==="retard") tip += `\n⚠️ En retard de ${Math.abs(risque.joursRestants)} j`;
+        else if(risque.niveau==="proche") tip += `\n⏳ Échéance dans ${risque.joursRestants} j`;
+        card.title = tip;
 
         card.onclick = () => openTacheEdit(t);
 
@@ -580,6 +643,8 @@ function rendreLegende(){
     item.appendChild(document.createTextNode(s.nom));
     l.appendChild(item);
   });
+  l.appendChild(el("div","item","🔒 Bloquée par une dépendance"));
+  l.appendChild(el("div","item","⚠️ Retard  ⏳ Échéance proche"));
 }
 
 function el(tag,cls,txt){
