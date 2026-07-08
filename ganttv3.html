@@ -22,7 +22,7 @@
     --jalon-etape:#5E5F62;
     --jour:16px;
     --label-w:300px;
-    --row-h:34px;
+    --row-h:44px;
     --camp-h:46px;
   }
 
@@ -49,6 +49,7 @@
   .legende .item{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--texte-mention)}
   .legende .puce{width:12px;height:12px;border-radius:3px;flex:0 0 auto}
   .legende .puce.jalon-puce{border-radius:0;transform:rotate(45deg)}
+  .legende .puce.critique-puce{background:var(--st-faire);border:2px solid #CE0500;box-shadow:0 0 0 1px #fff inset}
 
   .toolbar{
     padding:12px 16px;border-bottom:1px solid var(--bordure);
@@ -143,13 +144,20 @@
   }
 
   .barre{
-    position:absolute;top:6px;height:calc(var(--row-h) - 12px);border-radius:4px;z-index:1;
+    position:absolute;top:20px;height:22px;border-radius:4px;z-index:1;
     display:flex;align-items:center;padding:0 6px;font-size:11px;color:#fff;
     white-space:nowrap;overflow:hidden;cursor:pointer;
     transition:filter 0.15s;
   }
   .barre:hover{filter:brightness(0.9)}
   .barre.critique{border:2px solid #fff;box-shadow:0 0 0 1px #CE0500}
+
+  .date-label{
+    position:absolute;top:2px;z-index:2;
+    transform:translateX(-50%);
+    font-size:9px;font-weight:600;color:var(--texte-mention);
+    white-space:nowrap;pointer-events:none;line-height:1.2;
+  }
 
   .dependencies-svg{
     position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:0;
@@ -402,6 +410,7 @@ function toDateInput(v){
 }
 
 let DB={};
+let NON_ATTRIBUE_ID = null;
 let allData={};
 let PERT_DATA={};
 
@@ -619,6 +628,18 @@ async function init(){
     DB.taches       = columnarToRows(await grist.docApi.fetchTable("Taches"));
     DB.responsables = columnarToRows(await grist.docApi.fetchTable("Responsables"));
     DB.parametres   = columnarToRows(await grist.docApi.fetchTable("PARAMETRES"));
+
+    // ✅ S'assurer qu'un responsable réel "Non attribué" existe
+    let nonAttribue = DB.responsables.find(r => norm(r.Nom) === norm("Non attribué"));
+    if(!nonAttribue){
+      await grist.docApi.applyUserActions([
+        ["AddRecord","Responsables",null,{Nom:"Non attribué"}]
+      ]);
+      DB.responsables = columnarToRows(await grist.docApi.fetchTable("Responsables"));
+      nonAttribue = DB.responsables.find(r => norm(r.Nom) === norm("Non attribué"));
+    }
+    NON_ATTRIBUE_ID = nonAttribue ? nonAttribue.id : null;
+
     populateSelects();
     construire();
     document.getElementById("status").textContent="✓ Données chargées";
@@ -989,7 +1010,8 @@ async function saveTache(){
     if(!camp){ alert("Campagne non trouvée"); return; }
 
     const statutId=findParamId("Statut", statut);
-    const respId=findRespId(resp);
+    // ✅ Par défaut "Non attribué" si aucun responsable n'est choisi
+    const respId=findRespId(resp) || NON_ATTRIBUE_ID;
 
     // ✅ CORRECTION: Chercher le Section ID correctement
     const sectionId = refId(camp.Section);
@@ -1157,7 +1179,8 @@ function construire(){
           // Duree_jours (jours ouvrés) qui sous-estime la barre si un week-end est traversé.
           const finIdx = dayIndex(t.Date_fin);
           const duree = t.Duree_jours || 1;
-          const etalementJours = finIdx !== null ? (finIdx - dIdx + 1) : duree;
+          const finIdxReel = finIdx !== null ? finIdx : (dIdx + duree - 1);
+          const etalementJours = finIdxReel - dIdx + 1;
 
           barre.style.width=(Math.max(16,etalementJours*16))+"px";
           barre.style.background=cssVarValue(info.couleur);
@@ -1166,9 +1189,23 @@ function construire(){
           barre.onclick=(e)=>{ e.stopPropagation(); openTacheEdit(t); };
           track.appendChild(barre);
 
+          // ✅ Étiquettes de date, centrées sur la cellule-jour de début et de fin
+          const debutLabel = el("div","date-label", fmtJJMM(dIdx));
+          debutLabel.style.left = ((dIdx-minI)*16 + 8) + "px";
+          track.appendChild(debutLabel);
+
+          if(finIdxReel !== dIdx){
+            const finLabel = el("div","date-label", fmtJJMM(finIdxReel));
+            finLabel.style.left = ((finIdxReel-minI)*16 + 8) + "px";
+            track.appendChild(finLabel);
+          }
+
           taskPositions[t.id] = {
             barreLeft: (dIdx-minI)*16,
             barreWidth: Math.max(16, etalementJours*16),
+            // ✅ Centres des cellules-jour de début/fin, pour ancrer les flèches proprement
+            centreDebut: (dIdx-minI)*16 + 8,
+            centreFin: (finIdxReel-minI)*16 + 8,
             rowIndex: idx
           };
         }
@@ -1182,7 +1219,7 @@ function construire(){
     });
 
     // ✅ Flèches de dépendances (uniquement entre tâches de cette campagne)
-    const CAMP_H = 46, ROW_H = 34;
+    const CAMP_H = 46, ROW_H = 44;
     const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     svg.setAttribute("class", "dependencies-svg");
     svg.setAttribute("width", tlW);
@@ -1196,9 +1233,11 @@ function construire(){
         const predPos = taskPositions[predId];
         if(!predPos) return;
 
-        const x1 = predPos.barreLeft + predPos.barreWidth;
+        // ✅ Ancrage centré sur le jour (dernier jour du prédécesseur → premier jour de la tâche),
+        // plutôt que sur les bords de barre, pour éviter le décalage visuel en cas de chevauchement.
+        const x1 = predPos.centreFin;
         const y1 = CAMP_H + predPos.rowIndex * ROW_H + ROW_H/2;
-        const x2 = taskPos.barreLeft;
+        const x2 = taskPos.centreDebut;
         const y2 = CAMP_H + taskPos.rowIndex * ROW_H + ROW_H/2;
 
         const isCritical = t.Est_critique === true;
@@ -1213,8 +1252,11 @@ function construire(){
         svg.appendChild(path);
 
         const arrowSize = 4;
+        const angle = Math.atan2(y2 - y1, x2 - x1);
+        const arrowX = x2 - arrowSize*2*Math.cos(angle);
+        const arrowY = y2 - arrowSize*2*Math.sin(angle);
         const polygon = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
-        polygon.setAttribute("points", `${x2},${y2} ${x2-arrowSize*2},${y2-arrowSize} ${x2-arrowSize*2},${y2+arrowSize}`);
+        polygon.setAttribute("points", `${x2},${y2} ${arrowX - arrowSize*Math.sin(angle)},${arrowY + arrowSize*Math.cos(angle)} ${arrowX + arrowSize*Math.sin(angle)},${arrowY - arrowSize*Math.cos(angle)}`);
         polygon.setAttribute("fill", strokeColor);
         svg.appendChild(polygon);
       });
@@ -1291,7 +1333,7 @@ function rendreLegende(){
     l.appendChild(item);
   });
   const itemCrit=el("div","item");
-  const puceCrit=el("span","puce"); puceCrit.style.background="#CE0500";
+  const puceCrit=el("span","puce critique-puce");
   itemCrit.appendChild(puceCrit);
   itemCrit.appendChild(document.createTextNode("Tâche critique"));
   l.appendChild(itemCrit);
