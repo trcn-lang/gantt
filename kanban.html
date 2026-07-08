@@ -409,15 +409,19 @@ async function saveTache(){
     const statutId=findParamId("Statut", statut);
     const respId=findRespId(resp);
 
+    // ✅ CORRECTION: Chercher le Section ID correctement
+    const sectionId = refId(camp.Section);
+    if(!sectionId){ alert("Section invalide"); return; }
+
     const values={
-      Section:refId(camp.Section),
-      Campagne:campagne_id,
-      Tache:nom,
-      Date_debut:Math.floor(new Date(debut).getTime()/1000),
-      Duree_jours:duree,
-      Statut:statutId,
-      Responsable:respId,
-      Commentaires:comments
+      Section: sectionId,
+      Campagne: campagne_id,
+      Tache: nom,
+      Date_debut: Math.floor(new Date(debut).getTime()/1000),
+      Duree_jours: duree,
+      Statut: statutId,
+      Responsable: respId,
+      Commentaires: comments
     };
 
     if(id){
