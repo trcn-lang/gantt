@@ -718,7 +718,8 @@ async function saveTache(){
       }
     }
 
-    const predecessorTasks = predecessorIds;
+    // ✅ FIX: Grist attend un tableau encodé ['L', id1, id2, ...] pour une Référence multiple
+    const predecessorTasks = ['L', ...predecessorIds];
 
     const values={
       Section: sectionId,
