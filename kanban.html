@@ -14,8 +14,9 @@
     --bordure:#DDDDDD;
     --fond:#FFFFFF;
     --fond-alt:#F6F6F6;
-    --alerte-retard:#CE0500;
-    --alerte-proche:#B45300;
+    --st-faire:#929292;
+    --st-encours:#0063CB;
+    --st-termine:#18753C;
     --label-w:200px;
     --col-w:300px;
   }
@@ -84,6 +85,9 @@
     height:56px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;
   }
   .col-header .nom{font-size:13px;font-weight:700}
+  .col-header .count{
+    font-size:11px;color:#fff;background:var(--texte-mention);border-radius:10px;padding:1px 8px;
+  }
 
   .row-label{
     position:sticky;left:0;z-index:4;
@@ -104,23 +108,21 @@
   .cell.drag-over{background:var(--bleu-975)}
 
   .card{
-    background:#fff;border:1px solid var(--bordure);border-left:4px solid #929292;
-    border-radius:6px;padding:8px 10px;cursor:grab;position:relative;
+    background:#fff;border:1px solid var(--bordure);border-left:4px solid var(--st-faire);
+    border-radius:6px;padding:8px 10px;cursor:grab;
     box-shadow:0 1px 2px rgba(0,0,0,0.06);transition:box-shadow 0.15s, transform 0.15s;
   }
   .card:hover{box-shadow:0 3px 8px rgba(0,0,0,0.12);transform:translateY(-1px)}
   .card.dragging{opacity:0.4}
-  .card.retard{box-shadow:0 0 0 2px var(--alerte-retard) inset}
-  .card.proche{box-shadow:0 0 0 2px var(--alerte-proche) inset}
-  .card .badges-risque{position:absolute;top:6px;right:8px;font-size:11px;display:flex;gap:2px}
-  .card .titre{font-size:13px;font-weight:700;margin-bottom:4px;line-height:1.3;padding-right:24px}
+  .card.st-encours{border-left-color:var(--st-encours)}
+  .card.st-termine{border-left-color:var(--st-termine)}
+  .card .titre{font-size:13px;font-weight:700;margin-bottom:4px;line-height:1.3}
   .card .badge-camp{
     display:inline-block;font-size:10px;color:var(--bleu-france);background:var(--bleu-975);
     border-radius:10px;padding:1px 8px;margin-bottom:4px;
   }
   .card .dates{font-size:11px;color:var(--texte-mention);display:flex;align-items:center;gap:4px}
   .card .comment-icon{font-size:11px;color:var(--texte-mention);margin-left:4px;cursor:help}
-  .card .blocage-info{font-size:10px;color:var(--alerte-retard);margin-top:4px}
 
   .btn-add-cell{
     background:none;border:1px dashed var(--bordure);color:var(--texte-mention);
@@ -145,17 +147,10 @@
   }
   .form-group input[readonly]{background:var(--fond-alt);color:var(--texte-mention)}
   .form-group textarea{resize:vertical;min-height:70px}
-  .pred-list{border:1px solid var(--bordure);border-radius:4px;max-height:150px;overflow-y:auto;padding:4px}
-  .pred-item{display:flex;align-items:center;gap:8px;padding:5px 6px;font-size:13px;border-radius:3px;cursor:pointer}
-  .pred-item:hover{background:var(--fond-alt)}
-  .pred-item input{width:auto;flex:0 0 auto}
-  .pred-empty{font-size:12px;color:var(--texte-mention);padding:6px;font-style:italic}
-  .info-blocage{
-    font-size:12px;color:var(--alerte-retard);background:#FFE9E9;border:1px solid #FFC5C5;
-    border-radius:4px;padding:8px 10px;margin-bottom:16px;display:none;
-  }
   .form-actions{display:flex;gap:8px;margin-top:24px;justify-content:space-between}
   .form-actions .right{display:flex;gap:8px}
+
+  .empty-state{padding:40px;text-align:center;color:var(--texte-mention)}
 </style>
 </head>
 <body>
@@ -180,12 +175,11 @@
   </div>
 </div>
 
-<!-- MODALE TACHE -->
+<!-- MODALE TACHE (création + édition) -->
 <div class="modal-overlay" id="modal-tache">
   <div class="modal">
     <h2 id="modal-tache-title">Nouvelle Tâche</h2>
     <input type="hidden" id="field-tache-id">
-    <div class="info-blocage" id="info-blocage"></div>
     <div class="form-group"><label>Tâche *</label><input type="text" id="field-tache-nom" placeholder="ex: Publication liste"></div>
     <div class="form-group"><label>Campagne *</label><select id="field-tache-campagne"></select></div>
     <div class="form-group"><label>Date début *</label><input type="date" id="field-tache-debut"></div>
@@ -193,10 +187,6 @@
     <div class="form-group"><label>Durée (jours ouvrés)</label><input type="number" id="field-tache-duree" readonly placeholder="calculée automatiquement"></div>
     <div class="form-group"><label>Responsable</label><select id="field-tache-resp"></select></div>
     <div class="form-group"><label>Statut</label><select id="field-tache-statut"></select></div>
-    <div class="form-group">
-      <label>Prérequis (tâches à terminer avant celle-ci)</label>
-      <div class="pred-list" id="field-tache-predecesseurs"></div>
-    </div>
     <div class="form-group"><label>Commentaires</label><textarea id="field-tache-comments" placeholder="Notes optionnelles"></textarea></div>
     <div class="form-actions">
       <button class="btn btn-danger" id="btn-delete-tache" style="display:none" onclick="deleteTache()">Supprimer</button>
@@ -209,19 +199,18 @@
 </div>
 
 <script>
-const COL_PREDECESSEURS = "Tache";  // COLUMN ID réel de la colonne Predecesseurs
-
-// Couleurs par défaut pour chaque position de statut (indice dans le tableau)
-const COULEURS_STATUTS_DEFAUT = [
-  "#929292",  // À faire (gris)
-  "#0063CB",  // En cours (bleu)
-  "#18753C",  // Terminé (vert)
+const STATUTS = [
+  {nom:"À faire",   cls:"st-faire",    couleur:"var(--st-faire)"},
+  {nom:"En cours",  cls:"st-encours",  couleur:"var(--st-encours)"},
+  {nom:"Terminé",   cls:"st-termine",  couleur:"var(--st-termine)"},
 ];
-
 const NON_ASSIGNE = {id:null, Nom:"Non assigné"};
 
 function norm(s){
   return String(s||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").trim();
+}
+function statutInfo(s){
+  return STATUTS.find(x=>norm(x.nom)===norm(s)) || STATUTS[0];
 }
 function cssVarValue(v){
   return getComputedStyle(document.documentElement).getPropertyValue(v.replace("var(","").replace(")","").trim())||v;
@@ -236,27 +225,9 @@ function dayIndex(v){
   const d=parseDate(v);
   return d?Math.floor(d.getTime()/86400000):null;
 }
-function finCalendaireIdx(debutIdx, dureeOuvres){
-  const d=new Date(debutIdx*86400000);
-  let restant=Math.max(1,dureeOuvres)-1;
-  while(restant>0){
-    d.setUTCDate(d.getUTCDate()+1);
-    const j=d.getUTCDay();
-    if(j!==0 && j!==6) restant--;
-  }
-  return Math.floor(d.getTime()/86400000);
-}
 function refId(v){
   if(Array.isArray(v)) return v[1];
   return v;
-}
-function refIdList(v){
-  if(v===null||v===undefined) return [];
-  if(Array.isArray(v)){
-    if(v.length && v[0]==="L") return v.slice(1).filter(x=>typeof x==="number");
-    return v.filter(x=>typeof x==="number");
-  }
-  return [];
 }
 function resolveRef(table, id, col){
   const rid=refId(id);
@@ -287,70 +258,7 @@ function joursOuvres(d1, d2){
   return n;
 }
 
-function calculerBlocage(t){
-  const predIds = refIdList(t[COL_PREDECESSEURS]).filter(pid=>pid!==t.id);
-  const bloquantes=[];
-  predIds.forEach(pid=>{
-    const pred=DB.taches.find(x=>x.id===pid);
-    if(!pred) return;
-    const predStatut=resolveRef(DB.parametres, pred.Statut, "Statut");
-    if(norm(predStatut)!==norm(DB.statutTermine)) bloquantes.push(pred.Tache);
-  });
-  return bloquantes;
-}
-function calculerRisque(t, statutTexte, todayIdx){
-  if(norm(statutTexte)===norm(DB.statutTermine)) return {niveau:"ok", joursRestants:null};
-  const dIdx=dayIndex(t.Date_debut);
-  if(dIdx===null) return {niveau:"ok", joursRestants:null};
-  const duree=t.Duree_jours||1;
-  const finIdx=finCalendaireIdx(dIdx, duree);
-  const joursRestants=finIdx-todayIdx;
-  const seuil=Math.max(1, Math.ceil(duree*0.25));
-  if(joursRestants<0) return {niveau:"retard", joursRestants};
-  if(joursRestants<=seuil) return {niveau:"proche", joursRestants};
-  return {niveau:"ok", joursRestants};
-}
-function detecteCycle(tacheId, predIds){
-  const visited=new Set();
-  const stack=[...predIds];
-  while(stack.length){
-    const cur=stack.pop();
-    if(cur===tacheId) return true;
-    if(visited.has(cur)) continue;
-    visited.add(cur);
-    const p=DB.taches.find(x=>x.id===cur);
-    if(p) refIdList(p[COL_PREDECESSEURS]).forEach(pid=>stack.push(pid));
-  }
-  return false;
-}
-function remplirChecklist(containerId, campagneId, excludeId, selectedIds){
-  const cont=document.getElementById(containerId);
-  cont.innerHTML="";
-  if(!campagneId || isNaN(campagneId)){
-    cont.innerHTML='<div class="pred-empty">Sélectionnez d\'abord une campagne</div>';
-    return;
-  }
-  const candidates=DB.taches.filter(t=>refId(t.Campagne)===campagneId && t.id!==excludeId);
-  if(!candidates.length){
-    cont.innerHTML='<div class="pred-empty">Aucune autre tâche dans cette campagne</div>';
-    return;
-  }
-  candidates.forEach(t=>{
-    const label=document.createElement("label");
-    label.className="pred-item";
-    const cb=document.createElement("input");
-    cb.type="checkbox"; cb.value=t.id;
-    if(selectedIds.includes(t.id)) cb.checked=true;
-    label.appendChild(cb);
-    label.appendChild(document.createTextNode(" "+t.Tache));
-    cont.appendChild(label);
-  });
-}
-function getCheckedIds(containerId){
-  return Array.from(document.querySelectorAll("#"+containerId+" input:checked")).map(cb=>parseInt(cb.value));
-}
-
-let DB={statutTermine:"Terminé", statuts:[], statutsIndex:{}};
+let DB={};
 let draggedTaskId=null;
 let filtreCampagne="";
 
@@ -379,30 +287,6 @@ async function init(){
     DB.taches       = columnarToRows(await grist.docApi.fetchTable("Taches"));
     DB.responsables = columnarToRows(await grist.docApi.fetchTable("Responsables"));
     DB.parametres   = columnarToRows(await grist.docApi.fetchTable("PARAMETRES"));
-    
-    // Extraire les statuts uniques depuis PARAMETRES, en ordre d'apparition
-    const statutsVus = new Set();
-    DB.statuts = [];
-    DB.parametres.forEach(p=>{
-      if(p.Statut && !statutsVus.has(norm(p.Statut))){
-        statutsVus.add(norm(p.Statut));
-        DB.statuts.push({nom:p.Statut, id:p.id});
-      }
-    });
-    // Construire l'index : norm(nom) → {index, id, couleur}
-    DB.statutsIndex = {};
-    DB.statuts.forEach((s, idx)=>{
-      DB.statutsIndex[norm(s.nom)] = {
-        index: idx,
-        id: s.id,
-        nom: s.nom,
-        couleur: COULEURS_STATUTS_DEFAUT[idx] || "#999999"
-      };
-    });
-    // Déterminer le libellé exact du statut "Terminé" (celui qui contient "termin")
-    const termineEntry = DB.statuts.find(s=>norm(s.nom).includes("termin"));
-    if(termineEntry) DB.statutTermine = termineEntry.nom;
-    
     populateSelects();
     construire();
     document.getElementById("status").textContent="✓ Données chargées";
@@ -423,10 +307,11 @@ function fillSelect(id, values, placeholder){
   });
   if(prev) sel.value=prev;
 }
+function uniq(arr){ return arr.filter((v,i,a)=>a.indexOf(v)===i); }
 
 function populateSelects(){
   fillSelect("field-tache-campagne", DB.campagnes.map(c=>({value:c.id, label:c.Campagne})), "-- Sélectionner --");
-  fillSelect("field-tache-statut", DB.statuts.map(s=>({value:s.nom, label:s.nom})), "-- Sélectionner --");
+  fillSelect("field-tache-statut", STATUTS.map(s=>({value:s.nom, label:s.nom})), "-- Sélectionner --");
   fillSelect("field-tache-resp", DB.responsables.map(r=>({value:r.Nom, label:r.Nom})), "-- Aucun --");
 
   const filtreSel=document.getElementById("filtre-campagne");
@@ -452,11 +337,8 @@ function majDuree(){
   }
 }
 
-function findParamIdNorm(col, valeur){
-  // Résolution tolérante : cherche une ligne de PARAMETRES dont la colonne col,
-  // normalisée, correspond à valeur normalisée
-  const valNorm = norm(valeur);
-  const ligne=DB.parametres.find(p=>norm(p[col])===valNorm);
+function findParamId(col, valeur){
+  const ligne=DB.parametres.find(p=>p[col]===valeur);
   return ligne?ligne.id:null;
 }
 function findRespId(nom){
@@ -464,18 +346,16 @@ function findRespId(nom){
   return r?r.id:null;
 }
 
-function openTacheCreate(statutNom, respNom, campagneId){
+function openTacheCreate(statutNom, respNom){
   document.getElementById("field-tache-id").value="";
   document.getElementById("field-tache-nom").value="";
-  document.getElementById("field-tache-campagne").value=campagneId||"";
+  document.getElementById("field-tache-campagne").value="";
   document.getElementById("field-tache-debut").value="";
   document.getElementById("field-tache-fin").value="";
   document.getElementById("field-tache-duree").value="";
   document.getElementById("field-tache-resp").value=respNom||"";
-  document.getElementById("field-tache-statut").value=statutNom||DB.statuts[0]?.nom||"";
+  document.getElementById("field-tache-statut").value=statutNom||"À faire";
   document.getElementById("field-tache-comments").value="";
-  document.getElementById("info-blocage").style.display="none";
-  remplirChecklist("field-tache-predecesseurs", campagneId?parseInt(campagneId):null, null, []);
   document.getElementById("modal-tache-title").textContent="Nouvelle Tâche";
   document.getElementById("btn-save-tache").textContent="Créer";
   document.getElementById("btn-delete-tache").style.display="none";
@@ -494,27 +374,15 @@ function openTacheEdit(t){
       if(j!==0 && j!==6) restant--;
     }
   }
-  const campId=refId(t.Campagne);
   document.getElementById("field-tache-id").value=t.id;
   document.getElementById("field-tache-nom").value=t.Tache||"";
-  document.getElementById("field-tache-campagne").value=campId||"";
+  document.getElementById("field-tache-campagne").value=refId(t.Campagne)||"";
   document.getElementById("field-tache-debut").value=toDateInput(t.Date_debut);
   document.getElementById("field-tache-fin").value=finDate?toDateInput(Math.floor(finDate.getTime()/1000)):"";
   document.getElementById("field-tache-duree").value=duree;
   document.getElementById("field-tache-resp").value=resolveRef(DB.responsables, t.Responsable, "Nom")||"";
   document.getElementById("field-tache-statut").value=resolveRef(DB.parametres, t.Statut, "Statut")||"";
   document.getElementById("field-tache-comments").value=t.Commentaires||"";
-  remplirChecklist("field-tache-predecesseurs", campId, t.id, refIdList(t[COL_PREDECESSEURS]));
-
-  const bloquantes=calculerBlocage(t);
-  const infoDiv=document.getElementById("info-blocage");
-  if(bloquantes.length){
-    infoDiv.textContent="🔒 Bloquée par : "+bloquantes.join(", ");
-    infoDiv.style.display="block";
-  }else{
-    infoDiv.style.display="none";
-  }
-
   document.getElementById("modal-tache-title").textContent="Modifier la tâche";
   document.getElementById("btn-save-tache").textContent="Enregistrer";
   document.getElementById("btn-delete-tache").style.display="inline-block";
@@ -532,24 +400,14 @@ async function saveTache(){
   const comments=document.getElementById("field-tache-comments").value.trim();
   if(!nom || !campagne_id || !debut || !fin){ alert("Champs obligatoires : Tâche, Campagne, dates"); return; }
 
-  const predIds=getCheckedIds("field-tache-predecesseurs");
-  const currentId=id?parseInt(id):null;
-  if(currentId && detecteCycle(currentId, predIds)){
-    alert("Dépendance circulaire détectée : cette tâche est déjà (directement ou indirectement) un prérequis de l'un des prédécesseurs choisis.");
-    return;
-  }
-
-  const duree=Math.max(1, joursOuvres(new Date(debut), new Date(fin)));
+  const duree=joursOuvres(new Date(debut), new Date(fin));
 
   try{
     const camp=DB.campagnes.find(c=>c.id===campagne_id);
     if(!camp){ alert("Campagne non trouvée"); return; }
 
-    // Résolution tolérante des IDs de PARAMETRES
-    const statutId=findParamIdNorm("Statut", statut);
+    const statutId=findParamId("Statut", statut);
     const respId=findRespId(resp);
-
-    if(!statutId){ alert("Statut inexistant : "+statut); return; }
 
     const values={
       Section:refId(camp.Section),
@@ -559,8 +417,7 @@ async function saveTache(){
       Duree_jours:duree,
       Statut:statutId,
       Responsable:respId,
-      Commentaires:comments,
-      [COL_PREDECESSEURS]: predIds.length ? ["L", ...predIds] : null
+      Commentaires:comments
     };
 
     if(id){
@@ -586,9 +443,7 @@ async function deleteTache(){
 
 async function deplacerTache(taskId, statutNom, respId){
   try{
-    // Résolution tolérante du statut
-    const statutId=findParamIdNorm("Statut", statutNom);
-    if(!statutId){ alert("Statut invalide"); return; }
+    const statutId=findParamId("Statut", statutNom);
     await grist.docApi.applyUserActions([
       ["UpdateRecord","Taches",taskId,{Statut:statutId, Responsable:respId}]
     ]);
@@ -600,21 +455,22 @@ async function deplacerTache(taskId, statutNom, respId){
 
 function construire(){
   filtreCampagne = document.getElementById("filtre-campagne").value;
-  const todayI = Math.floor(Date.now()/86400000);
 
   const lignes = [...DB.responsables, NON_ASSIGNE];
 
   const matrix = document.getElementById("matrix");
   matrix.innerHTML = "";
-  matrix.style.setProperty("--n-cols", DB.statuts.length);
+  matrix.style.setProperty("--n-cols", STATUTS.length);
 
+  // Coin haut-gauche
   matrix.appendChild(el("div", "corner", "Responsable"));
 
-  DB.statuts.forEach(s=>{
-    const statInfo = DB.statutsIndex[norm(s.nom)];
+  // En-têtes de colonnes (statuts)
+  STATUTS.forEach(s=>{
     const header = el("div", "col-header");
-    header.style.borderTop = `3px solid ${statInfo.couleur}`;
-    header.appendChild(el("span", "nom", s.nom));
+    header.style.borderTop = `3px solid ${cssVarValue(s.couleur)}`;
+    const nomEl = el("span", "nom", s.nom);
+    header.appendChild(nomEl);
     matrix.appendChild(header);
   });
 
@@ -623,6 +479,7 @@ function construire(){
   lignes.forEach(resp=>{
     const isNonAssigne = resp.id === null;
 
+    // Tâches de cette ligne, filtrées par campagne si besoin
     const tachesLigne = DB.taches.filter(t=>{
       const rid = refId(t.Responsable);
       const matchResp = isNonAssigne ? (rid===null || rid===undefined) : rid===resp.id;
@@ -630,42 +487,32 @@ function construire(){
       return matchResp && matchCamp;
     });
 
+    // Label de ligne
     const label = el("div", "row-label"+(isNonAssigne?" non-assigne":""));
     label.appendChild(el("span", "nom", resp.Nom));
     label.appendChild(el("span", "count", `${tachesLigne.length} tâche${tachesLigne.length>1?"s":""}`));
     matrix.appendChild(label);
 
-    DB.statuts.forEach(statut=>{
-      const statInfo = DB.statutsIndex[norm(statut.nom)];
+    // Une cellule par statut
+    STATUTS.forEach(s=>{
       const cell = el("div", "cell");
-      cell.dataset.statut = statut.nom;
+      cell.dataset.statut = s.nom;
       cell.dataset.respId = resp.id===null ? "" : resp.id;
 
       const tachesCell = tachesLigne.filter(t=>{
         const statutTexte = resolveRef(DB.parametres, t.Statut, "Statut");
-        return norm(statutTexte)===norm(statut.nom);
+        return norm(statutInfo(statutTexte).nom) === norm(s.nom);
       });
 
       tachesCell.forEach(t=>{
         tachesVisibles++;
         const camp = DB.campagnes.find(c=>c.id===refId(t.Campagne));
-        const statutTexte = resolveRef(DB.parametres, t.Statut, "Statut");
-        const bloquantes = calculerBlocage(t);
-        const risque = calculerRisque(t, statutTexte, todayI);
-
-        const card = el("div", "card");
-        card.style.borderLeftColor = statInfo.couleur;
+        const card = el("div", "card "+s.cls);
         card.draggable = true;
-        if(risque.niveau==="retard") card.classList.add("retard");
-        else if(risque.niveau==="proche") card.classList.add("proche");
 
-        const badges = el("div", "badges-risque");
-        if(bloquantes.length) badges.appendChild(el("span","","🔒"));
-        if(risque.niveau==="retard") badges.appendChild(el("span","","⚠️"));
-        else if(risque.niveau==="proche") badges.appendChild(el("span","","⏳"));
-        if(badges.children.length) card.appendChild(badges);
+        const titre = el("div", "titre", t.Tache);
+        card.appendChild(titre);
 
-        card.appendChild(el("div", "titre", t.Tache));
         if(camp) card.appendChild(el("span", "badge-camp", camp.Campagne));
 
         const dIdx = dayIndex(t.Date_debut);
@@ -679,16 +526,6 @@ function construire(){
           }
           card.appendChild(dates);
         }
-
-        if(bloquantes.length){
-          card.appendChild(el("div", "blocage-info", "🔒 "+bloquantes.join(", ")));
-        }
-
-        let tip = `${t.Tache}\n${statutTexte}`;
-        if(bloquantes.length) tip += `\n🔒 Bloquée par : ${bloquantes.join(", ")}`;
-        if(risque.niveau==="retard") tip += `\n⚠️ En retard de ${Math.abs(risque.joursRestants)} j`;
-        else if(risque.niveau==="proche") tip += `\n⏳ Échéance dans ${risque.joursRestants} j`;
-        card.title = tip;
 
         card.onclick = () => openTacheEdit(t);
 
@@ -706,7 +543,7 @@ function construire(){
       });
 
       const btnAdd = el("button", "btn-add-cell", "+ Ajouter");
-      btnAdd.onclick = () => openTacheCreate(statut.nom, isNonAssigne ? "" : resp.Nom, filtreCampagne || "");
+      btnAdd.onclick = () => openTacheCreate(s.nom, isNonAssigne ? "" : resp.Nom);
       cell.appendChild(btnAdd);
 
       cell.addEventListener("dragover", (e)=>{
@@ -736,17 +573,13 @@ function construire(){
 function rendreLegende(){
   const l=document.getElementById("legende");
   l.innerHTML="";
-  DB.statuts.forEach(s=>{
-    const statInfo = DB.statutsIndex[norm(s.nom)];
+  STATUTS.forEach(s=>{
     const item=el("div","item");
-    const puce=el("span","puce");
-    puce.style.background=statInfo.couleur;
+    const puce=el("span","puce"); puce.style.background=cssVarValue(s.couleur);
     item.appendChild(puce);
     item.appendChild(document.createTextNode(s.nom));
     l.appendChild(item);
   });
-  l.appendChild(el("div","item","🔒 Bloquée par une dépendance"));
-  l.appendChild(el("div","item","⚠️ Retard  ⏳ Échéance proche"));
 }
 
 function el(tag,cls,txt){
@@ -760,12 +593,6 @@ document.getElementById("btn-add-tache").onclick = () => openTacheCreate();
 document.getElementById("filtre-campagne").addEventListener("change", construire);
 document.getElementById("field-tache-debut").addEventListener("change", majDuree);
 document.getElementById("field-tache-fin").addEventListener("change", majDuree);
-document.getElementById("field-tache-campagne").addEventListener("change", ()=>{
-  const cidVal = document.getElementById("field-tache-campagne").value.trim();
-  const cid = cidVal ? parseInt(cidVal) : null;
-  const curId = document.getElementById("field-tache-id").value;
-  remplirChecklist("field-tache-predecesseurs", cid, curId?parseInt(curId):null, []);
-});
 grist.onRecords(()=>init());
 init();
 </script>
