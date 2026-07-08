@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Kanban - Avec Dépendances</title>
+<title>Kanban par Responsable</title>
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
 <style>
   :root{
@@ -111,7 +111,6 @@
     background:#fff;border:1px solid var(--bordure);border-left:4px solid var(--st-faire);
     border-radius:6px;padding:8px 10px;cursor:grab;
     box-shadow:0 1px 2px rgba(0,0,0,0.06);transition:box-shadow 0.15s, transform 0.15s;
-    position:relative;
   }
   .card:hover{box-shadow:0 3px 8px rgba(0,0,0,0.12);transform:translateY(-1px)}
   .card.dragging{opacity:0.4}
@@ -119,7 +118,6 @@
   .card.st-termine{border-left-color:var(--st-termine)}
   .card.blocked{opacity:0.6;background:#FFF5F5}
   .card.critical{border:2px solid #CE0500}
-  
   .card .titre{font-size:13px;font-weight:700;margin-bottom:4px;line-height:1.3}
   .card .badge-camp{
     display:inline-block;font-size:10px;color:var(--bleu-france);background:var(--bleu-975);
@@ -167,7 +165,6 @@
     color:#856404;line-height:1.4;
   }
   .info-box.warning{background:#F8D7DA;border-color:#F5C6CB;color:#721C24}
-  .info-box.success{background:#D4EDDA;border-color:#C3E6CB;color:#155724}
 
   .multi-select{
     border:1px solid var(--bordure);border-radius:4px;padding:8px;max-height:150px;overflow-y:auto;
@@ -177,12 +174,14 @@
   }
   .multi-select-item:hover{background:var(--fond-alt)}
   .multi-select-item input[type="checkbox"]{cursor:pointer}
+
+  .empty-state{padding:40px;text-align:center;color:var(--texte-mention)}
 </style>
 </head>
 <body>
 <div class="app">
   <div class="topbar">
-    <h1>Kanban par Responsable - Avec Dépendances</h1>
+    <h1>Kanban par Responsable</h1>
     <div style="display:flex;gap:20px;align-items:center;flex:1;">
       <div class="legende" id="legende"></div>
       <div class="meta" id="meta">Chargement…</div>
@@ -201,15 +200,15 @@
   </div>
 </div>
 
-<!-- MODALE TACHE -->
+<!-- MODALE TACHE (création + édition) -->
 <div class="modal-overlay" id="modal-tache">
   <div class="modal">
     <h2 id="modal-tache-title">Nouvelle Tâche</h2>
     <input type="hidden" id="field-tache-id">
-    
+
     <div id="info-preds" class="info-box" style="display:none;"></div>
     <div id="info-blocked" class="info-box warning" style="display:none;"></div>
-    
+
     <div class="form-group"><label>Tâche *</label><input type="text" id="field-tache-nom" placeholder="ex: Publication liste"></div>
     <div class="form-group"><label>Campagne *</label><select id="field-tache-campagne"></select></div>
     <div class="form-group"><label>Date début *</label><input type="date" id="field-tache-debut"></div>
@@ -217,14 +216,13 @@
     <div class="form-group"><label>Durée (jours ouvrés)</label><input type="number" id="field-tache-duree" readonly placeholder="calculée automatiquement"></div>
     <div class="form-group"><label>Responsable</label><select id="field-tache-resp"></select></div>
     <div class="form-group"><label>Statut</label><select id="field-tache-statut"></select></div>
-    
+
     <div class="form-group">
       <label>Prédécesseurs (tâches dont dépend celle-ci)</label>
       <div class="multi-select" id="field-tache-predecesseurs"></div>
     </div>
-    
+
     <div class="form-group"><label>Commentaires</label><textarea id="field-tache-comments" placeholder="Notes optionnelles"></textarea></div>
-    
     <div class="form-actions">
       <button class="btn btn-danger" id="btn-delete-tache" style="display:none" onclick="deleteTache()">Supprimer</button>
       <div class="right">
@@ -241,7 +239,8 @@ const STATUTS = [
   {nom:"En cours",  cls:"st-encours",  couleur:"var(--st-encours)"},
   {nom:"Terminé",   cls:"st-termine",  couleur:"var(--st-termine)"},
 ];
-const NON_ASSIGNE = {id:null, Nom:"Non assigné"};
+let NON_ATTRIBUE_ID = null;
+let PERT_DATA = {};
 
 function norm(s){
   return String(s||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").trim();
@@ -252,39 +251,12 @@ function statutInfo(s){
 function cssVarValue(v){
   return getComputedStyle(document.documentElement).getPropertyValue(v.replace("var(","").replace(")","").trim())||v;
 }
-
-// ✅ FORMAT DATES
 function parseDate(v){
   if(v===null||v===undefined||v==="") return null;
   if(typeof v==="number") return new Date(v*1000);
-  const str = String(v).trim();
-  
-  // Try dd/mm/yyyy format
-  const ddmmMatch = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  if(ddmmMatch){
-    const [, d, m, y] = ddmmMatch;
-    return new Date(parseInt(y), parseInt(m)-1, parseInt(d));
-  }
-  
-  // Try ISO format yyyy-mm-dd
-  const isoMatch = str.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if(isoMatch){
-    const [, y, m, d] = isoMatch;
-    return new Date(parseInt(y), parseInt(m)-1, parseInt(d));
-  }
-  
-  const d = new Date(str);
+  const d=new Date(String(v).trim());
   return isNaN(d.getTime())?null:d;
 }
-
-function toDateInput(v){
-  const d=parseDate(v);
-  if(!d) return "";
-  const jj=String(d.getDate()).padStart(2,"0");
-  const mm=String(d.getMonth()+1).padStart(2,"0");
-  return `${d.getFullYear()}-${mm}-${jj}`;
-}
-
 function dayIndex(v){
   const d=parseDate(v);
   return d?Math.floor(d.getTime()/86400000):null;
@@ -302,9 +274,15 @@ function resolveRef(table, id, col){
 function fmtJJMM(v){
   const d=parseDate(v);
   if(!d) return "";
-  return String(d.getDate()).padStart(2,"0")+"/"+String(d.getMonth()+1).padStart(2,"0");
+  return String(d.getUTCDate()).padStart(2,"0")+"/"+String(d.getUTCMonth()+1).padStart(2,"0");
 }
-
+function toDateInput(v){
+  const d=parseDate(v);
+  if(!d) return "";
+  const jj=String(d.getUTCDate()).padStart(2,"0");
+  const mm=String(d.getUTCMonth()+1).padStart(2,"0");
+  return `${d.getUTCFullYear()}-${mm}-${jj}`;
+}
 function joursOuvres(d1, d2){
   let n=0;
   const cur=new Date(d1);
@@ -319,7 +297,6 @@ function joursOuvres(d1, d2){
 let DB={};
 let draggedTaskId=null;
 let filtreCampagne="";
-let PERT_DATA={};
 
 grist.ready({requiredAccess:"full"});
 
@@ -339,6 +316,178 @@ function columnarToRows(data){
   return rows;
 }
 
+// ========== DÉPENDANCES / PERT ==========
+
+function getPredecessorTasks(task){
+  if(!task.Predecesseurs) return [];
+  if(Array.isArray(task.Predecesseurs)) return task.Predecesseurs;
+  return [];
+}
+
+function getPredecessorsBlocked(task){
+  const preds = getPredecessorTasks(task);
+  return preds.filter(pred => {
+    const predStatut = resolveRef(DB.parametres, pred.Statut, "Statut");
+    return norm(predStatut) !== norm("Terminé");
+  });
+}
+
+// Vérifie si candidateId est déjà un "successeur" (direct ou indirect) de taskId.
+// Si oui, ajouter candidateId comme prédécesseur de taskId créerait un cycle.
+function isDescendant(taskId, candidateId, visited){
+  visited = visited || new Set();
+  if(taskId === candidateId) return true;
+  if(visited.has(taskId)) return false;
+  visited.add(taskId);
+  const successeurs = DB.taches.filter(t => getPredecessorTasks(t).some(p => refId(p.id||p) === taskId));
+  for(const succ of successeurs){
+    if(isDescendant(succ.id, candidateId, visited)) return true;
+  }
+  return false;
+}
+
+function detectCycles(){
+  const visited = new Set();
+  const stack = new Set();
+  function hasCycle(taskId){
+    if(stack.has(taskId)) return true;
+    if(visited.has(taskId)) return false;
+    visited.add(taskId); stack.add(taskId);
+    const task = DB.taches.find(t => t.id === taskId);
+    if(task){
+      for(const pred of getPredecessorTasks(task)){
+        if(hasCycle(refId(pred.id||pred))) return true;
+      }
+    }
+    stack.delete(taskId);
+    return false;
+  }
+  return DB.taches.some(t => hasCycle(t.id));
+}
+
+function calculateEarlyDates(){
+  const memo = {};
+  function getEarlyStart(taskId){
+    if(memo[taskId]) return memo[taskId];
+    const task = DB.taches.find(t => t.id === taskId);
+    if(!task){ memo[taskId] = null; return null; }
+    const preds = getPredecessorTasks(task);
+    if(preds.length === 0){
+      memo[taskId] = parseDate(task.Date_debut);
+      return memo[taskId];
+    }
+    let maxEnd = null;
+    for(const pred of preds){
+      const predTask = DB.taches.find(t => t.id === refId(pred.id||pred));
+      if(!predTask) continue;
+      const predStart = getEarlyStart(predTask.id);
+      if(!predStart) continue;
+      const predEnd = new Date(predStart.getTime() + (predTask.Duree_jours||1) * 86400000);
+      if(!maxEnd || predEnd > maxEnd) maxEnd = predEnd;
+    }
+    memo[taskId] = maxEnd ? new Date(maxEnd.getTime() + 86400000) : parseDate(task.Date_debut);
+    return memo[taskId];
+  }
+  DB.taches.forEach(t=>{
+    const early = getEarlyStart(t.id);
+    PERT_DATA[t.id] = PERT_DATA[t.id] || {};
+    PERT_DATA[t.id].earlyStart = early;
+    if(early){
+      PERT_DATA[t.id].earlyEnd = new Date(early.getTime() + (t.Duree_jours||1) * 86400000);
+    }
+  });
+}
+
+function calculateLateDates(){
+  let projectEnd = null;
+  DB.taches.forEach(t=>{
+    const ee = PERT_DATA[t.id] && PERT_DATA[t.id].earlyEnd;
+    if(ee && (!projectEnd || ee > projectEnd)) projectEnd = ee;
+  });
+  if(!projectEnd) return;
+  const memo = {};
+  function getLateEnd(taskId){
+    if(memo[taskId] !== undefined) return memo[taskId];
+    const task = DB.taches.find(t => t.id === taskId);
+    if(!task){ memo[taskId] = null; return null; }
+    const successeurs = DB.taches.filter(t => getPredecessorTasks(t).some(p => refId(p.id||p) === taskId));
+    if(successeurs.length === 0){
+      memo[taskId] = projectEnd;
+      return projectEnd;
+    }
+    let minStart = null;
+    for(const succ of successeurs){
+      const succLateEnd = getLateEnd(succ.id);
+      if(succLateEnd){
+        const succLateStart = new Date(succLateEnd.getTime() - (succ.Duree_jours||1) * 86400000);
+        if(!minStart || succLateStart < minStart) minStart = succLateStart;
+      }
+    }
+    memo[taskId] = minStart || projectEnd;
+    return memo[taskId];
+  }
+  DB.taches.forEach(t=>{
+    const lateEnd = getLateEnd(t.id);
+    PERT_DATA[t.id] = PERT_DATA[t.id] || {};
+    PERT_DATA[t.id].lateEnd = lateEnd;
+    if(lateEnd){
+      PERT_DATA[t.id].lateStart = new Date(lateEnd.getTime() - (t.Duree_jours||1) * 86400000);
+    }
+  });
+}
+
+function calculateSlack(){
+  DB.taches.forEach(t=>{
+    PERT_DATA[t.id] = PERT_DATA[t.id] || {};
+    const ls = PERT_DATA[t.id].lateStart, es = PERT_DATA[t.id].earlyStart;
+    if(ls && es){
+      const slack = Math.floor((ls - es) / 86400000);
+      PERT_DATA[t.id].slack = Math.max(0, slack);
+      PERT_DATA[t.id].isCritical = (PERT_DATA[t.id].slack === 0);
+    }
+  });
+}
+
+async function calculatePERT(){
+  if(detectCycles()){
+    console.error("❌ Cycle détecté dans les dépendances");
+    document.getElementById("status").textContent = "❌ Cycle dans les dépendances !";
+    return;
+  }
+  PERT_DATA = {};
+  calculateEarlyDates();
+  calculateLateDates();
+  calculateSlack();
+
+  const actions = [];
+  DB.taches.forEach(t=>{
+    const d = PERT_DATA[t.id];
+    if(!d) return;
+    actions.push(["UpdateRecord","Taches",t.id,{
+      Date_au_plus_tôt: d.earlyStart ? Math.floor(d.earlyStart.getTime()/1000) : null,
+      Date_au_plus_tard: d.lateEnd ? Math.floor(d.lateEnd.getTime()/1000) : null,
+      Marge_totale: d.slack !== undefined ? d.slack : null,
+      Est_critique: !!d.isCritical,
+      Chemin_critique: d.isCritical ? "Oui" : "Non"
+    }]);
+  });
+  if(actions.length){
+    try{ await grist.docApi.applyUserActions(actions); }
+    catch(e){ console.error("❌ Erreur sauvegarde PERT:", e); }
+  }
+  syncPertIntoDB();
+}
+
+// Reporte les résultats PERT (calculés en mémoire) dans DB.taches pour un affichage immédiat
+function syncPertIntoDB(){
+  DB.taches.forEach(t=>{
+    const d = PERT_DATA[t.id];
+    if(!d) return;
+    t.Est_critique = !!d.isCritical;
+    t.Marge_totale = d.slack !== undefined ? d.slack : t.Marge_totale;
+  });
+}
+
 async function init(){
   try{
     document.getElementById("status").textContent="Chargement...";
@@ -346,44 +495,25 @@ async function init(){
     DB.taches       = columnarToRows(await grist.docApi.fetchTable("Taches"));
     DB.responsables = columnarToRows(await grist.docApi.fetchTable("Responsables"));
     DB.parametres   = columnarToRows(await grist.docApi.fetchTable("PARAMETRES"));
+
+    // ✅ FIX: S'assurer qu'un responsable réel "Non attribué" existe (plus robuste que null)
+    let nonAttribue = DB.responsables.find(r => norm(r.Nom) === norm("Non attribué"));
+    if(!nonAttribue){
+      const result = await grist.docApi.applyUserActions([
+        ["AddRecord","Responsables",null,{Nom:"Non attribué"}]
+      ]);
+      DB.responsables = columnarToRows(await grist.docApi.fetchTable("Responsables"));
+      nonAttribue = DB.responsables.find(r => norm(r.Nom) === norm("Non attribué"));
+    }
+    NON_ATTRIBUE_ID = nonAttribue ? nonAttribue.id : null;
+
     populateSelects();
-    calcularPERTQuickly();
     construire();
     document.getElementById("status").textContent="✓ Données chargées";
   }catch(e){
     console.error("❌", e);
     document.getElementById("status").textContent="❌ "+e.message;
   }
-}
-
-// ========== PERT QUICK CALC (pour affichage) ==========
-
-function getPredecessorTasks(task){
-  if(!task.Predecesseurs) return [];
-  if(Array.isArray(task.Predecesseurs)){
-    return task.Predecesseurs;
-  }
-  return [];
-}
-
-function calcularPERTQuickly(){
-  // On charge juste Est_critique depuis le Grist
-  PERT_DATA = {};
-  DB.taches.forEach(t => {
-    PERT_DATA[t.id] = {
-      isCritical: t.Est_critique === true,
-      slack: t.Marge_totale || 0
-    };
-  });
-}
-
-function getPredecessorsBlocked(task){
-  // Retourne les prédécesseurs qui ne sont pas "Terminé"
-  const preds = getPredecessorTasks(task);
-  return preds.filter(pred => {
-    const predStatut = resolveRef(DB.parametres, pred.Statut, "Statut");
-    return norm(predStatut) !== norm("Terminé");
-  });
 }
 
 function fillSelect(id, values, placeholder){
@@ -479,63 +609,59 @@ function openTacheEdit(t){
   document.getElementById("modal-tache-title").textContent="Modifier la tâche";
   document.getElementById("btn-save-tache").textContent="Enregistrer";
   document.getElementById("btn-delete-tache").style.display="inline-block";
-  
+
   const preds = getPredecessorTasks(t);
   if(preds.length > 0){
     const predNames = preds.map(p => p.Tache || p).join(", ");
-    document.getElementById("info-preds").innerHTML = `📌 Dépend de: <strong>${predNames}</strong>`;
+    document.getElementById("info-preds").innerHTML = `📌 Dépend de : <strong>${predNames}</strong>`;
     document.getElementById("info-preds").style.display="block";
   } else {
     document.getElementById("info-preds").style.display="none";
   }
-  
+
   const blocked = getPredecessorsBlocked(t);
   if(blocked.length > 0){
     const blockedNames = blocked.map(p => p.Tache || p).join(", ");
-    document.getElementById("info-blocked").innerHTML = `⚠️ <strong>BLOQUÉE:</strong> En attente de: ${blockedNames}`;
+    document.getElementById("info-blocked").innerHTML = `⚠️ <strong>BLOQUÉE :</strong> en attente de : ${blockedNames}`;
     document.getElementById("info-blocked").style.display="block";
   } else {
     document.getElementById("info-blocked").style.display="none";
   }
-  
+
   populatePredecessorsSelect(refId(t.Campagne), preds);
   openModal("modal-tache");
 }
 
-function populatePredecessorsSelect(campagneId, selectedPreds=[]){
+function populatePredecessorsSelect(campagneId, selectedPreds){
+  selectedPreds = selectedPreds || [];
   const container = document.getElementById("field-tache-predecesseurs");
   container.innerHTML = "";
-  
+
   if(!campagneId){
     container.innerHTML = "<div style='padding:8px;color:#999;font-size:11px;'>Sélectionner une campagne d'abord</div>";
     return;
   }
-  
-  const campaigneTasks = DB.taches.filter(t => refId(t.Campagne) === campagneId);
+
   const currentTaskId = parseInt(document.getElementById("field-tache-id").value);
-  
-  campaigneTasks.forEach(task => {
-    if(task.id === currentTaskId) return;
-    
-    const isSelected = selectedPreds.some(p => refId(p.id || p) === task.id);
-    
+  const campagneTasks = DB.taches.filter(t => refId(t.Campagne) === campagneId && t.id !== currentTaskId);
+
+  if(campagneTasks.length === 0){
+    container.innerHTML = "<div style='padding:8px;color:#999;font-size:11px;'>Aucune autre tâche dans cette campagne</div>";
+    return;
+  }
+
+  campagneTasks.forEach(task=>{
+    const isSelected = selectedPreds.some(p => refId(p.id||p) === task.id);
     const label = document.createElement("label");
     label.className = "multi-select-item";
-    
     const checkbox = document.createElement("input");
     checkbox.type = "checkbox";
     checkbox.value = task.id;
     checkbox.checked = isSelected;
-    
     label.appendChild(checkbox);
     label.appendChild(document.createTextNode(task.Tache));
-    
     container.appendChild(label);
   });
-  
-  if(campaigneTasks.filter(t => t.id !== currentTaskId).length === 0){
-    container.innerHTML = "<div style='padding:8px;color:#999;font-size:11px;'>Aucune autre tâche dans cette campagne</div>";
-  }
 }
 
 async function saveTache(){
@@ -557,24 +683,37 @@ async function saveTache(){
 
     const statutId=findParamId("Statut", statut);
     const respId=findRespId(resp);
+
+    // ✅ CORRECTION: Chercher le Section ID correctement
     const sectionId = refId(camp.Section);
     if(!sectionId){ alert("Section invalide"); return; }
 
-    // Prédécesseurs
+    // Prédécesseurs sélectionnés + vérification anti-cycle
     const checkboxes = document.querySelectorAll("#field-tache-predecesseurs input[type='checkbox']:checked");
     const predecessorIds = Array.from(checkboxes).map(cb => parseInt(cb.value));
+
+    if(id){
+      const currentTaskId = parseInt(id);
+      for(const predId of predecessorIds){
+        if(isDescendant(currentTaskId, predId)){
+          alert("❌ Cycle détecté : cette dépendance créerait une boucle. Sélection annulée.");
+          return;
+        }
+      }
+    }
+
     const predecessorTasks = predecessorIds.map(pid => DB.taches.find(t => t.id === pid)).filter(t => t);
 
     const values={
-      Section:sectionId,
-      Campagne:campagne_id,
-      Tache:nom,
-      Date_debut:Math.floor(new Date(debut).getTime()/1000),
-      Duree_jours:duree,
-      Statut:statutId,
-      Responsable:respId,
-      Commentaires:comments,
-      Predecesseurs: predecessorTasks.length > 0 ? predecessorTasks : []
+      Section: sectionId,
+      Campagne: campagne_id,
+      Tache: nom,
+      Date_debut: Math.floor(new Date(debut).getTime()/1000),
+      Duree_jours: duree,
+      Statut: statutId,
+      Responsable: respId,
+      Commentaires: comments,
+      Predecesseurs: predecessorTasks
     };
 
     if(id){
@@ -583,7 +722,9 @@ async function saveTache(){
       await grist.docApi.applyUserActions([["AddRecord","Taches",null,values]]);
     }
     closeModal("modal-tache");
-    init();
+    await init();
+    await calculatePERT();
+    construire();
   }catch(e){ alert("Erreur: "+e.message); console.error(e); }
 }
 
@@ -594,7 +735,9 @@ async function deleteTache(){
   try{
     await grist.docApi.applyUserActions([["RemoveRecord","Taches",id]]);
     closeModal("modal-tache");
-    init();
+    await init();
+    await calculatePERT();
+    construire();
   }catch(e){ alert("Erreur: "+e.message); console.error(e); }
 }
 
@@ -608,21 +751,29 @@ async function deplacerTache(taskId, statutNom, respId){
   }catch(e){ alert("Erreur: "+e.message); console.error(e); }
 }
 
-/* ---------- Construction Kanban ---------- */
+/* ---------- Construction du Kanban matriciel ---------- */
 
 function construire(){
   filtreCampagne = document.getElementById("filtre-campagne").value;
 
-  const lignes = [...DB.responsables, NON_ASSIGNE];
+  // ✅ FIX: "Non attribué" est maintenant un vrai responsable dans DB.responsables
+  // On le place en dernier dans la liste pour l'affichage
+  const lignes = [...DB.responsables].sort((a,b)=>{
+    const aNA = norm(a.Nom)===norm("Non attribué");
+    const bNA = norm(b.Nom)===norm("Non attribué");
+    if(aNA && !bNA) return 1;
+    if(!aNA && bNA) return -1;
+    return 0;
+  });
 
   const matrix = document.getElementById("matrix");
   matrix.innerHTML = "";
   matrix.style.setProperty("--n-cols", STATUTS.length);
 
-  // Coin
+  // Coin haut-gauche
   matrix.appendChild(el("div", "corner", "Responsable"));
 
-  // En-têtes colonnes
+  // En-têtes de colonnes (statuts)
   STATUTS.forEach(s=>{
     const header = el("div", "col-header");
     header.style.borderTop = `3px solid ${cssVarValue(s.couleur)}`;
@@ -634,26 +785,28 @@ function construire(){
   let tachesVisibles = 0;
 
   lignes.forEach(resp=>{
-    const isNonAssigne = resp.id === null;
+    const isNonAssigne = norm(resp.Nom) === norm("Non attribué");
 
+    // Tâches de cette ligne, filtrées par campagne si besoin
+    // ✅ FIX: Comparaison directe par ID réel (plus de cas null à gérer)
     const tachesLigne = DB.taches.filter(t=>{
       const rid = refId(t.Responsable);
-      const matchResp = isNonAssigne ? (rid===null || rid===undefined) : rid===resp.id;
+      const matchResp = (rid === resp.id) || (isNonAssigne && (rid===null || rid===undefined || rid===""));
       const matchCamp = !filtreCampagne || refId(t.Campagne)===parseInt(filtreCampagne);
       return matchResp && matchCamp;
     });
 
-    // Label ligne
+    // Label de ligne
     const label = el("div", "row-label"+(isNonAssigne?" non-assigne":""));
     label.appendChild(el("span", "nom", resp.Nom));
     label.appendChild(el("span", "count", `${tachesLigne.length} tâche${tachesLigne.length>1?"s":""}`));
     matrix.appendChild(label);
 
-    // Cellules par statut
+    // Une cellule par statut
     STATUTS.forEach(s=>{
       const cell = el("div", "cell");
       cell.dataset.statut = s.nom;
-      cell.dataset.respId = resp.id===null ? "" : resp.id;
+      cell.dataset.respId = resp.id;
 
       const tachesCell = tachesLigne.filter(t=>{
         const statutTexte = resolveRef(DB.parametres, t.Statut, "Statut");
@@ -664,36 +817,20 @@ function construire(){
         tachesVisibles++;
         const camp = DB.campagnes.find(c=>c.id===refId(t.Campagne));
         const card = el("div", "card "+s.cls);
-        
-        // Blocage si prédécesseurs pas terminés
-        const blocked = getPredecessorsBlocked(t);
-        if(blocked.length > 0){
-          card.classList.add("blocked");
-        }
-        
-        // Critique
-        if(PERT_DATA[t.id] && PERT_DATA[t.id].isCritical){
-          card.classList.add("critical");
-        }
-        
         card.draggable = true;
+
+        const blocked = getPredecessorsBlocked(t);
+        if(blocked.length > 0) card.classList.add("blocked");
+        if(t.Est_critique === true) card.classList.add("critical");
 
         const titre = el("div", "titre", t.Tache);
         card.appendChild(titre);
 
         if(camp) card.appendChild(el("span", "badge-camp", camp.Campagne));
-        
-        // Badge prédécesseurs
+
         const preds = getPredecessorTasks(t);
-        if(preds.length > 0){
-          const badge = el("span", "badge-preds", `📌 ${preds.length}`);
-          card.appendChild(badge);
-        }
-        
-        // Badge critique
-        if(PERT_DATA[t.id] && PERT_DATA[t.id].isCritical){
-          card.appendChild(el("span", "badge-critical", "⚠️ CRITIQUE"));
-        }
+        if(preds.length > 0) card.appendChild(el("span", "badge-preds", `📌 ${preds.length}`));
+        if(t.Est_critique === true) card.appendChild(el("span", "badge-critical", "⚠️ CRITIQUE"));
 
         const dIdx = dayIndex(t.Date_debut);
         if(dIdx!==null){
@@ -738,7 +875,7 @@ function construire(){
         e.preventDefault();
         cell.classList.remove("drag-over");
         if(draggedTaskId===null) return;
-        const respId = cell.dataset.respId === "" ? null : parseInt(cell.dataset.respId);
+        const respId = parseInt(cell.dataset.respId);
         deplacerTache(draggedTaskId, cell.dataset.statut, respId);
       });
 
@@ -760,12 +897,11 @@ function rendreLegende(){
     item.appendChild(document.createTextNode(s.nom));
     l.appendChild(item);
   });
-  
-  const itemCritical=el("div","item");
-  const puceCritical=el("span","puce"); puceCritical.style.background="#CE0500";
-  itemCritical.appendChild(puceCritical);
-  itemCritical.appendChild(document.createTextNode("Tâche critique"));
-  l.appendChild(itemCritical);
+  const itemCrit=el("div","item");
+  const puceCrit=el("span","puce"); puceCrit.style.background="#CE0500";
+  itemCrit.appendChild(puceCrit);
+  itemCrit.appendChild(document.createTextNode("Tâche critique"));
+  l.appendChild(itemCrit);
 }
 
 function el(tag,cls,txt){
@@ -780,7 +916,7 @@ document.getElementById("filtre-campagne").addEventListener("change", construire
 document.getElementById("field-tache-debut").addEventListener("change", majDuree);
 document.getElementById("field-tache-fin").addEventListener("change", majDuree);
 document.getElementById("field-tache-campagne").addEventListener("change", (e)=>{
-  populatePredecessorsSelect(parseInt(e.target.value), []);
+  populatePredecessorsSelect(parseInt(e.target.value)||null, []);
 });
 grist.onRecords(()=>init());
 init();
