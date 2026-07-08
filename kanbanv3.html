@@ -319,9 +319,25 @@ function columnarToRows(data){
 // ========== DÉPENDANCES / PERT ==========
 
 function getPredecessorTasks(task){
-  if(!task.Predecesseurs) return [];
-  if(Array.isArray(task.Predecesseurs)) return task.Predecesseurs;
-  return [];
+  const raw = task.Predecesseurs;
+  if(!raw) return [];
+  if(!Array.isArray(raw)) return [];
+
+  // Format Grist pour une liste de références : ['L', id1, id2, ...]
+  if(raw[0] === 'L'){
+    return raw.slice(1)
+      .map(id => DB.taches.find(t => t.id === id))
+      .filter(Boolean);
+  }
+  // Cellule corrompue (ex: ancienne sauvegarde erronée) → on ignore
+  if(raw[0] === 'E'){
+    console.warn("⚠️ Cellule Predecesseurs corrompue pour la tâche", task.id, "- réenregistrez la tâche pour corriger.");
+    return [];
+  }
+  // Fallback : tableau déjà composé d'IDs bruts
+  return raw
+    .map(id => (typeof id === 'object' ? id : DB.taches.find(t => t.id === id)))
+    .filter(Boolean);
 }
 
 function getPredecessorsBlocked(task){
@@ -702,7 +718,7 @@ async function saveTache(){
       }
     }
 
-    const predecessorTasks = predecessorIds.map(pid => DB.taches.find(t => t.id === pid)).filter(t => t);
+    const predecessorTasks = predecessorIds;
 
     const values={
       Section: sectionId,
