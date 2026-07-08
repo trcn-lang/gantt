@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Rétroplanning</title>
+<title>Kanban par Responsable</title>
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
 <style>
   :root{
@@ -17,13 +17,8 @@
     --st-faire:#929292;
     --st-encours:#0063CB;
     --st-termine:#18753C;
-    --jalon-majeur:#B1332A;
-    --jalon-livrable:#B45300;
-    --jalon-etape:#5E5F62;
-    --jour:16px;
-    --label-w:300px;
-    --row-h:44px;
-    --camp-h:46px;
+    --label-w:200px;
+    --col-w:300px;
   }
 
   *{box-sizing:border-box;margin:0;padding:0}
@@ -48,13 +43,15 @@
   .legende{display:flex;gap:14px;flex-wrap:wrap;align-items:center}
   .legende .item{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--texte-mention)}
   .legende .puce{width:12px;height:12px;border-radius:3px;flex:0 0 auto}
-  .legende .puce.jalon-puce{border-radius:0;transform:rotate(45deg)}
-  .legende .puce.critique-puce{background:var(--st-faire);border:2px solid #CE0500;box-shadow:0 0 0 1px #fff inset}
 
   .toolbar{
     padding:12px 16px;border-bottom:1px solid var(--bordure);
-    display:flex;gap:8px;flex-wrap:wrap;
+    display:flex;gap:8px;flex-wrap:wrap;align-items:center;
   }
+  .toolbar select{
+    padding:6px 10px;border:1px solid var(--bordure);border-radius:4px;font-size:13px;background:#fff;
+  }
+  .toolbar label{font-size:12px;color:var(--texte-mention);font-weight:600}
 
   .btn{
     padding:8px 16px;background:var(--bleu-france);color:#fff;border:none;
@@ -63,150 +60,84 @@
   .btn:hover{background:#0056b3}
   .btn-danger{background:#CE0500}
   .btn-danger:hover{background:#a80400}
+  .btn-cancel{background:#ccc;color:#000}
+  .btn-cancel:hover{background:#aaa}
 
   .scroll{flex:1;overflow:auto;position:relative}
-  .grid-wrapper{display:flex}
 
-  .labels-col{
-    width:var(--label-w);flex-shrink:0;border-right:1px solid var(--bordure);
-    display:flex;flex-direction:column;overflow:hidden;z-index:3;
+  .matrix{
+    display:grid;
+    grid-template-columns:var(--label-w) repeat(var(--n-cols,3), minmax(var(--col-w), 1fr));
+    align-content:start;
+    min-width:fit-content;
   }
-
-  .grid{display:grid;grid-template-columns:var(--tl-w,600px);align-content:start;flex:1}
 
   .corner{
-    position:sticky;top:0;left:0;z-index:5;
+    position:sticky;top:0;left:0;z-index:6;
     background:var(--fond);border-right:1px solid var(--bordure);border-bottom:1px solid var(--bordure);
-    padding:0 12px;display:flex;align-items:center;font-size:12px;font-weight:700;
-    height:72px;flex-shrink:0;
+    padding:0 12px;display:flex;align-items:center;font-size:12px;font-weight:700;color:var(--texte-mention);
+    height:56px;flex-shrink:0;
   }
 
-  .head-track{position:sticky;top:0;z-index:6;height:72px;background:var(--fond);border-bottom:1px solid var(--bordure)}
-  .head-inner{position:relative;height:100%}
-
-  .week-label{
-    position:absolute;top:0;bottom:0;border-left:1px solid var(--bordure);
-    width:112px;padding:8px;display:flex;flex-direction:column;
-    align-items:center;justify-content:center;text-align:center;font-size:11px;cursor:help;
+  .col-header{
+    position:sticky;top:0;z-index:5;
+    background:var(--fond);border-bottom:1px solid var(--bordure);border-left:1px solid var(--bordure);
+    height:56px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;
   }
-  .week-label:hover::after{
-    content:attr(data-tooltip);position:absolute;top:100%;left:50%;transform:translateX(-50%);
-    background:#222;color:#fff;padding:12px 16px;border-radius:6px;font-size:12px;
-    white-space:pre-line;line-height:1.4;z-index:200;box-shadow:0 4px 12px rgba(0,0,0,0.2);
-    margin-top:8px;min-width:220px;text-align:center;pointer-events:none;
-  }
-  .week-label:hover::before{
-    content:'';position:absolute;top:100%;left:50%;transform:translateX(-50%);
-    border:6px solid transparent;border-bottom-color:#222;z-index:200;
-    margin-top:2px;pointer-events:none;
-  }
-  .week-num{font-size:13px;font-weight:700;color:var(--bleu-france);margin-bottom:4px}
-  .week-date{font-weight:600;color:var(--texte);line-height:1.3}
-
-  .label{
-    background:var(--fond);border-bottom:1px solid var(--fond-alt);
-    display:flex;align-items:center;height:var(--row-h);padding:0 12px;overflow:hidden;position:relative;
-  }
-  .label.campagne{
-    background:var(--bleu-975);color:var(--bleu-france);font-weight:700;
-    height:var(--camp-h);border-bottom:1px solid var(--bordure);
-  }
-  .label.campagne .nom-campagne{
-    cursor:pointer;border-radius:3px;padding:2px 4px;margin:-2px -4px;
-  }
-  .label.campagne .nom-campagne:hover{background:rgba(0,0,145,0.08);text-decoration:underline}
-  .label.tache{padding-left:12px;font-size:13px;gap:8px}
-  .label.tache .nom{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
-  .label.tache .resp{font-size:11px;color:var(--texte-mention);flex:0 0 auto}
-
-  .label-actions{position:absolute;right:8px;display:none;gap:4px;background:var(--fond);padding-left:6px}
-  .label:hover .label-actions{display:flex}
-  .btn-tiny{padding:2px 6px;font-size:10px;background:#666;color:#fff;border:none;border-radius:3px;cursor:pointer}
-  .btn-tiny:hover{background:#333}
-  .btn-tiny.add{background:var(--bleu-france)}
-  .btn-tiny.add:hover{background:#0056b3}
-
-  .camp-group{position:relative}
-
-  .track{
-    position:relative;height:var(--row-h);border-bottom:1px solid var(--fond-alt);
-    background-image:
-      repeating-linear-gradient(to right, rgba(0,0,0,0.035) 0 1px, transparent 1px var(--jour)),
-      repeating-linear-gradient(to right, var(--fond-alt) 0 1px, transparent 1px calc(7 * var(--jour)));
-  }
-  .track.campagne{
-    height:var(--camp-h);background:var(--bleu-975);border-bottom:1px solid var(--bordure);
+  .col-header .nom{font-size:13px;font-weight:700}
+  .col-header .count{
+    font-size:11px;color:#fff;background:var(--texte-mention);border-radius:10px;padding:1px 8px;
   }
 
-  .track.tache::before{
-    content:"";position:absolute;top:0;bottom:0;left:calc(var(--today) * var(--jour));
-    width:2px;background:#6A6AF4;opacity:.55;z-index:0;
+  .row-label{
+    position:sticky;left:0;z-index:4;
+    background:var(--bleu-975);border-right:1px solid var(--bordure);border-bottom:1px solid var(--bordure);
+    padding:10px 12px;display:flex;flex-direction:column;justify-content:center;gap:2px;
+    min-height:80px;
   }
+  .row-label.non-assigne{background:var(--fond-alt)}
+  .row-label .nom{font-size:13px;font-weight:700;color:var(--bleu-france)}
+  .row-label.non-assigne .nom{color:var(--texte-mention);font-style:italic}
+  .row-label .count{font-size:11px;color:var(--texte-mention)}
 
-  .barre{
-    position:absolute;top:20px;height:22px;border-radius:4px;z-index:1;
-    display:flex;align-items:center;padding:0 6px;font-size:11px;color:#fff;
-    white-space:nowrap;overflow:hidden;cursor:pointer;
-    transition:filter 0.15s;
+  .cell{
+    border-bottom:1px solid var(--bordure);border-left:1px solid var(--bordure);
+    padding:8px;display:flex;flex-direction:column;gap:8px;min-height:80px;
+    transition:background 0.15s;
   }
-  .barre:hover{filter:brightness(0.9)}
-  .barre.critique{border:2px solid #fff;box-shadow:0 0 0 1px #CE0500}
+  .cell.drag-over{background:var(--bleu-975)}
 
-  .date-label{
-    position:absolute;top:2px;z-index:2;
-    transform:translateX(-50%);
-    font-size:9px;font-weight:600;color:var(--texte-mention);
-    white-space:nowrap;pointer-events:none;line-height:1.2;
+  .card{
+    background:#fff;border:1px solid var(--bordure);border-left:4px solid var(--st-faire);
+    border-radius:6px;padding:8px 10px;cursor:grab;
+    box-shadow:0 1px 2px rgba(0,0,0,0.06);transition:box-shadow 0.15s, transform 0.15s;
   }
+  .card:hover{box-shadow:0 3px 8px rgba(0,0,0,0.12);transform:translateY(-1px)}
+  .card.dragging{opacity:0.4}
+  .card.st-encours{border-left-color:var(--st-encours)}
+  .card.st-termine{border-left-color:var(--st-termine)}
+  .card .titre{font-size:13px;font-weight:700;margin-bottom:4px;line-height:1.3}
+  .card .badge-camp{
+    display:inline-block;font-size:10px;color:var(--bleu-france);background:var(--bleu-975);
+    border-radius:10px;padding:1px 8px;margin-bottom:4px;
+  }
+  .card .dep-line{
+    font-size:11px;color:var(--texte);line-height:1.3;margin-bottom:3px;
+    display:flex;gap:5px;align-items:baseline;
+  }
+  .card .dep-line .puce{flex:0 0 auto;font-size:9px}
+  .card .commentaire{
+    font-size:11px;color:var(--texte-mention);font-style:italic;margin-bottom:4px;
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
+  }
+  .card .dates{font-size:11px;color:var(--texte-mention);display:flex;align-items:center;gap:4px}
 
-  .dependencies-svg{
-    position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:0;
-  }
 
-  .jalon-line{
-    position:absolute;top:38px;bottom:0;width:2px;z-index:3;
-    opacity:0.55;pointer-events:none;
+  .btn-add-cell{
+    background:none;border:1px dashed var(--bordure);color:var(--texte-mention);
+    border-radius:4px;padding:6px;font-size:12px;cursor:pointer;text-align:center;
   }
-
-  .jalon-name{
-    position:absolute;top:3px;z-index:4;
-    transform:translateX(-50%);
-    font-size:10px;font-weight:700;
-    white-space:nowrap;cursor:pointer;
-    line-height:1.2;
-  }
-
-  .jalon-marker-wrap{
-    position:absolute;top:26px;z-index:4;
-    width:0;height:0;
-    transform:translateX(-50%);
-    cursor:pointer;
-  }
-  .jalon-marker-diamond{
-    position:absolute;top:0;left:0;
-    width:11px;height:11px;
-    margin-top:-5.5px;margin-left:-5.5px;
-    transform:rotate(45deg);
-    border:1.5px solid #fff;
-    box-shadow:0 1px 3px rgba(0,0,0,0.3);
-    transition:filter 0.15s;
-  }
-  .jalon-marker-wrap:hover .jalon-marker-diamond{filter:brightness(0.85)}
-  .jalon-marker-wrap:hover::after{
-    content:attr(data-tooltip);position:absolute;top:14px;left:0;transform:translateX(-50%);
-    background:#222;color:#fff;padding:8px 12px;border-radius:6px;font-size:12px;
-    white-space:nowrap;line-height:1.4;z-index:200;box-shadow:0 4px 12px rgba(0,0,0,0.2);
-    pointer-events:none;
-  }
-  .jalon-marker-wrap:hover::before{
-    content:'';position:absolute;top:6px;left:0;transform:translateX(-50%);
-    border:5px solid transparent;border-bottom-color:#222;z-index:200;pointer-events:none;
-  }
-
-  .pill-plan{
-    position:absolute;top:8px;left:6px;z-index:1;font-size:10px;color:var(--texte-mention);
-    background:#EEE;border:1px solid var(--bordure);border-radius:10px;padding:1px 8px;
-  }
+  .btn-add-cell:hover{background:var(--fond-alt);border-color:var(--bleu-france);color:var(--bleu-france)}
 
   .modal-overlay{
     position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);
@@ -224,11 +155,9 @@
     width:100%;padding:8px 12px;border:1px solid var(--bordure);border-radius:4px;font-size:13px;
   }
   .form-group input[readonly]{background:var(--fond-alt);color:var(--texte-mention)}
-  .form-group textarea{resize:vertical;min-height:80px}
-  .form-actions{display:flex;gap:8px;margin-top:24px;justify-content:flex-end}
-  .form-actions.with-delete{justify-content:space-between}
-  .btn-cancel{background:#ccc;color:#000}
-  .btn-cancel:hover{background:#aaa}
+  .form-group textarea{resize:vertical;min-height:70px}
+  .form-actions{display:flex;gap:8px;margin-top:24px;justify-content:space-between}
+  .form-actions .right{display:flex;gap:8px}
 
   .info-box{
     background:#FFF3CD;border:1px solid #FFC107;border-radius:4px;padding:12px;margin-bottom:16px;font-size:12px;
@@ -244,12 +173,14 @@
   }
   .multi-select-item:hover{background:var(--fond-alt)}
   .multi-select-item input[type="checkbox"]{cursor:pointer}
+
+  .empty-state{padding:40px;text-align:center;color:var(--texte-mention)}
 </style>
 </head>
 <body>
 <div class="app">
   <div class="topbar">
-    <h1>Rétroplanning</h1>
+    <h1>Kanban par Responsable</h1>
     <div style="display:flex;gap:20px;align-items:center;flex:1;">
       <div class="legende" id="legende"></div>
       <div class="meta" id="meta">Chargement…</div>
@@ -257,60 +188,14 @@
   </div>
 
   <div class="toolbar">
-    <button class="btn" id="btn-add-campagne">+ Campagne</button>
+    <button class="btn" id="btn-add-tache">+ Tâche</button>
+    <label>Campagne :</label>
+    <select id="filtre-campagne"><option value="">Toutes</option></select>
     <span style="margin-left:auto;font-size:12px;color:var(--texte-mention)" id="status"></span>
   </div>
 
   <div class="scroll" id="scroll">
-    <div class="grid-wrapper">
-      <div class="labels-col" id="labels-col">
-        <div class="corner">Campagne / Tâche</div>
-        <div id="labels"></div>
-      </div>
-      <div style="flex:1;overflow:auto;position:relative;">
-        <div id="kanban" class="grid"></div>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- MODALE CAMPAGNE (création + édition) -->
-<div class="modal-overlay" id="modal-campagne">
-  <div class="modal">
-    <h2 id="modal-campagne-title">Nouvelle Campagne</h2>
-    <input type="hidden" id="field-campagne-id">
-    <div class="form-group"><label>Nom *</label><input type="text" id="field-campagne-nom" placeholder="ex: Avancement de grade 2025"></div>
-    <div class="form-group"><label>Section *</label><select id="field-campagne-section"></select></div>
-    <div class="form-group"><label>Type Campagne *</label><select id="field-campagne-type"></select></div>
-    <div class="form-group"><label>Description</label><textarea id="field-campagne-desc" placeholder="Description optionnelle"></textarea></div>
-    <div class="form-actions" id="modal-campagne-actions">
-      <button class="btn btn-danger" id="btn-delete-campagne" style="display:none" onclick="deleteCampagne()">Supprimer</button>
-      <div style="display:flex;gap:8px;">
-        <button class="btn btn-cancel" onclick="closeModal('modal-campagne')">Annuler</button>
-        <button class="btn" id="btn-save-campagne" onclick="saveCampagne()">Créer</button>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- MODALE JALON (création + édition) -->
-<div class="modal-overlay" id="modal-jalon">
-  <div class="modal">
-    <h2 id="modal-jalon-title">Nouveau Jalon</h2>
-    <input type="hidden" id="field-jalon-id">
-    <input type="hidden" id="field-jalon-campagne">
-    <div class="form-group"><label>Nom du jalon *</label><input type="text" id="field-jalon-nom" placeholder="ex: Lancement"></div>
-    <div class="form-group"><label>Date *</label><input type="date" id="field-jalon-date"></div>
-    <div class="form-group"><label>Type</label>
-      <select id="field-jalon-type"><option>Jalon majeur</option><option>Livrable</option><option>Étape</option></select>
-    </div>
-    <div class="form-actions" id="modal-jalon-actions">
-      <button class="btn btn-danger" id="btn-delete-jalon" style="display:none" onclick="deleteJalon()">Supprimer</button>
-      <div style="display:flex;gap:8px;">
-        <button class="btn btn-cancel" onclick="closeModal('modal-jalon')">Annuler</button>
-        <button class="btn" id="btn-save-jalon" onclick="saveJalon()">Créer</button>
-      </div>
-    </div>
+    <div class="matrix" id="matrix"></div>
   </div>
 </div>
 
@@ -319,12 +204,12 @@
   <div class="modal">
     <h2 id="modal-tache-title">Nouvelle Tâche</h2>
     <input type="hidden" id="field-tache-id">
-    <input type="hidden" id="field-tache-campagne">
 
     <div id="info-preds" class="info-box" style="display:none;"></div>
     <div id="info-blocked" class="info-box warning" style="display:none;"></div>
 
     <div class="form-group"><label>Tâche *</label><input type="text" id="field-tache-nom" placeholder="ex: Publication liste"></div>
+    <div class="form-group"><label>Campagne *</label><select id="field-tache-campagne"></select></div>
     <div class="form-group"><label>Date début *</label><input type="date" id="field-tache-debut"></div>
     <div class="form-group"><label>Date fin *</label><input type="date" id="field-tache-fin"></div>
     <div class="form-group"><label>Durée (jours ouvrés)</label><input type="number" id="field-tache-duree" readonly placeholder="calculée automatiquement"></div>
@@ -337,9 +222,9 @@
     </div>
 
     <div class="form-group"><label>Commentaires</label><textarea id="field-tache-comments" placeholder="Notes optionnelles"></textarea></div>
-    <div class="form-actions" id="modal-tache-actions">
+    <div class="form-actions">
       <button class="btn btn-danger" id="btn-delete-tache" style="display:none" onclick="deleteTache()">Supprimer</button>
-      <div style="display:flex;gap:8px;">
+      <div class="right">
         <button class="btn btn-cancel" onclick="closeModal('modal-tache')">Annuler</button>
         <button class="btn" id="btn-save-tache" onclick="saveTache()">Créer</button>
       </div>
@@ -353,26 +238,18 @@ const STATUTS = [
   {nom:"En cours",  cls:"st-encours",  couleur:"var(--st-encours)"},
   {nom:"Terminé",   cls:"st-termine",  couleur:"var(--st-termine)"},
 ];
-
-const JALON_COULEURS = {
-  "jalon majeur": "var(--jalon-majeur)",
-  "livrable":     "var(--jalon-livrable)",
-  "etape":        "var(--jalon-etape)",
-};
-function jalonCouleur(type){
-  return JALON_COULEURS[norm(type)] || "var(--jalon-livrable)";
-}
+let NON_ATTRIBUE_ID = null;
+let PERT_DATA = {};
 
 function norm(s){
   return String(s||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").trim();
 }
 function statutInfo(s){
-  return STATUTS.find(x=>norm(x.nom)===norm(s)) || {nom:s||"—",cls:"st-faire",couleur:"var(--st-faire)"};
+  return STATUTS.find(x=>norm(x.nom)===norm(s)) || STATUTS[0];
 }
 function cssVarValue(v){
   return getComputedStyle(document.documentElement).getPropertyValue(v.replace("var(","").replace(")","").trim())||v;
 }
-
 function parseDate(v){
   if(v===null||v===undefined||v==="") return null;
   if(typeof v==="number") return new Date(v*1000);
@@ -393,13 +270,10 @@ function resolveRef(table, id, col){
   const ligne=table.find(row=>row.id===rid);
   return ligne?ligne[col]:null;
 }
-function fmtJourComplet(v){
+function fmtJJMM(v){
   const d=parseDate(v);
   if(!d) return "";
-  const jours=['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi'];
-  const jj=String(d.getUTCDate()).padStart(2,"0");
-  const mm=String(d.getUTCMonth()+1).padStart(2,"0");
-  return `${jours[d.getUTCDay()]} ${jj}/${mm}`;
+  return String(d.getUTCDate()).padStart(2,"0")+"/"+String(d.getUTCMonth()+1).padStart(2,"0");
 }
 function toDateInput(v){
   const d=parseDate(v);
@@ -408,11 +282,69 @@ function toDateInput(v){
   const mm=String(d.getUTCMonth()+1).padStart(2,"0");
   return `${d.getUTCFullYear()}-${mm}-${jj}`;
 }
+// ✅ Jours fériés français (fixes + mobiles calculés automatiquement, valable toute année)
+function datePaques(annee){
+  // Algorithme de Meeus/Jones/Butcher
+  const a = annee % 19;
+  const b = Math.floor(annee / 100);
+  const c = annee % 100;
+  const d = Math.floor(b / 4);
+  const e = b % 4;
+  const f = Math.floor((b + 8) / 25);
+  const g = Math.floor((b - f + 1) / 3);
+  const h = (19 * a + b - d - g + 15) % 30;
+  const i = Math.floor(c / 4);
+  const k = c % 4;
+  const l = (32 + 2 * e + 2 * i - h - k) % 7;
+  const m = Math.floor((a + 11 * h + 22 * l) / 451);
+  const mois = Math.floor((h + l - 7 * m + 114) / 31);
+  const jour = ((h + l - 7 * m + 114) % 31) + 1;
+  return new Date(annee, mois - 1, jour);
+}
+
+function joursFeriesAnnee(annee){
+  const paques = datePaques(annee);
+  const addJours = (date, n) => { const d = new Date(date); d.setDate(d.getDate() + n); return d; };
+  const cles = (d) => `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+
+  const feries = [
+    new Date(annee, 0, 1),    // Jour de l'an
+    addJours(paques, 1),      // Lundi de Pâques
+    new Date(annee, 4, 1),    // Fête du travail
+    new Date(annee, 4, 8),    // Victoire 1945
+    addJours(paques, 39),     // Ascension
+    addJours(paques, 50),     // Lundi de Pentecôte
+    new Date(annee, 6, 14),   // Fête nationale
+    new Date(annee, 7, 15),   // Assomption
+    new Date(annee, 10, 1),   // Toussaint
+    new Date(annee, 10, 11),  // Armistice 1918
+    new Date(annee, 11, 25),  // Noël
+  ];
+  return new Set(feries.map(cles));
+}
+
+const CACHE_FERIES = {};
+function estFerie(date){
+  const annee = date.getFullYear();
+  if(!CACHE_FERIES[annee]) CACHE_FERIES[annee] = joursFeriesAnnee(annee);
+  const cle = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+  return CACHE_FERIES[annee].has(cle);
+}
+
+function joursOuvres(d1, d2){
+  let n=0;
+  const cur=new Date(d1);
+  while(cur<=d2){
+    const j=cur.getDay();
+    if(j!==0 && j!==6 && !estFerie(cur)) n++;
+    cur.setDate(cur.getDate()+1);
+  }
+  return n;
+}
 
 let DB={};
-let NON_ATTRIBUE_ID = null;
-let allData={};
-let PERT_DATA={};
+let draggedTaskId=null;
+let filtreCampagne="";
 
 grist.ready({requiredAccess:"full"});
 
@@ -624,15 +556,14 @@ async function init(){
   try{
     document.getElementById("status").textContent="Chargement...";
     DB.campagnes    = columnarToRows(await grist.docApi.fetchTable("Campagnes"));
-    DB.jalons       = columnarToRows(await grist.docApi.fetchTable("Jalons"));
     DB.taches       = columnarToRows(await grist.docApi.fetchTable("Taches"));
     DB.responsables = columnarToRows(await grist.docApi.fetchTable("Responsables"));
     DB.parametres   = columnarToRows(await grist.docApi.fetchTable("PARAMETRES"));
 
-    // ✅ S'assurer qu'un responsable réel "Non attribué" existe
+    // ✅ FIX: S'assurer qu'un responsable réel "Non attribué" existe (plus robuste que null)
     let nonAttribue = DB.responsables.find(r => norm(r.Nom) === norm("Non attribué"));
     if(!nonAttribue){
-      await grist.docApi.applyUserActions([
+      const result = await grist.docApi.applyUserActions([
         ["AddRecord","Responsables",null,{Nom:"Non attribué"}]
       ]);
       DB.responsables = columnarToRows(await grist.docApi.fetchTable("Responsables"));
@@ -651,84 +582,36 @@ async function init(){
 
 function fillSelect(id, values, placeholder){
   const sel=document.getElementById(id);
+  const prev=sel.value;
   sel.innerHTML=`<option value="">${placeholder}</option>`;
   values.forEach(v=>{
     const opt=document.createElement("option");
-    opt.value=v; opt.textContent=v;
+    opt.value=v.value; opt.textContent=v.label;
     sel.appendChild(opt);
   });
+  if(prev) sel.value=prev;
 }
 function uniq(arr){ return arr.filter((v,i,a)=>a.indexOf(v)===i); }
 
 function populateSelects(){
-  fillSelect("field-campagne-section", uniq(DB.parametres.filter(p=>p.Section).map(p=>p.Section)), "-- Sélectionner --");
-  fillSelect("field-campagne-type",    uniq(DB.parametres.filter(p=>p.Type_Campagne).map(p=>p.Type_Campagne)), "-- Sélectionner --");
-  fillSelect("field-tache-statut",     uniq(DB.parametres.filter(p=>p.Statut).map(p=>p.Statut)), "-- Sélectionner --");
-  fillSelect("field-tache-resp",       DB.responsables.map(r=>r.Nom), "-- Aucun --");
+  fillSelect("field-tache-campagne", DB.campagnes.map(c=>({value:c.id, label:c.Campagne})), "-- Sélectionner --");
+  fillSelect("field-tache-statut", STATUTS.map(s=>({value:s.nom, label:s.nom})), "-- Sélectionner --");
+  fillSelect("field-tache-resp", DB.responsables.map(r=>({value:r.Nom, label:r.Nom})), "-- Aucun --");
+
+  const filtreSel=document.getElementById("filtre-campagne");
+  const prev=filtreSel.value;
+  filtreSel.innerHTML='<option value="">Toutes</option>';
+  DB.campagnes.forEach(c=>{
+    const opt=document.createElement("option");
+    opt.value=c.id; opt.textContent=c.Campagne;
+    filtreSel.appendChild(opt);
+  });
+  filtreSel.value=prev;
 }
 
 function openModal(id){ document.getElementById(id).classList.add("active"); }
 function closeModal(id){ document.getElementById(id).classList.remove("active"); }
 
-// ✅ Jours fériés français (fixes + mobiles calculés automatiquement, valable toute année)
-function datePaques(annee){
-  // Algorithme de Meeus/Jones/Butcher
-  const a = annee % 19;
-  const b = Math.floor(annee / 100);
-  const c = annee % 100;
-  const d = Math.floor(b / 4);
-  const e = b % 4;
-  const f = Math.floor((b + 8) / 25);
-  const g = Math.floor((b - f + 1) / 3);
-  const h = (19 * a + b - d - g + 15) % 30;
-  const i = Math.floor(c / 4);
-  const k = c % 4;
-  const l = (32 + 2 * e + 2 * i - h - k) % 7;
-  const m = Math.floor((a + 11 * h + 22 * l) / 451);
-  const mois = Math.floor((h + l - 7 * m + 114) / 31);
-  const jour = ((h + l - 7 * m + 114) % 31) + 1;
-  return new Date(annee, mois - 1, jour);
-}
-
-function joursFeriesAnnee(annee){
-  const paques = datePaques(annee);
-  const addJours = (date, n) => { const d = new Date(date); d.setDate(d.getDate() + n); return d; };
-  const cles = (d) => `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
-
-  const feries = [
-    new Date(annee, 0, 1),    // Jour de l'an
-    addJours(paques, 1),      // Lundi de Pâques
-    new Date(annee, 4, 1),    // Fête du travail
-    new Date(annee, 4, 8),    // Victoire 1945
-    addJours(paques, 39),     // Ascension
-    addJours(paques, 50),     // Lundi de Pentecôte
-    new Date(annee, 6, 14),   // Fête nationale
-    new Date(annee, 7, 15),   // Assomption
-    new Date(annee, 10, 1),   // Toussaint
-    new Date(annee, 10, 11),  // Armistice 1918
-    new Date(annee, 11, 25),  // Noël
-  ];
-  return new Set(feries.map(cles));
-}
-
-const CACHE_FERIES = {};
-function estFerie(date){
-  const annee = date.getFullYear();
-  if(!CACHE_FERIES[annee]) CACHE_FERIES[annee] = joursFeriesAnnee(annee);
-  const cle = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
-  return CACHE_FERIES[annee].has(cle);
-}
-
-function joursOuvres(d1, d2){
-  let n=0;
-  const cur=new Date(d1);
-  while(cur<=d2){
-    const j=cur.getDay();
-    if(j!==0 && j!==6 && !estFerie(cur)) n++;
-    cur.setDate(cur.getDate()+1);
-  }
-  return n;
-}
 function majDuree(){
   const debut=document.getElementById("field-tache-debut").value;
   const fin=document.getElementById("field-tache-fin").value;
@@ -747,161 +630,22 @@ function findRespId(nom){
   return r?r.id:null;
 }
 
-/* ---------- CAMPAGNE : créer / éditer / supprimer ---------- */
-
-function openCampagneCreate(){
-  document.getElementById("field-campagne-id").value="";
-  document.getElementById("field-campagne-nom").value="";
-  document.getElementById("field-campagne-section").value="";
-  document.getElementById("field-campagne-type").value="";
-  document.getElementById("field-campagne-desc").value="";
-  document.getElementById("modal-campagne-title").textContent="Nouvelle Campagne";
-  document.getElementById("btn-save-campagne").textContent="Créer";
-  document.getElementById("btn-delete-campagne").style.display="none";
-  openModal("modal-campagne");
-}
-
-function openCampagneEdit(camp){
-  document.getElementById("field-campagne-id").value=camp.id;
-  document.getElementById("field-campagne-nom").value=camp.Campagne||"";
-  document.getElementById("field-campagne-section").value=resolveRef(DB.parametres, camp.Section, "Section")||"";
-  document.getElementById("field-campagne-type").value=resolveRef(DB.parametres, camp.Type_Campagne, "Type_Campagne")||camp.Type_Campagne||"";
-  document.getElementById("field-campagne-desc").value=camp.Description||"";
-  document.getElementById("modal-campagne-title").textContent="Modifier la campagne";
-  document.getElementById("btn-save-campagne").textContent="Enregistrer";
-  document.getElementById("btn-delete-campagne").style.display="inline-block";
-  openModal("modal-campagne");
-}
-
-async function saveCampagne(){
-  const id=document.getElementById("field-campagne-id").value;
-  const nom=document.getElementById("field-campagne-nom").value.trim();
-  const section=document.getElementById("field-campagne-section").value;
-  const type=document.getElementById("field-campagne-type").value;
-  const desc=document.getElementById("field-campagne-desc").value.trim();
-  if(!nom || !section || !type){ alert("Champs obligatoires"); return; }
-  try{
-    // ✅ CORRECTION: Convertir les strings en IDs pour les références
-    const sectionId = DB.parametres.find(p => p.Section === section)?.id;
-    const typeId = DB.parametres.find(p => p.Type_Campagne === type)?.id;
-    
-    if(!sectionId || !typeId){ alert("Section ou Type invalide"); return; }
-
-    if(id){
-      await grist.docApi.applyUserActions([
-        ["UpdateRecord","Campagnes",parseInt(id),{Campagne:nom, Section:sectionId, Type_Campagne:typeId, Description:desc}]
-      ]);
-    }else{
-      await grist.docApi.applyUserActions([
-        ["AddRecord","Campagnes",null,{Campagne:nom, Section:sectionId, Type_Campagne:typeId, Description:desc}]
-      ]);
-    }
-    closeModal("modal-campagne");
-    init();
-  }catch(e){ alert("Erreur: "+e.message); console.error(e); }
-}
-
-async function deleteCampagne(){
-  const id=parseInt(document.getElementById("field-campagne-id").value);
-  if(!id) return;
-  const tachesLiees=DB.taches.filter(t=>refId(t.Campagne)===id);
-  const jalonsLies=DB.jalons.filter(j=>refId(j.Campagne)===id);
-  const msg=`Cette campagne contient ${tachesLiees.length} tâche(s) et ${jalonsLies.length} jalon(s). Tout supprimer ?`;
-  if(!confirm(msg)) return;
-  try{
-    const actions=[];
-    tachesLiees.forEach(t=>actions.push(["RemoveRecord","Taches",t.id]));
-    jalonsLies.forEach(j=>actions.push(["RemoveRecord","Jalons",j.id]));
-    actions.push(["RemoveRecord","Campagnes",id]);
-    await grist.docApi.applyUserActions(actions);
-    closeModal("modal-campagne");
-    init();
-  }catch(e){ alert("Erreur: "+e.message); console.error(e); }
-}
-
-/* ---------- JALON : créer / éditer / supprimer ---------- */
-
-function openJalonCreate(campagneId){
-  document.getElementById("field-jalon-id").value="";
-  document.getElementById("field-jalon-campagne").value=campagneId;
-  document.getElementById("field-jalon-nom").value="";
-  document.getElementById("field-jalon-date").value="";
-  document.getElementById("field-jalon-type").value="";
-  document.getElementById("modal-jalon-title").textContent="Nouveau Jalon";
-  document.getElementById("btn-save-jalon").textContent="Créer";
-  document.getElementById("btn-delete-jalon").style.display="none";
-  openModal("modal-jalon");
-}
-
-function openJalonEdit(jalon){
-  document.getElementById("field-jalon-id").value=jalon.id;
-  document.getElementById("field-jalon-campagne").value=refId(jalon.Campagne);
-  document.getElementById("field-jalon-nom").value=jalon.Nom||"";
-  document.getElementById("field-jalon-date").value=toDateInput(jalon.Date);
-  document.getElementById("field-jalon-type").value=jalon.Type||"";
-  document.getElementById("modal-jalon-title").textContent="Modifier le jalon";
-  document.getElementById("btn-save-jalon").textContent="Enregistrer";
-  document.getElementById("btn-delete-jalon").style.display="inline-block";
-  openModal("modal-jalon");
-}
-
-async function saveJalon(){
-  const id=document.getElementById("field-jalon-id").value;
-  const campagne_id=parseInt(document.getElementById("field-jalon-campagne").value);
-  const nom=document.getElementById("field-jalon-nom").value.trim();
-  const date=document.getElementById("field-jalon-date").value;
-  const type=document.getElementById("field-jalon-type").value;
-  if(!nom || !date){ alert("Champs obligatoires"); return; }
-  try{
-    const values={
-      Campagne:campagne_id,
-      Nom:nom,
-      Date:Math.floor(new Date(date).getTime()/1000),
-      Type:type
-    };
-    if(id){
-      await grist.docApi.applyUserActions([
-        ["UpdateRecord","Jalons",parseInt(id),values]
-      ]);
-    }else{
-      await grist.docApi.applyUserActions([
-        ["AddRecord","Jalons",null,values]
-      ]);
-    }
-    closeModal("modal-jalon");
-    init();
-  }catch(e){ alert("Erreur: "+e.message); console.error(e); }
-}
-
-async function deleteJalon(){
-  const id=parseInt(document.getElementById("field-jalon-id").value);
-  if(!id) return;
-  if(!confirm("Supprimer ce jalon ?")) return;
-  try{
-    await grist.docApi.applyUserActions([["RemoveRecord","Jalons",id]]);
-    closeModal("modal-jalon");
-    init();
-  }catch(e){ alert("Erreur: "+e.message); console.error(e); }
-}
-
-/* ---------- TACHE : créer / éditer / supprimer ---------- */
-
-function openTacheCreate(campagneId){
+function openTacheCreate(statutNom, respNom){
   document.getElementById("field-tache-id").value="";
-  document.getElementById("field-tache-campagne").value=campagneId;
   document.getElementById("field-tache-nom").value="";
+  document.getElementById("field-tache-campagne").value="";
   document.getElementById("field-tache-debut").value="";
   document.getElementById("field-tache-fin").value="";
   document.getElementById("field-tache-duree").value="";
-  document.getElementById("field-tache-resp").value="";
-  document.getElementById("field-tache-statut").value="";
+  document.getElementById("field-tache-resp").value=respNom||"";
+  document.getElementById("field-tache-statut").value=statutNom||"À faire";
   document.getElementById("field-tache-comments").value="";
   document.getElementById("modal-tache-title").textContent="Nouvelle Tâche";
   document.getElementById("btn-save-tache").textContent="Créer";
   document.getElementById("btn-delete-tache").style.display="none";
   document.getElementById("info-preds").style.display="none";
   document.getElementById("info-blocked").style.display="none";
-  populatePredecessorsSelect(campagneId, []);
+  populatePredecessorsSelect(null, []);
   openModal("modal-tache");
 }
 
@@ -926,8 +670,8 @@ function openTacheEdit(t){
   }
 
   document.getElementById("field-tache-id").value=t.id;
-  document.getElementById("field-tache-campagne").value=refId(t.Campagne);
   document.getElementById("field-tache-nom").value=t.Tache||"";
+  document.getElementById("field-tache-campagne").value=refId(t.Campagne)||"";
   document.getElementById("field-tache-debut").value=toDateInput(t.Date_debut);
   document.getElementById("field-tache-fin").value=finValue?toDateInput(finValue):"";
   document.getElementById("field-tache-duree").value=duree;
@@ -966,7 +710,7 @@ function populatePredecessorsSelect(campagneId, selectedPreds){
   container.innerHTML = "";
 
   if(!campagneId){
-    container.innerHTML = "<div style='padding:8px;color:#999;font-size:11px;'>Aucune campagne sélectionnée</div>";
+    container.innerHTML = "<div style='padding:8px;color:#999;font-size:11px;'>Sélectionner une campagne d'abord</div>";
     return;
   }
 
@@ -994,14 +738,14 @@ function populatePredecessorsSelect(campagneId, selectedPreds){
 
 async function saveTache(){
   const id=document.getElementById("field-tache-id").value;
-  const campagne_id=parseInt(document.getElementById("field-tache-campagne").value);
   const nom=document.getElementById("field-tache-nom").value.trim();
+  const campagne_id=parseInt(document.getElementById("field-tache-campagne").value);
   const debut=document.getElementById("field-tache-debut").value;
   const fin=document.getElementById("field-tache-fin").value;
   const resp=document.getElementById("field-tache-resp").value;
   const statut=document.getElementById("field-tache-statut").value;
   const comments=document.getElementById("field-tache-comments").value.trim();
-  if(!nom || !debut || !fin){ alert("Champs obligatoires"); return; }
+  if(!nom || !campagne_id || !debut || !fin){ alert("Champs obligatoires : Tâche, Campagne, dates"); return; }
 
   const duree=joursOuvres(new Date(debut), new Date(fin));
 
@@ -1035,15 +779,15 @@ async function saveTache(){
     const predecessorTasks = ['L', ...predecessorIds];
 
     const values={
-      Section:sectionId,
-      Campagne:campagne_id,
-      Tache:nom,
-      Date_debut:Math.floor(new Date(debut).getTime()/1000),
+      Section: sectionId,
+      Campagne: campagne_id,
+      Tache: nom,
+      Date_debut: Math.floor(new Date(debut).getTime()/1000),
       Date_fin: Math.floor(new Date(fin).getTime()/1000),
-      Duree_jours:duree,
-      Statut:statutId,
-      Responsable:respId,
-      Commentaires:comments,
+      Duree_jours: duree,
+      Statut: statutId,
+      Responsable: respId,
+      Commentaires: comments,
       Predecesseurs: predecessorTasks
     };
 
@@ -1072,272 +816,175 @@ async function deleteTache(){
   }catch(e){ alert("Erreur: "+e.message); console.error(e); }
 }
 
-/* ---------- Construction du Gantt ---------- */
+async function deplacerTache(taskId, statutNom, respId){
+  try{
+    const statutId=findParamId("Statut", statutNom);
+    await grist.docApi.applyUserActions([
+      ["UpdateRecord","Taches",taskId,{Statut:statutId, Responsable:respId}]
+    ]);
+    init();
+  }catch(e){ alert("Erreur: "+e.message); console.error(e); }
+}
+
+/* ---------- Construction du Kanban matriciel ---------- */
 
 function construire(){
-  // ✅ FIX: Inclure TACHES ET JALONS pour min/max des dates
-  const allDates = [];
-  
-  // Dates des tâches (début et fin)
-  DB.taches.forEach(t => {
-    const dIdx = dayIndex(t.Date_debut);
-    if(dIdx !== null) {
-      allDates.push(dIdx);
-      // ✅ FIX: fin calendaire réelle (Date_fin) plutôt que Duree_jours (jours ouvrés),
-      // qui sous-estime l'étalement quand la tâche traverse un week-end.
-      const finIdx = dayIndex(t.Date_fin);
-      allDates.push(finIdx !== null ? finIdx : dIdx + (t.Duree_jours || 1) - 1);
-    }
+  filtreCampagne = document.getElementById("filtre-campagne").value;
+
+  // ✅ FIX: "Non attribué" est maintenant un vrai responsable dans DB.responsables
+  // On le place en dernier dans la liste pour l'affichage
+  const lignes = [...DB.responsables].sort((a,b)=>{
+    const aNA = norm(a.Nom)===norm("Non attribué");
+    const bNA = norm(b.Nom)===norm("Non attribué");
+    if(aNA && !bNA) return 1;
+    if(!aNA && bNA) return -1;
+    return 0;
   });
-  
-  // Dates des jalons
-  DB.jalons.forEach(j => {
-    const dIdx = dayIndex(j.Date);
-    if(dIdx !== null) {
-      allDates.push(dIdx);
-    }
+
+  const matrix = document.getElementById("matrix");
+  matrix.innerHTML = "";
+  matrix.style.setProperty("--n-cols", STATUTS.length);
+
+  // Coin haut-gauche
+  matrix.appendChild(el("div", "corner", "Responsable"));
+
+  // En-têtes de colonnes (statuts)
+  STATUTS.forEach(s=>{
+    const header = el("div", "col-header");
+    header.style.borderTop = `3px solid ${cssVarValue(s.couleur)}`;
+    const nomEl = el("span", "nom", s.nom);
+    header.appendChild(nomEl);
+    matrix.appendChild(header);
   });
-  
-  let minI, maxI;
-  if(allDates.length > 0){
-    minI = Math.min(...allDates);
-    maxI = Math.max(...allDates);
-  } else {
-    const today = Math.floor(Date.now()/86400000);
-    minI = today - 14;
-    maxI = today + 21;
-  }
 
-  const totalJours=maxI-minI+1;
-  const tlW=totalJours*16;
-  const todayI=Math.floor(Date.now()/86400000);
-  const todayOffset=todayI-minI;
-  allData={minI, maxI, todayI, todayOffset, totalJours, tlW};
+  let tachesVisibles = 0;
 
-  const labelsDiv=document.getElementById("labels");
-  const grid=document.createElement("div");
-  grid.className="grid";
-  grid.style.setProperty("--tl-w", tlW+"px");
-  grid.style.setProperty("--today", todayOffset);
-  labelsDiv.innerHTML="";
+  lignes.forEach(resp=>{
+    const isNonAssigne = norm(resp.Nom) === norm("Non attribué");
 
-  const head=el("div","head-track");
-  const headInner=el("div","head-inner");
-  for(let i=minI;i<=maxI;i+=7){
-    const wn=getWeekNumber(new Date(i*86400000));
-    const label=el("div","week-label");
-    label.style.left=((i-minI)*16)+"px";
-    const start=fmtJJMM(i), end=fmtJJMM(i+4);
-    label.innerHTML=`<div class="week-num">S${wn}</div><div class="week-date">${start}<br>${end}</div>`;
-    label.setAttribute("data-tooltip",`du Lundi ${start} au Vendredi ${end}\n(5 j. ouvrés)`);
-    headInner.appendChild(label);
-  }
-  head.appendChild(headInner);
-  grid.appendChild(head);
-
-  DB.campagnes.forEach(camp=>{
-    const campGroup=el("div","camp-group");
-
-    const labCamp=el("div","label campagne");
-    const nomSpan=el("span","nom-campagne",camp.Campagne);
-    nomSpan.onclick=(e)=>{ e.stopPropagation(); openCampagneEdit(camp); };
-    labCamp.appendChild(nomSpan);
-    const actions=el("div","label-actions");
-    const btnJalon=el("button","btn-tiny add"); btnJalon.textContent="🚩";
-    btnJalon.onclick=()=>{ openJalonCreate(camp.id); };
-    const btnTache=el("button","btn-tiny add"); btnTache.textContent="+";
-    btnTache.onclick=()=>{ openTacheCreate(camp.id); };
-    actions.appendChild(btnJalon); actions.appendChild(btnTache);
-    labCamp.appendChild(actions);
-    labelsDiv.appendChild(labCamp);
-
-    const trackCamp=el("div","track campagne");
-    campGroup.appendChild(trackCamp);
-
-    const tachesCamp = DB.taches.filter(t=>refId(t.Campagne)===camp.id);
-    const taskPositions = {};
-
-    tachesCamp.forEach((t, idx)=>{
-      const statutTexte=resolveRef(DB.parametres, t.Statut, "Statut");
-      const respTexte=resolveRef(DB.responsables, t.Responsable, "Nom");
-
-      const labTask=el("div","label tache");
-      labTask.appendChild(el("span","nom",t.Tache));
-      if(respTexte) labTask.appendChild(el("span","resp",respTexte));
-      labelsDiv.appendChild(labTask);
-
-      const track=el("div","track tache");
-      const dIdx=dayIndex(t.Date_debut);
-      if(dIdx!==null){
-        if(dIdx<=maxI){
-          const info=statutInfo(statutTexte);
-          const barre=el("div","barre "+info.cls);
-          if(t.Est_critique === true) barre.classList.add("critique");
-          barre.style.left=((dIdx-minI)*16)+"px";
-
-          // ✅ FIX: largeur basée sur l'écart calendaire réel (Date_fin), pas sur
-          // Duree_jours (jours ouvrés) qui sous-estime la barre si un week-end est traversé.
-          const finIdx = dayIndex(t.Date_fin);
-          const duree = t.Duree_jours || 1;
-          const finIdxReel = finIdx !== null ? finIdx : (dIdx + duree - 1);
-          const etalementJours = finIdxReel - dIdx + 1;
-
-          barre.style.width=(Math.max(16,etalementJours*16))+"px";
-          barre.style.background=cssVarValue(info.couleur);
-          barre.textContent=t.Tache;
-          if(t.Commentaires) barre.title=t.Commentaires;
-          barre.onclick=(e)=>{ e.stopPropagation(); openTacheEdit(t); };
-          track.appendChild(barre);
-
-          // ✅ Étiquettes de date, centrées sur la cellule-jour de début et de fin
-          const debutLabel = el("div","date-label", fmtJJMM(dIdx));
-          debutLabel.style.left = ((dIdx-minI)*16 + 8) + "px";
-          track.appendChild(debutLabel);
-
-          if(finIdxReel !== dIdx){
-            const finLabel = el("div","date-label", fmtJJMM(finIdxReel));
-            finLabel.style.left = ((finIdxReel-minI)*16 + 8) + "px";
-            track.appendChild(finLabel);
-          }
-
-          taskPositions[t.id] = {
-            barreLeft: (dIdx-minI)*16,
-            barreWidth: Math.max(16, etalementJours*16),
-            // ✅ Centres des cellules-jour de début/fin, pour ancrer les flèches proprement
-            centreDebut: (dIdx-minI)*16 + 8,
-            centreFin: (finIdxReel-minI)*16 + 8,
-            rowIndex: idx
-          };
-        }
-      }else{
-        const pill=el("div","pill-plan","à planifier");
-        pill.style.cursor="pointer";
-        pill.onclick=(e)=>{ e.stopPropagation(); openTacheEdit(t); };
-        track.appendChild(pill);
-      }
-      campGroup.appendChild(track);
+    // Tâches de cette ligne, filtrées par campagne si besoin
+    // ✅ FIX: Comparaison directe par ID réel (plus de cas null à gérer)
+    const tachesLigne = DB.taches.filter(t=>{
+      const rid = refId(t.Responsable);
+      const matchResp = (rid === resp.id) || (isNonAssigne && (rid===null || rid===undefined || rid===""));
+      const matchCamp = !filtreCampagne || refId(t.Campagne)===parseInt(filtreCampagne);
+      return matchResp && matchCamp;
     });
 
-    // ✅ Flèches de dépendances (uniquement entre tâches de cette campagne)
-    const CAMP_H = 46, ROW_H = 44;
-    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-    svg.setAttribute("class", "dependencies-svg");
-    svg.setAttribute("width", tlW);
-    svg.setAttribute("height", CAMP_H + tachesCamp.length * ROW_H);
+    // Label de ligne
+    const label = el("div", "row-label"+(isNonAssigne?" non-assigne":""));
+    label.appendChild(el("span", "nom", resp.Nom));
+    label.appendChild(el("span", "count", `${tachesLigne.length} tâche${tachesLigne.length>1?"s":""}`));
+    matrix.appendChild(label);
 
-    tachesCamp.forEach(t=>{
-      const taskPos = taskPositions[t.id];
-      if(!taskPos) return;
-      getPredecessorTasks(t).forEach(pred=>{
-        const predId = refId(pred.id||pred);
-        const predPos = taskPositions[predId];
-        if(!predPos) return;
+    // Une cellule par statut
+    STATUTS.forEach(s=>{
+      const cell = el("div", "cell");
+      cell.dataset.statut = s.nom;
+      cell.dataset.respId = resp.id;
 
-        // ✅ Ancrage centré sur le jour (dernier jour du prédécesseur → premier jour de la tâche),
-        // plutôt que sur les bords de barre, pour éviter le décalage visuel en cas de chevauchement.
-        const x1 = predPos.centreFin;
-        const y1 = CAMP_H + predPos.rowIndex * ROW_H + ROW_H/2;
-        const x2 = taskPos.centreDebut;
-        const y2 = CAMP_H + taskPos.rowIndex * ROW_H + ROW_H/2;
-
-        const isCritical = t.Est_critique === true;
-        const strokeColor = isCritical ? "#CE0500" : "#BBBBBB";
-        const midX = (x1 + x2) / 2;
-
-        const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-        path.setAttribute("d", `M ${x1} ${y1} C ${midX} ${y1}, ${midX} ${y2}, ${x2} ${y2}`);
-        path.setAttribute("stroke", strokeColor);
-        path.setAttribute("stroke-width", "1.5");
-        path.setAttribute("fill", "none");
-        svg.appendChild(path);
-
-        const arrowSize = 4;
-        const angle = Math.atan2(y2 - y1, x2 - x1);
-        const arrowX = x2 - arrowSize*2*Math.cos(angle);
-        const arrowY = y2 - arrowSize*2*Math.sin(angle);
-        const polygon = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
-        polygon.setAttribute("points", `${x2},${y2} ${arrowX - arrowSize*Math.sin(angle)},${arrowY + arrowSize*Math.cos(angle)} ${arrowX + arrowSize*Math.sin(angle)},${arrowY - arrowSize*Math.cos(angle)}`);
-        polygon.setAttribute("fill", strokeColor);
-        svg.appendChild(polygon);
+      const tachesCell = tachesLigne.filter(t=>{
+        const statutTexte = resolveRef(DB.parametres, t.Statut, "Statut");
+        return norm(statutInfo(statutTexte).nom) === norm(s.nom);
       });
+
+      tachesCell.forEach(t=>{
+        tachesVisibles++;
+        const camp = DB.campagnes.find(c=>c.id===refId(t.Campagne));
+        const card = el("div", "card "+s.cls);
+        card.draggable = true;
+
+        const titre = el("div", "titre", t.Tache);
+        card.appendChild(titre);
+
+        if(camp) card.appendChild(el("span", "badge-camp", camp.Campagne));
+
+        // ✅ Dépendances : bloqué par (rouge) puis dépend de (jaune)
+        const preds = getPredecessorTasks(t);
+        const blocked = getPredecessorsBlocked(t);
+
+        if(blocked.length > 0){
+          const noms = blocked.map(p => p.Tache || p).join(", ");
+          const ligne = el("div", "dep-line");
+          ligne.appendChild(el("span","puce","🔴"));
+          ligne.appendChild(document.createTextNode(`Bloqué par : ${noms}`));
+          card.appendChild(ligne);
+        }
+        if(preds.length > 0){
+          const noms = preds.map(p => p.Tache || p).join(", ");
+          const ligne = el("div", "dep-line");
+          ligne.appendChild(el("span","puce","🟡"));
+          ligne.appendChild(document.createTextNode(`Dépend de : ${noms}`));
+          card.appendChild(ligne);
+        }
+
+        // ✅ Commentaire (avant la date), tronqué à 2 lignes
+        if(t.Commentaires){
+          card.appendChild(el("div", "commentaire", t.Commentaires));
+        }
+
+        const dIdx = dayIndex(t.Date_debut);
+        if(dIdx!==null){
+          const duree = t.Duree_jours||1;
+          const dates = el("div", "dates", `${fmtJJMM(t.Date_debut)} · ${duree} j`);
+          card.appendChild(dates);
+        }
+
+        card.onclick = () => openTacheEdit(t);
+
+        card.addEventListener("dragstart", (e)=>{
+          draggedTaskId = t.id;
+          card.classList.add("dragging");
+          e.dataTransfer.effectAllowed = "move";
+        });
+        card.addEventListener("dragend", ()=>{
+          card.classList.remove("dragging");
+          draggedTaskId = null;
+        });
+
+        cell.appendChild(card);
+      });
+
+      const btnAdd = el("button", "btn-add-cell", "+ Ajouter");
+      btnAdd.onclick = () => openTacheCreate(s.nom, isNonAssigne ? "" : resp.Nom);
+      cell.appendChild(btnAdd);
+
+      cell.addEventListener("dragover", (e)=>{
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+        cell.classList.add("drag-over");
+      });
+      cell.addEventListener("dragleave", ()=>{
+        cell.classList.remove("drag-over");
+      });
+      cell.addEventListener("drop", (e)=>{
+        e.preventDefault();
+        cell.classList.remove("drag-over");
+        if(draggedTaskId===null) return;
+        const respId = parseInt(cell.dataset.respId);
+        deplacerTache(draggedTaskId, cell.dataset.statut, respId);
+      });
+
+      matrix.appendChild(cell);
     });
-    campGroup.appendChild(svg);
-
-    DB.jalons.filter(j=>refId(j.Campagne)===camp.id).forEach(jalon=>{
-      const dIdx=dayIndex(jalon.Date);
-      if(dIdx!==null && dIdx>=minI && dIdx<=maxI){
-        const leftPx=((dIdx-minI)*16)+"px";
-        const couleur=cssVarValue(jalonCouleur(jalon.Type));
-
-        const jalonLine=el("div","jalon-line");
-        jalonLine.style.left=leftPx;
-        jalonLine.style.background=couleur;
-        campGroup.appendChild(jalonLine);
-
-        const nameEl=el("div","jalon-name",jalon.Nom);
-        nameEl.style.left=leftPx;
-        nameEl.style.color=couleur;
-        nameEl.onclick=(e)=>{ e.stopPropagation(); openJalonEdit(jalon); };
-        campGroup.appendChild(nameEl);
-
-        const dateTxt=fmtJourComplet(jalon.Date);
-        const typeTxt=jalon.Type?` (${jalon.Type})`:"";
-
-        const markerWrap=el("div","jalon-marker-wrap");
-        markerWrap.style.left=leftPx;
-        markerWrap.setAttribute("data-tooltip", `${jalon.Nom}${typeTxt}\n${dateTxt}`);
-        markerWrap.onclick=(e)=>{ e.stopPropagation(); openJalonEdit(jalon); };
-        const diamond=el("div","jalon-marker-diamond");
-        diamond.style.background=couleur;
-        markerWrap.appendChild(diamond);
-        campGroup.appendChild(markerWrap);
-      }
-    });
-
-    grid.appendChild(campGroup);
   });
 
-  document.getElementById("kanban").innerHTML="";
-  document.getElementById("kanban").appendChild(grid);
-  document.getElementById("meta").textContent=`${DB.campagnes.length} campagne(s) · ${DB.taches.length} tâche(s)`;
+  document.getElementById("meta").textContent = `${tachesVisibles} tâche(s) affichée(s) · ${DB.responsables.length} responsable(s)`;
   rendreLegende();
-  setTimeout(()=>document.getElementById("scroll").scrollLeft=Math.max(0,allData.todayOffset*16-300), 300);
 }
 
-function getWeekNumber(d){
-  const date=new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate()));
-  const dayNum=date.getUTCDay()||7;
-  date.setUTCDate(date.getUTCDate()+4-dayNum);
-  const yearStart=new Date(Date.UTC(date.getUTCFullYear(),0,1));
-  return Math.ceil((((date-yearStart)/86400000)+1)/7);
-}
-function fmtJJMM(idx){
-  const d=new Date(idx*86400000);
-  return String(d.getUTCDate()).padStart(2,"0")+"/"+String(d.getUTCMonth()+1).padStart(2,"0");
-}
 function rendreLegende(){
   const l=document.getElementById("legende");
   l.innerHTML="";
   STATUTS.forEach(s=>{
     const item=el("div","item");
-    const puce=el("span","puce"); puce.style.background=s.couleur;
+    const puce=el("span","puce"); puce.style.background=cssVarValue(s.couleur);
     item.appendChild(puce);
     item.appendChild(document.createTextNode(s.nom));
     l.appendChild(item);
   });
-  [["Jalon majeur","var(--jalon-majeur)"],["Livrable","var(--jalon-livrable)"],["Étape","var(--jalon-etape)"]].forEach(([label,couleur])=>{
-    const item=el("div","item");
-    const puce=el("span","puce jalon-puce"); puce.style.background=couleur;
-    item.appendChild(puce);
-    item.appendChild(document.createTextNode(label));
-    l.appendChild(item);
-  });
-  const itemCrit=el("div","item");
-  const puceCrit=el("span","puce critique-puce");
-  itemCrit.appendChild(puceCrit);
-  itemCrit.appendChild(document.createTextNode("Tâche critique"));
-  l.appendChild(itemCrit);
 }
+
 function el(tag,cls,txt){
   const e=document.createElement(cls?"div":tag);
   if(cls)e.className=cls;
@@ -1345,9 +992,13 @@ function el(tag,cls,txt){
   return e;
 }
 
-document.getElementById("btn-add-campagne").onclick=()=>openCampagneCreate();
+document.getElementById("btn-add-tache").onclick = () => openTacheCreate();
+document.getElementById("filtre-campagne").addEventListener("change", construire);
 document.getElementById("field-tache-debut").addEventListener("change", majDuree);
 document.getElementById("field-tache-fin").addEventListener("change", majDuree);
+document.getElementById("field-tache-campagne").addEventListener("change", (e)=>{
+  populatePredecessorsSelect(parseInt(e.target.value)||null, []);
+});
 grist.onRecords(()=>init());
 init();
 </script>
