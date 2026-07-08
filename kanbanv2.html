@@ -204,7 +204,7 @@ const STATUTS = [
   {nom:"En cours",  cls:"st-encours",  couleur:"var(--st-encours)"},
   {nom:"Terminé",   cls:"st-termine",  couleur:"var(--st-termine)"},
 ];
-const NON_ASSIGNE = {id:null, Nom:"Non assigné"};
+let NON_ATTRIBUE_ID = null;
 
 function norm(s){
   return String(s||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").trim();
@@ -287,6 +287,18 @@ async function init(){
     DB.taches       = columnarToRows(await grist.docApi.fetchTable("Taches"));
     DB.responsables = columnarToRows(await grist.docApi.fetchTable("Responsables"));
     DB.parametres   = columnarToRows(await grist.docApi.fetchTable("PARAMETRES"));
+
+    // ✅ FIX: S'assurer qu'un responsable réel "Non attribué" existe (plus robuste que null)
+    let nonAttribue = DB.responsables.find(r => norm(r.Nom) === norm("Non attribué"));
+    if(!nonAttribue){
+      const result = await grist.docApi.applyUserActions([
+        ["AddRecord","Responsables",null,{Nom:"Non attribué"}]
+      ]);
+      DB.responsables = columnarToRows(await grist.docApi.fetchTable("Responsables"));
+      nonAttribue = DB.responsables.find(r => norm(r.Nom) === norm("Non attribué"));
+    }
+    NON_ATTRIBUE_ID = nonAttribue ? nonAttribue.id : null;
+
     populateSelects();
     construire();
     document.getElementById("status").textContent="✓ Données chargées";
@@ -460,7 +472,15 @@ async function deplacerTache(taskId, statutNom, respId){
 function construire(){
   filtreCampagne = document.getElementById("filtre-campagne").value;
 
-  const lignes = [...DB.responsables, NON_ASSIGNE];
+  // ✅ FIX: "Non attribué" est maintenant un vrai responsable dans DB.responsables
+  // On le place en dernier dans la liste pour l'affichage
+  const lignes = [...DB.responsables].sort((a,b)=>{
+    const aNA = norm(a.Nom)===norm("Non attribué");
+    const bNA = norm(b.Nom)===norm("Non attribué");
+    if(aNA && !bNA) return 1;
+    if(!aNA && bNA) return -1;
+    return 0;
+  });
 
   const matrix = document.getElementById("matrix");
   matrix.innerHTML = "";
@@ -481,14 +501,13 @@ function construire(){
   let tachesVisibles = 0;
 
   lignes.forEach(resp=>{
-    const isNonAssigne = resp.id === null;
+    const isNonAssigne = norm(resp.Nom) === norm("Non attribué");
 
     // Tâches de cette ligne, filtrées par campagne si besoin
+    // ✅ FIX: Comparaison directe par ID réel (plus de cas null à gérer)
     const tachesLigne = DB.taches.filter(t=>{
       const rid = refId(t.Responsable);
-      // ✅ FIX: Gérer tous les cas où Responsable est absent/null/undefined
-      const isNull = (rid === null || rid === undefined || rid === "");
-      const matchResp = isNonAssigne ? isNull : (rid === resp.id);
+      const matchResp = (rid === resp.id) || (isNonAssigne && (rid===null || rid===undefined || rid===""));
       const matchCamp = !filtreCampagne || refId(t.Campagne)===parseInt(filtreCampagne);
       return matchResp && matchCamp;
     });
@@ -503,7 +522,7 @@ function construire(){
     STATUTS.forEach(s=>{
       const cell = el("div", "cell");
       cell.dataset.statut = s.nom;
-      cell.dataset.respId = resp.id===null ? "" : resp.id;
+      cell.dataset.respId = resp.id;
 
       const tachesCell = tachesLigne.filter(t=>{
         const statutTexte = resolveRef(DB.parametres, t.Statut, "Statut");
@@ -564,7 +583,7 @@ function construire(){
         e.preventDefault();
         cell.classList.remove("drag-over");
         if(draggedTaskId===null) return;
-        const respId = cell.dataset.respId === "" ? null : parseInt(cell.dataset.respId);
+        const respId = parseInt(cell.dataset.respId);
         deplacerTache(draggedTaskId, cell.dataset.statut, respId);
       });
 
