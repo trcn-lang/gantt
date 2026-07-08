@@ -585,7 +585,7 @@ async function calculatePERT(){
     const d = PERT_DATA[t.id];
     if(!d) return;
     actions.push(["UpdateRecord","Taches",t.id,{
-      Date_au_plus_tôt: d.earlyStart ? Math.floor(d.earlyStart.getTime()/1000) : null,
+      Date_au_plus_tot: d.earlyStart ? Math.floor(d.earlyStart.getTime()/1000) : null,
       Date_au_plus_tard: d.lateEnd ? Math.floor(d.lateEnd.getTime()/1000) : null,
       Marge_totale: d.slack !== undefined ? d.slack : null,
       Est_critique: !!d.isCritical,
