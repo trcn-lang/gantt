@@ -755,7 +755,8 @@ async function saveTache(){
     if(!camp){ alert("Campagne non trouvée"); return; }
 
     const statutId=findParamId("Statut", statut);
-    const respId=findRespId(resp);
+    // ✅ Par défaut "Non attribué" si aucun responsable n'est choisi
+    const respId=findRespId(resp) || NON_ATTRIBUE_ID;
 
     // ✅ CORRECTION: Chercher le Section ID correctement
     const sectionId = refId(camp.Section);
