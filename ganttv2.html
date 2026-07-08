@@ -490,13 +490,19 @@ async function saveCampagne(){
   const desc=document.getElementById("field-campagne-desc").value.trim();
   if(!nom || !section || !type){ alert("Champs obligatoires"); return; }
   try{
+    // ✅ CORRECTION: Convertir les strings en IDs pour les références
+    const sectionId = DB.parametres.find(p => p.Section === section)?.id;
+    const typeId = DB.parametres.find(p => p.Type_Campagne === type)?.id;
+    
+    if(!sectionId || !typeId){ alert("Section ou Type invalide"); return; }
+
     if(id){
       await grist.docApi.applyUserActions([
-        ["UpdateRecord","Campagnes",parseInt(id),{Campagne:nom, Section:section, Type_Campagne:type, Description:desc}]
+        ["UpdateRecord","Campagnes",parseInt(id),{Campagne:nom, Section:sectionId, Type_Campagne:typeId, Description:desc}]
       ]);
     }else{
       await grist.docApi.applyUserActions([
-        ["AddRecord","Campagnes",null,{Campagne:nom, Section:section, Type_Campagne:type, Description:desc}]
+        ["AddRecord","Campagnes",null,{Campagne:nom, Section:sectionId, Type_Campagne:typeId, Description:desc}]
       ]);
     }
     closeModal("modal-campagne");
@@ -653,8 +659,12 @@ async function saveTache(){
     const statutId=findParamId("Statut", statut);
     const respId=findRespId(resp);
 
+    // ✅ CORRECTION: Chercher le Section ID correctement
+    const sectionId = refId(camp.Section);
+    if(!sectionId){ alert("Section invalide"); return; }
+
     const values={
-      Section:refId(camp.Section),
+      Section:sectionId,
       Campagne:campagne_id,
       Tache:nom,
       Date_debut:Math.floor(new Date(debut).getTime()/1000),
