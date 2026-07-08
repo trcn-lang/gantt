@@ -283,12 +283,61 @@ function toDateInput(v){
   const mm=String(d.getUTCMonth()+1).padStart(2,"0");
   return `${d.getUTCFullYear()}-${mm}-${jj}`;
 }
+// ✅ Jours fériés français (fixes + mobiles calculés automatiquement, valable toute année)
+function datePaques(annee){
+  // Algorithme de Meeus/Jones/Butcher
+  const a = annee % 19;
+  const b = Math.floor(annee / 100);
+  const c = annee % 100;
+  const d = Math.floor(b / 4);
+  const e = b % 4;
+  const f = Math.floor((b + 8) / 25);
+  const g = Math.floor((b - f + 1) / 3);
+  const h = (19 * a + b - d - g + 15) % 30;
+  const i = Math.floor(c / 4);
+  const k = c % 4;
+  const l = (32 + 2 * e + 2 * i - h - k) % 7;
+  const m = Math.floor((a + 11 * h + 22 * l) / 451);
+  const mois = Math.floor((h + l - 7 * m + 114) / 31);
+  const jour = ((h + l - 7 * m + 114) % 31) + 1;
+  return new Date(annee, mois - 1, jour);
+}
+
+function joursFeriesAnnee(annee){
+  const paques = datePaques(annee);
+  const addJours = (date, n) => { const d = new Date(date); d.setDate(d.getDate() + n); return d; };
+  const cles = (d) => `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+
+  const feries = [
+    new Date(annee, 0, 1),    // Jour de l'an
+    addJours(paques, 1),      // Lundi de Pâques
+    new Date(annee, 4, 1),    // Fête du travail
+    new Date(annee, 4, 8),    // Victoire 1945
+    addJours(paques, 39),     // Ascension
+    addJours(paques, 50),     // Lundi de Pentecôte
+    new Date(annee, 6, 14),   // Fête nationale
+    new Date(annee, 7, 15),   // Assomption
+    new Date(annee, 10, 1),   // Toussaint
+    new Date(annee, 10, 11),  // Armistice 1918
+    new Date(annee, 11, 25),  // Noël
+  ];
+  return new Set(feries.map(cles));
+}
+
+const CACHE_FERIES = {};
+function estFerie(date){
+  const annee = date.getFullYear();
+  if(!CACHE_FERIES[annee]) CACHE_FERIES[annee] = joursFeriesAnnee(annee);
+  const cle = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+  return CACHE_FERIES[annee].has(cle);
+}
+
 function joursOuvres(d1, d2){
   let n=0;
   const cur=new Date(d1);
   while(cur<=d2){
     const j=cur.getDay();
-    if(j!==0 && j!==6) n++;
+    if(j!==0 && j!==6 && !estFerie(cur)) n++;
     cur.setDate(cur.getDate()+1);
   }
   return n;
