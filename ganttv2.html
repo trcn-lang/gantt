@@ -14,9 +14,6 @@
     --bordure:#DDDDDD;
     --fond:#FFFFFF;
     --fond-alt:#F6F6F6;
-    --st-faire:#929292;
-    --st-encours:#0063CB;
-    --st-termine:#18753C;
     --jalon-majeur:#B1332A;
     --jalon-livrable:#B45300;
     --jalon-etape:#5E5F62;
@@ -229,6 +226,11 @@
   }
   .form-group input[readonly]{background:var(--fond-alt);color:var(--texte-mention)}
   .form-group textarea{resize:vertical;min-height:80px}
+  .pred-list{border:1px solid var(--bordure);border-radius:4px;max-height:150px;overflow-y:auto;padding:4px}
+  .pred-item{display:flex;align-items:center;gap:8px;padding:5px 6px;font-size:13px;border-radius:3px;cursor:pointer}
+  .pred-item:hover{background:var(--fond-alt)}
+  .pred-item input{width:auto;flex:0 0 auto}
+  .pred-empty{font-size:12px;color:var(--texte-mention);padding:6px;font-style:italic}
   .info-blocage{
     font-size:12px;color:var(--alerte-retard);background:#FFE9E9;border:1px solid #FFC5C5;
     border-radius:4px;padding:8px 10px;margin-bottom:16px;display:none;
@@ -297,6 +299,10 @@
     <div class="form-group"><label>Type</label>
       <select id="field-jalon-type"><option>Jalon majeur</option><option>Livrable</option><option>Étape</option></select>
     </div>
+    <div class="form-group">
+      <label>Tâches requises (pour atteindre ce jalon)</label>
+      <div class="pred-list" id="field-jalon-taches"></div>
+    </div>
     <div class="form-actions" id="modal-jalon-actions">
       <button class="btn btn-danger" id="btn-delete-jalon" style="display:none" onclick="deleteJalon()">Supprimer</button>
       <div style="display:flex;gap:8px;">
@@ -320,6 +326,10 @@
     <div class="form-group"><label>Durée (jours ouvrés)</label><input type="number" id="field-tache-duree" readonly placeholder="calculée automatiquement"></div>
     <div class="form-group"><label>Responsable</label><select id="field-tache-resp"></select></div>
     <div class="form-group"><label>Statut</label><select id="field-tache-statut"></select></div>
+    <div class="form-group">
+      <label>Prérequis (tâches à terminer avant celle-ci)</label>
+      <div class="pred-list" id="field-tache-predecesseurs"></div>
+    </div>
     <div class="form-group"><label>Commentaires</label><textarea id="field-tache-comments" placeholder="Notes optionnelles"></textarea></div>
     <div class="form-actions" id="modal-tache-actions">
       <button class="btn btn-danger" id="btn-delete-tache" style="display:none" onclick="deleteTache()">Supprimer</button>
@@ -334,29 +344,31 @@
 <script>
 const ROW_H=34, CAMP_H=46, HEAD_H=72;
 
-const STATUTS = [
-  {nom:"À faire",   cls:"st-faire",    couleur:"var(--st-faire)"},
-  {nom:"En cours",  cls:"st-encours",  couleur:"var(--st-encours)"},
-  {nom:"Terminé",   cls:"st-termine",  couleur:"var(--st-termine)"},
+// ⚠️ COLUMN ID réels dans Grist (nommés d'après la table cible de la réf liste)
+const COL_PREDECESSEURS   = "Taches";  // colonne Predecesseurs dans la table Taches
+const COL_TACHES_REQUISES = "Jalons";  // colonne Taches_requises dans la table Jalons
+
+// Couleurs par défaut pour les positions de statuts
+const COULEURS_STATUTS_DEFAUT = [
+  "#929292",  // À faire (gris)
+  "#0063CB",  // En cours (bleu)
+  "#18753C",  // Terminé (vert)
 ];
 
 const JALON_COULEURS = {
-  "jalon majeur": "var(--jalon-majeur)",
-  "livrable":     "var(--jalon-livrable)",
-  "etape":        "var(--jalon-etape)",
+  "jalon majeur": "#B1332A",
+  "livrable":     "#B45300",
+  "etape":        "#5E5F62",
 };
-function jalonCouleur(type){
-  return JALON_COULEURS[norm(type)] || "var(--jalon-livrable)";
-}
 
 function norm(s){
   return String(s||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").trim();
 }
-function statutInfo(s){
-  return STATUTS.find(x=>norm(x.nom)===norm(s)) || {nom:s||"—",cls:"st-faire",couleur:"var(--st-faire)"};
-}
 function cssVarValue(v){
   return getComputedStyle(document.documentElement).getPropertyValue(v.replace("var(","").replace(")","").trim())||v;
+}
+function jalonCouleur(type){
+  return JALON_COULEURS[norm(type)] || "#B45300";
 }
 
 function parseDate(v){
@@ -369,11 +381,20 @@ function dayIndex(v){
   const d=parseDate(v);
   return d?Math.floor(d.getTime()/86400000):null;
 }
+function finCalendaireIdx(debutIdx, dureeOuvres){
+  const d=new Date(debutIdx*86400000);
+  let restant=Math.max(1,dureeOuvres)-1;
+  while(restant>0){
+    d.setUTCDate(d.getUTCDate()+1);
+    const j=d.getUTCDay();
+    if(j!==0 && j!==6) restant--;
+  }
+  return Math.floor(d.getTime()/86400000);
+}
 function refId(v){
   if(Array.isArray(v)) return v[1];
   return v;
 }
-// Résout une référence liste (Predecesseurs, Taches_requises) quel que soit son encodage brut
 function refIdList(v){
   if(v===null||v===undefined) return [];
   if(Array.isArray(v)){
@@ -404,26 +425,24 @@ function toDateInput(v){
   return `${d.getUTCFullYear()}-${mm}-${jj}`;
 }
 
-// Liste des noms de tâches prédécesseurs non encore Terminées (vide = pas bloquée)
 function calculerBlocage(t){
-  const predIds = refIdList(t.Predecesseurs).filter(pid=>pid!==t.id);
+  const predIds = refIdList(t[COL_PREDECESSEURS]).filter(pid=>pid!==t.id);
   const bloquantes=[];
   predIds.forEach(pid=>{
     const pred=DB.taches.find(x=>x.id===pid);
     if(!pred) return;
     const predStatut=resolveRef(DB.parametres, pred.Statut, "Statut");
-    if(norm(predStatut)!==norm("Terminé")) bloquantes.push(pred.Tache);
+    if(norm(predStatut)!==norm(DB.statutTermine)) bloquantes.push(pred.Tache);
   });
   return bloquantes;
 }
 
-// Niveau de risque de délai, proportionnel à la durée (seuil = 25% de la durée, mini 1 jour)
 function calculerRisque(t, statutTexte, todayIdx){
-  if(norm(statutTexte)===norm("Terminé")) return {niveau:"ok", joursRestants:null};
+  if(norm(statutTexte)===norm(DB.statutTermine)) return {niveau:"ok", joursRestants:null};
   const dIdx=dayIndex(t.Date_debut);
   if(dIdx===null) return {niveau:"ok", joursRestants:null};
   const duree=t.Duree_jours||1;
-  const finIdx=dIdx+duree-1;
+  const finIdx=finCalendaireIdx(dIdx, duree);
   const joursRestants=finIdx-todayIdx;
   const seuil=Math.max(1, Math.ceil(duree*0.25));
   if(joursRestants<0) return {niveau:"retard", joursRestants};
@@ -431,7 +450,48 @@ function calculerRisque(t, statutTexte, todayIdx){
   return {niveau:"ok", joursRestants};
 }
 
-let DB={};
+function detecteCycle(tacheId, predIds){
+  const visited=new Set();
+  const stack=[...predIds];
+  while(stack.length){
+    const cur=stack.pop();
+    if(cur===tacheId) return true;
+    if(visited.has(cur)) continue;
+    visited.add(cur);
+    const p=DB.taches.find(x=>x.id===cur);
+    if(p) refIdList(p[COL_PREDECESSEURS]).forEach(pid=>stack.push(pid));
+  }
+  return false;
+}
+
+function remplirChecklist(containerId, campagneId, excludeId, selectedIds){
+  const cont=document.getElementById(containerId);
+  cont.innerHTML="";
+  if(!campagneId || isNaN(campagneId)){
+    cont.innerHTML='<div class="pred-empty">Sélectionnez d\'abord une campagne</div>';
+    return;
+  }
+  const candidates=DB.taches.filter(t=>refId(t.Campagne)===campagneId && t.id!==excludeId);
+  if(!candidates.length){
+    cont.innerHTML='<div class="pred-empty">Aucune autre tâche dans cette campagne</div>';
+    return;
+  }
+  candidates.forEach(t=>{
+    const label=document.createElement("label");
+    label.className="pred-item";
+    const cb=document.createElement("input");
+    cb.type="checkbox"; cb.value=t.id;
+    if(selectedIds.includes(t.id)) cb.checked=true;
+    label.appendChild(cb);
+    label.appendChild(document.createTextNode(" "+t.Tache));
+    cont.appendChild(label);
+  });
+}
+function getCheckedIds(containerId){
+  return Array.from(document.querySelectorAll("#"+containerId+" input:checked")).map(cb=>parseInt(cb.value));
+}
+
+let DB={statutTermine:"Terminé", statuts:[], statutsIndex:{}};
 let allData={};
 
 grist.ready({requiredAccess:"full"});
@@ -460,6 +520,30 @@ async function init(){
     DB.taches       = columnarToRows(await grist.docApi.fetchTable("Taches"));
     DB.responsables = columnarToRows(await grist.docApi.fetchTable("Responsables"));
     DB.parametres   = columnarToRows(await grist.docApi.fetchTable("PARAMETRES"));
+    
+    // Extraire les statuts uniques depuis PARAMETRES, en ordre d'apparition
+    const statutsVus = new Set();
+    DB.statuts = [];
+    DB.parametres.forEach(p=>{
+      if(p.Statut && !statutsVus.has(norm(p.Statut))){
+        statutsVus.add(norm(p.Statut));
+        DB.statuts.push({nom:p.Statut, id:p.id});
+      }
+    });
+    // Construire l'index : norm(nom) → {index, id, nom, couleur}
+    DB.statutsIndex = {};
+    DB.statuts.forEach((s, idx)=>{
+      DB.statutsIndex[norm(s.nom)] = {
+        index: idx,
+        id: s.id,
+        nom: s.nom,
+        couleur: COULEURS_STATUTS_DEFAUT[idx] || "#999999"
+      };
+    });
+    // Déterminer le libellé exact du statut "Terminé"
+    const termineEntry = DB.statuts.find(s=>norm(s.nom).includes("termin"));
+    if(termineEntry) DB.statutTermine = termineEntry.nom;
+    
     populateSelects();
     construire();
     document.getElementById("status").textContent="✓ Données chargées";
@@ -483,7 +567,7 @@ function uniq(arr){ return arr.filter((v,i,a)=>a.indexOf(v)===i); }
 function populateSelects(){
   fillSelect("field-campagne-section", uniq(DB.parametres.filter(p=>p.Section).map(p=>p.Section)), "-- Sélectionner --");
   fillSelect("field-campagne-type",    uniq(DB.parametres.filter(p=>p.Type_Campagne).map(p=>p.Type_Campagne)), "-- Sélectionner --");
-  fillSelect("field-tache-statut",     uniq(DB.parametres.filter(p=>p.Statut).map(p=>p.Statut)), "-- Sélectionner --");
+  fillSelect("field-tache-statut",     DB.statuts.map(s=>s.nom), "-- Sélectionner --");
   fillSelect("field-tache-resp",       DB.responsables.map(r=>r.Nom), "-- Aucun --");
 }
 
@@ -509,8 +593,9 @@ function majDuree(){
   }
 }
 
-function findParamId(col, valeur){
-  const ligne=DB.parametres.find(p=>p[col]===valeur);
+function findParamIdNorm(col, valeur){
+  const valNorm = norm(valeur);
+  const ligne=DB.parametres.find(p=>norm(p[col])===valNorm);
   return ligne?ligne.id:null;
 }
 function findRespId(nom){
@@ -552,13 +637,17 @@ async function saveCampagne(){
   const desc=document.getElementById("field-campagne-desc").value.trim();
   if(!nom || !section || !type){ alert("Champs obligatoires"); return; }
   try{
+    const sectionId=findParamIdNorm("Section", section);
+    const typeId=findParamIdNorm("Type_Campagne", type);
+    if(!sectionId || !typeId){ alert("Section ou Type invalides"); return; }
+    
     if(id){
       await grist.docApi.applyUserActions([
-        ["UpdateRecord","Campagnes",parseInt(id),{Campagne:nom, Section:section, Type_Campagne:type, Description:desc}]
+        ["UpdateRecord","Campagnes",parseInt(id),{Campagne:nom, Section:sectionId, Type_Campagne:typeId, Description:desc}]
       ]);
     }else{
       await grist.docApi.applyUserActions([
-        ["AddRecord","Campagnes",null,{Campagne:nom, Section:section, Type_Campagne:type, Description:desc}]
+        ["AddRecord","Campagnes",null,{Campagne:nom, Section:sectionId, Type_Campagne:typeId, Description:desc}]
       ]);
     }
     closeModal("modal-campagne");
@@ -592,6 +681,7 @@ function openJalonCreate(campagneId){
   document.getElementById("field-jalon-nom").value="";
   document.getElementById("field-jalon-date").value="";
   document.getElementById("field-jalon-type").value="";
+  remplirChecklist("field-jalon-taches", campagneId, null, []);
   document.getElementById("modal-jalon-title").textContent="Nouveau Jalon";
   document.getElementById("btn-save-jalon").textContent="Créer";
   document.getElementById("btn-delete-jalon").style.display="none";
@@ -599,11 +689,13 @@ function openJalonCreate(campagneId){
 }
 
 function openJalonEdit(jalon){
+  const campId=refId(jalon.Campagne);
   document.getElementById("field-jalon-id").value=jalon.id;
-  document.getElementById("field-jalon-campagne").value=refId(jalon.Campagne);
+  document.getElementById("field-jalon-campagne").value=campId;
   document.getElementById("field-jalon-nom").value=jalon.Nom||"";
   document.getElementById("field-jalon-date").value=toDateInput(jalon.Date);
   document.getElementById("field-jalon-type").value=jalon.Type||"";
+  remplirChecklist("field-jalon-taches", campId, null, refIdList(jalon[COL_TACHES_REQUISES]));
   document.getElementById("modal-jalon-title").textContent="Modifier le jalon";
   document.getElementById("btn-save-jalon").textContent="Enregistrer";
   document.getElementById("btn-delete-jalon").style.display="inline-block";
@@ -617,12 +709,14 @@ async function saveJalon(){
   const date=document.getElementById("field-jalon-date").value;
   const type=document.getElementById("field-jalon-type").value;
   if(!nom || !date){ alert("Champs obligatoires"); return; }
+  const reqIds=getCheckedIds("field-jalon-taches");
   try{
     const values={
       Campagne:campagne_id,
       Nom:nom,
       Date:Math.floor(new Date(date).getTime()/1000),
-      Type:type
+      Type:type,
+      [COL_TACHES_REQUISES]: reqIds.length ? ["L", ...reqIds] : null
     };
     if(id){
       await grist.docApi.applyUserActions([["UpdateRecord","Jalons",parseInt(id),values]]);
@@ -655,9 +749,10 @@ function openTacheCreate(campagneId){
   document.getElementById("field-tache-fin").value="";
   document.getElementById("field-tache-duree").value="";
   document.getElementById("field-tache-resp").value="";
-  document.getElementById("field-tache-statut").value="";
+  document.getElementById("field-tache-statut").value=DB.statuts[0]?.nom||"";
   document.getElementById("field-tache-comments").value="";
   document.getElementById("info-blocage").style.display="none";
+  remplirChecklist("field-tache-predecesseurs", campagneId, null, []);
   document.getElementById("modal-tache-title").textContent="Nouvelle Tâche";
   document.getElementById("btn-save-tache").textContent="Créer";
   document.getElementById("btn-delete-tache").style.display="none";
@@ -677,8 +772,9 @@ function openTacheEdit(t){
     }
   }
 
+  const campId=refId(t.Campagne);
   document.getElementById("field-tache-id").value=t.id;
-  document.getElementById("field-tache-campagne").value=refId(t.Campagne);
+  document.getElementById("field-tache-campagne").value=campId;
   document.getElementById("field-tache-nom").value=t.Tache||"";
   document.getElementById("field-tache-debut").value=toDateInput(t.Date_debut);
   document.getElementById("field-tache-fin").value=finDate?toDateInput(Math.floor(finDate.getTime()/1000)):"";
@@ -686,6 +782,7 @@ function openTacheEdit(t){
   document.getElementById("field-tache-resp").value=resolveRef(DB.responsables, t.Responsable, "Nom")||"";
   document.getElementById("field-tache-statut").value=resolveRef(DB.parametres, t.Statut, "Statut")||"";
   document.getElementById("field-tache-comments").value=t.Commentaires||"";
+  remplirChecklist("field-tache-predecesseurs", campId, t.id, refIdList(t[COL_PREDECESSEURS]));
 
   const bloquantes=calculerBlocage(t);
   const infoDiv=document.getElementById("info-blocage");
@@ -713,14 +810,23 @@ async function saveTache(){
   const comments=document.getElementById("field-tache-comments").value.trim();
   if(!nom || !debut || !fin){ alert("Champs obligatoires"); return; }
 
-  const duree=joursOuvres(new Date(debut), new Date(fin));
+  const predIds=getCheckedIds("field-tache-predecesseurs");
+  const currentId=id?parseInt(id):null;
+  if(currentId && detecteCycle(currentId, predIds)){
+    alert("Dépendance circulaire détectée : cette tâche est déjà (directement ou indirectement) un prérequis de l'un des prédécesseurs choisis.");
+    return;
+  }
+
+  const duree=Math.max(1, joursOuvres(new Date(debut), new Date(fin)));
 
   try{
     const camp=DB.campagnes.find(c=>c.id===campagne_id);
     if(!camp){ alert("Campagne non trouvée"); return; }
 
-    const statutId=findParamId("Statut", statut);
+    const statutId=findParamIdNorm("Statut", statut);
     const respId=findRespId(resp);
+
+    if(!statutId){ alert("Statut invalide"); return; }
 
     const values={
       Section:refId(camp.Section),
@@ -730,7 +836,8 @@ async function saveTache(){
       Duree_jours:duree,
       Statut:statutId,
       Responsable:respId,
-      Commentaires:comments
+      Commentaires:comments,
+      [COL_PREDECESSEURS]: predIds.length ? ["L", ...predIds] : null
     };
 
     if(id){
@@ -761,7 +868,7 @@ function construire(){
   let minI, maxI;
   if(dates.length){
     minI=Math.min(...dates.map(t=>dayIndex(t.Date_debut)));
-    const fins=dates.map(t=>dayIndex(t.Date_debut)+(t.Duree_jours||1)-1);
+    const fins=dates.map(t=>finCalendaireIdx(dayIndex(t.Date_debut), t.Duree_jours||1));
     maxI=Math.max(...fins);
   }else{
     const today=Math.floor(Date.now()/86400000);
@@ -821,6 +928,7 @@ function construire(){
     DB.taches.filter(t=>refId(t.Campagne)===camp.id).forEach(t=>{
       const statutTexte=resolveRef(DB.parametres, t.Statut, "Statut");
       const respTexte=resolveRef(DB.responsables, t.Responsable, "Nom");
+      const statInfo=DB.statutsIndex[norm(statutTexte)] || {couleur:"#999999"};
 
       const labTask=el("div","label tache");
       labTask.appendChild(el("span","nom",t.Tache));
@@ -833,17 +941,17 @@ function construire(){
 
       if(dIdx!==null){
         if(dIdx<=maxI){
-          const info=statutInfo(statutTexte);
           const bloquantes=calculerBlocage(t);
           const risque=calculerRisque(t, statutTexte, todayI);
 
-          const barre=el("div","barre "+info.cls);
+          const barre=el("div","barre");
           const leftPx=(dIdx-minI)*16;
           const duree=t.Duree_jours||1;
-          const widthPx=Math.max(16,duree*16);
+          const finIdx=finCalendaireIdx(dIdx, duree);
+          const widthPx=Math.max(16,(finIdx-dIdx+1)*16);
           barre.style.left=leftPx+"px";
           barre.style.width=widthPx+"px";
-          barre.style.background=cssVarValue(info.couleur);
+          barre.style.background=statInfo.couleur;
 
           if(bloquantes.length) barre.classList.add("bloquee");
           if(risque.niveau==="retard") barre.classList.add("retard");
@@ -880,14 +988,14 @@ function construire(){
       const dIdx=dayIndex(jalon.Date);
       if(dIdx!==null && dIdx>=minI && dIdx<=maxI){
         const leftPx=((dIdx-minI)*16)+"px";
-        const couleur=cssVarValue(jalonCouleur(jalon.Type));
+        const couleur=jalonCouleur(jalon.Type);
 
-        const reqIds=refIdList(jalon.Taches_requises);
+        const reqIds=refIdList(jalon[COL_TACHES_REQUISES]);
         const total=reqIds.length;
         const done=reqIds.filter(rid=>{
           const tq=DB.taches.find(x=>x.id===rid);
           if(!tq) return false;
-          return norm(resolveRef(DB.parametres, tq.Statut, "Statut"))===norm("Terminé");
+          return norm(resolveRef(DB.parametres, tq.Statut, "Statut"))===norm(DB.statutTermine);
         }).length;
 
         const jalonLine=el("div","jalon-line");
@@ -926,7 +1034,6 @@ function construire(){
     grid.appendChild(campGroup);
   });
 
-  // Flèches de dépendance (superposées après coup, une fois toutes les positions connues)
   const svgNS="http://www.w3.org/2000/svg";
   const svg=document.createElementNS(svgNS,"svg");
   svg.setAttribute("class","arrows-svg");
@@ -938,14 +1045,14 @@ function construire(){
       <path d="M0,0 L10,5 L0,10 z" fill="#8888a0"/>
     </marker>
     <marker id="arrow-conflit" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-      <path d="M0,0 L10,5 L0,10 z" fill="${cssVarValue('var(--alerte-retard)')}"/>
+      <path d="M0,0 L10,5 L0,10 z" fill="#CE0500"/>
     </marker>`;
   svg.appendChild(defs);
 
   DB.taches.forEach(t=>{
     const succPos=taskPositions[t.id];
     if(!succPos) return;
-    const predIds=refIdList(t.Predecesseurs).filter(pid=>pid!==t.id);
+    const predIds=refIdList(t[COL_PREDECESSEURS]).filter(pid=>pid!==t.id);
     predIds.forEach(pid=>{
       const predPos=taskPositions[pid];
       if(!predPos) return;
@@ -955,7 +1062,7 @@ function construire(){
       const path=document.createElementNS(svgNS,"path");
       path.setAttribute("d", `M ${x1} ${y1} L ${midX} ${y1} L ${midX} ${y2} L ${x2} ${y2}`);
       path.setAttribute("fill","none");
-      path.setAttribute("stroke", conflit ? cssVarValue('var(--alerte-retard)') : "#8888a0");
+      path.setAttribute("stroke", conflit ? "#CE0500" : "#8888a0");
       path.setAttribute("stroke-width","1.5");
       if(conflit) path.setAttribute("stroke-dasharray","4,3");
       path.setAttribute("marker-end", conflit ? "url(#arrow-conflit)" : "url(#arrow-normal)");
@@ -985,16 +1092,19 @@ function fmtJJMM(idx){
 function rendreLegende(){
   const l=document.getElementById("legende");
   l.innerHTML="";
-  STATUTS.forEach(s=>{
+  DB.statuts.forEach(s=>{
+    const statInfo=DB.statutsIndex[norm(s.nom)];
     const item=el("div","item");
-    const puce=el("span","puce"); puce.style.background=s.couleur;
+    const puce=el("span","puce");
+    puce.style.background=statInfo.couleur;
     item.appendChild(puce);
     item.appendChild(document.createTextNode(s.nom));
     l.appendChild(item);
   });
-  [["Jalon majeur","var(--jalon-majeur)"],["Livrable","var(--jalon-livrable)"],["Étape","var(--jalon-etape)"]].forEach(([label,couleur])=>{
+  [["Jalon majeur","#B1332A"],["Livrable","#B45300"],["Étape","#5E5F62"]].forEach(([label,couleur])=>{
     const item=el("div","item");
-    const puce=el("span","puce jalon-puce"); puce.style.background=couleur;
+    const puce=el("span","puce jalon-puce");
+    puce.style.background=couleur;
     item.appendChild(puce);
     item.appendChild(document.createTextNode(label));
     l.appendChild(item);
