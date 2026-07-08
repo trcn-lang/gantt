@@ -602,22 +602,30 @@ function openTacheCreate(statutNom, respNom){
 }
 
 function openTacheEdit(t){
-  const debutDate=parseDate(t.Date_debut);
   const duree=t.Duree_jours||1;
-  let finDate=debutDate?new Date(debutDate):null;
-  if(finDate && duree>1){
-    let restant=duree-1;
-    while(restant>0){
-      finDate.setDate(finDate.getDate()+1);
-      const j=finDate.getDay();
-      if(j!==0 && j!==6) restant--;
+
+  // ✅ FIX: On lit Date_fin directement si présente (nouvelles tâches).
+  // Fallback: reconstruction pour les tâches créées avant ce correctif.
+  let finValue = t.Date_fin;
+  if(!finValue){
+    const debutDate=parseDate(t.Date_debut);
+    let finDate=debutDate?new Date(debutDate):null;
+    if(finDate && duree>1){
+      let restant=duree-1;
+      while(restant>0){
+        finDate.setDate(finDate.getDate()+1);
+        const j=finDate.getDay();
+        if(j!==0 && j!==6) restant--;
+      }
     }
+    finValue = finDate ? Math.floor(finDate.getTime()/1000) : null;
   }
+
   document.getElementById("field-tache-id").value=t.id;
   document.getElementById("field-tache-nom").value=t.Tache||"";
   document.getElementById("field-tache-campagne").value=refId(t.Campagne)||"";
   document.getElementById("field-tache-debut").value=toDateInput(t.Date_debut);
-  document.getElementById("field-tache-fin").value=finDate?toDateInput(Math.floor(finDate.getTime()/1000)):"";
+  document.getElementById("field-tache-fin").value=finValue?toDateInput(finValue):"";
   document.getElementById("field-tache-duree").value=duree;
   document.getElementById("field-tache-resp").value=resolveRef(DB.responsables, t.Responsable, "Nom")||"";
   document.getElementById("field-tache-statut").value=resolveRef(DB.parametres, t.Statut, "Statut")||"";
@@ -726,6 +734,7 @@ async function saveTache(){
       Campagne: campagne_id,
       Tache: nom,
       Date_debut: Math.floor(new Date(debut).getTime()/1000),
+      Date_fin: Math.floor(new Date(fin).getTime()/1000),
       Duree_jours: duree,
       Statut: statutId,
       Responsable: respId,
