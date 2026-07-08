@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Kanban d'équipe </title>
+<title>Kanban par Responsable</title>
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
 <style>
   :root{
@@ -111,27 +111,15 @@
     background:#fff;border:1px solid var(--bordure);border-left:4px solid var(--st-faire);
     border-radius:6px;padding:8px 10px;cursor:grab;
     box-shadow:0 1px 2px rgba(0,0,0,0.06);transition:box-shadow 0.15s, transform 0.15s;
-    position:relative;
   }
   .card:hover{box-shadow:0 3px 8px rgba(0,0,0,0.12);transform:translateY(-1px)}
   .card.dragging{opacity:0.4}
   .card.st-encours{border-left-color:var(--st-encours)}
   .card.st-termine{border-left-color:var(--st-termine)}
-  .card.blocked{opacity:0.6;background:#FFF5F5}
-  .card.critical{border:2px solid #CE0500}
-  
   .card .titre{font-size:13px;font-weight:700;margin-bottom:4px;line-height:1.3}
   .card .badge-camp{
     display:inline-block;font-size:10px;color:var(--bleu-france);background:var(--bleu-975);
     border-radius:10px;padding:1px 8px;margin-bottom:4px;
-  }
-  .card .badge-preds{
-    display:inline-block;font-size:9px;color:#fff;background:#FF9999;
-    border-radius:3px;padding:2px 6px;margin-left:4px;
-  }
-  .card .badge-critical{
-    display:inline-block;font-size:9px;color:#fff;background:#CE0500;
-    border-radius:3px;padding:2px 6px;margin-left:4px;font-weight:700;
   }
   .card .dates{font-size:11px;color:var(--texte-mention);display:flex;align-items:center;gap:4px}
   .card .comment-icon{font-size:11px;color:var(--texte-mention);margin-left:4px;cursor:help}
@@ -162,27 +150,13 @@
   .form-actions{display:flex;gap:8px;margin-top:24px;justify-content:space-between}
   .form-actions .right{display:flex;gap:8px}
 
-  .info-box{
-    background:#FFF3CD;border:1px solid #FFC107;border-radius:4px;padding:12px;margin-bottom:16px;font-size:12px;
-    color:#856404;line-height:1.4;
-  }
-  .info-box.warning{background:#F8D7DA;border-color:#F5C6CB;color:#721C24}
-  .info-box.success{background:#D4EDDA;border-color:#C3E6CB;color:#155724}
-
-  .multi-select{
-    border:1px solid var(--bordure);border-radius:4px;padding:8px;max-height:150px;overflow-y:auto;
-  }
-  .multi-select-item{
-    display:flex;align-items:center;gap:8px;padding:6px 8px;cursor:pointer;border-radius:3px;
-  }
-  .multi-select-item:hover{background:var(--fond-alt)}
-  .multi-select-item input[type="checkbox"]{cursor:pointer}
+  .empty-state{padding:40px;text-align:center;color:var(--texte-mention)}
 </style>
 </head>
 <body>
 <div class="app">
   <div class="topbar">
-    <h1>Kanban par Responsable - Avec Dépendances</h1>
+    <h1>Kanban par Responsable</h1>
     <div style="display:flex;gap:20px;align-items:center;flex:1;">
       <div class="legende" id="legende"></div>
       <div class="meta" id="meta">Chargement…</div>
@@ -201,15 +175,11 @@
   </div>
 </div>
 
-<!-- MODALE TACHE -->
+<!-- MODALE TACHE (création + édition) -->
 <div class="modal-overlay" id="modal-tache">
   <div class="modal">
     <h2 id="modal-tache-title">Nouvelle Tâche</h2>
     <input type="hidden" id="field-tache-id">
-    
-    <div id="info-preds" class="info-box" style="display:none;"></div>
-    <div id="info-blocked" class="info-box warning" style="display:none;"></div>
-    
     <div class="form-group"><label>Tâche *</label><input type="text" id="field-tache-nom" placeholder="ex: Publication liste"></div>
     <div class="form-group"><label>Campagne *</label><select id="field-tache-campagne"></select></div>
     <div class="form-group"><label>Date début *</label><input type="date" id="field-tache-debut"></div>
@@ -217,14 +187,7 @@
     <div class="form-group"><label>Durée (jours ouvrés)</label><input type="number" id="field-tache-duree" readonly placeholder="calculée automatiquement"></div>
     <div class="form-group"><label>Responsable</label><select id="field-tache-resp"></select></div>
     <div class="form-group"><label>Statut</label><select id="field-tache-statut"></select></div>
-    
-    <div class="form-group">
-      <label>Prédécesseurs (tâches dont dépend celle-ci)</label>
-      <div class="multi-select" id="field-tache-predecesseurs"></div>
-    </div>
-    
     <div class="form-group"><label>Commentaires</label><textarea id="field-tache-comments" placeholder="Notes optionnelles"></textarea></div>
-    
     <div class="form-actions">
       <button class="btn btn-danger" id="btn-delete-tache" style="display:none" onclick="deleteTache()">Supprimer</button>
       <div class="right">
@@ -252,39 +215,12 @@ function statutInfo(s){
 function cssVarValue(v){
   return getComputedStyle(document.documentElement).getPropertyValue(v.replace("var(","").replace(")","").trim())||v;
 }
-
-// ✅ FORMAT DATES
 function parseDate(v){
   if(v===null||v===undefined||v==="") return null;
   if(typeof v==="number") return new Date(v*1000);
-  const str = String(v).trim();
-  
-  // Try dd/mm/yyyy format
-  const ddmmMatch = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  if(ddmmMatch){
-    const [, d, m, y] = ddmmMatch;
-    return new Date(parseInt(y), parseInt(m)-1, parseInt(d));
-  }
-  
-  // Try ISO format yyyy-mm-dd
-  const isoMatch = str.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if(isoMatch){
-    const [, y, m, d] = isoMatch;
-    return new Date(parseInt(y), parseInt(m)-1, parseInt(d));
-  }
-  
-  const d = new Date(str);
+  const d=new Date(String(v).trim());
   return isNaN(d.getTime())?null:d;
 }
-
-function toDateInput(v){
-  const d=parseDate(v);
-  if(!d) return "";
-  const jj=String(d.getDate()).padStart(2,"0");
-  const mm=String(d.getMonth()+1).padStart(2,"0");
-  return `${d.getFullYear()}-${mm}-${jj}`;
-}
-
 function dayIndex(v){
   const d=parseDate(v);
   return d?Math.floor(d.getTime()/86400000):null;
@@ -302,9 +238,15 @@ function resolveRef(table, id, col){
 function fmtJJMM(v){
   const d=parseDate(v);
   if(!d) return "";
-  return String(d.getDate()).padStart(2,"0")+"/"+String(d.getMonth()+1).padStart(2,"0");
+  return String(d.getUTCDate()).padStart(2,"0")+"/"+String(d.getUTCMonth()+1).padStart(2,"0");
 }
-
+function toDateInput(v){
+  const d=parseDate(v);
+  if(!d) return "";
+  const jj=String(d.getUTCDate()).padStart(2,"0");
+  const mm=String(d.getUTCMonth()+1).padStart(2,"0");
+  return `${d.getUTCFullYear()}-${mm}-${jj}`;
+}
 function joursOuvres(d1, d2){
   let n=0;
   const cur=new Date(d1);
@@ -319,7 +261,6 @@ function joursOuvres(d1, d2){
 let DB={};
 let draggedTaskId=null;
 let filtreCampagne="";
-let PERT_DATA={};
 
 grist.ready({requiredAccess:"full"});
 
@@ -347,41 +288,12 @@ async function init(){
     DB.responsables = columnarToRows(await grist.docApi.fetchTable("Responsables"));
     DB.parametres   = columnarToRows(await grist.docApi.fetchTable("PARAMETRES"));
     populateSelects();
-    calcularPERTQuickly();
     construire();
     document.getElementById("status").textContent="✓ Données chargées";
   }catch(e){
     console.error("❌", e);
     document.getElementById("status").textContent="❌ "+e.message;
   }
-}
-
-// ========== PERT QUICK CALC (pour affichage) ==========
-
-function getPredecessorTasks(task){
-  if(!task.Predecesseurs) return [];
-  if(Array.isArray(task.Predecesseurs)){
-    return task.Predecesseurs;
-  }
-  return [];
-}
-
-function calcularPERTQuickly(){
-  PERT_DATA = {};
-  DB.taches.forEach(t => {
-    PERT_DATA[t.id] = {
-      isCritical: t.Est_critique === true,
-      slack: t.Marge_totale || 0
-    };
-  });
-}
-
-function getPredecessorsBlocked(task){
-  const preds = getPredecessorTasks(task);
-  return preds.filter(pred => {
-    const predStatut = resolveRef(DB.parametres, pred.Statut, "Statut");
-    return norm(predStatut) !== norm("Terminé");
-  });
 }
 
 function fillSelect(id, values, placeholder){
@@ -447,9 +359,6 @@ function openTacheCreate(statutNom, respNom){
   document.getElementById("modal-tache-title").textContent="Nouvelle Tâche";
   document.getElementById("btn-save-tache").textContent="Créer";
   document.getElementById("btn-delete-tache").style.display="none";
-  document.getElementById("info-preds").style.display="none";
-  document.getElementById("info-blocked").style.display="none";
-  populatePredecessorsSelect(null, []);
   openModal("modal-tache");
 }
 
@@ -477,63 +386,7 @@ function openTacheEdit(t){
   document.getElementById("modal-tache-title").textContent="Modifier la tâche";
   document.getElementById("btn-save-tache").textContent="Enregistrer";
   document.getElementById("btn-delete-tache").style.display="inline-block";
-  
-  const preds = getPredecessorTasks(t);
-  if(preds.length > 0){
-    const predNames = preds.map(p => p.Tache || p).join(", ");
-    document.getElementById("info-preds").innerHTML = `📌 Dépend de: <strong>${predNames}</strong>`;
-    document.getElementById("info-preds").style.display="block";
-  } else {
-    document.getElementById("info-preds").style.display="none";
-  }
-  
-  const blocked = getPredecessorsBlocked(t);
-  if(blocked.length > 0){
-    const blockedNames = blocked.map(p => p.Tache || p).join(", ");
-    document.getElementById("info-blocked").innerHTML = `⚠️ <strong>BLOQUÉE:</strong> En attente de: ${blockedNames}`;
-    document.getElementById("info-blocked").style.display="block";
-  } else {
-    document.getElementById("info-blocked").style.display="none";
-  }
-  
-  populatePredecessorsSelect(refId(t.Campagne), preds);
   openModal("modal-tache");
-}
-
-function populatePredecessorsSelect(campagneId, selectedPreds=[]){
-  const container = document.getElementById("field-tache-predecesseurs");
-  container.innerHTML = "";
-  
-  if(!campagneId){
-    container.innerHTML = "<div style='padding:8px;color:#999;font-size:11px;'>Sélectionner une campagne d'abord</div>";
-    return;
-  }
-  
-  const campaigneTasks = DB.taches.filter(t => refId(t.Campagne) === campagneId);
-  const currentTaskId = parseInt(document.getElementById("field-tache-id").value);
-  
-  campaigneTasks.forEach(task => {
-    if(task.id === currentTaskId) return;
-    
-    const isSelected = selectedPreds.some(p => refId(p.id || p) === task.id);
-    
-    const label = document.createElement("label");
-    label.className = "multi-select-item";
-    
-    const checkbox = document.createElement("input");
-    checkbox.type = "checkbox";
-    checkbox.value = task.id;
-    checkbox.checked = isSelected;
-    
-    label.appendChild(checkbox);
-    label.appendChild(document.createTextNode(task.Tache));
-    
-    container.appendChild(label);
-  });
-  
-  if(campaigneTasks.filter(t => t.id !== currentTaskId).length === 0){
-    container.innerHTML = "<div style='padding:8px;color:#999;font-size:11px;'>Aucune autre tâche dans cette campagne</div>";
-  }
 }
 
 async function saveTache(){
@@ -555,24 +408,20 @@ async function saveTache(){
 
     const statutId=findParamId("Statut", statut);
     const respId=findRespId(resp);
+
+    // ✅ CORRECTION: Chercher le Section ID correctement
     const sectionId = refId(camp.Section);
     if(!sectionId){ alert("Section invalide"); return; }
 
-    // Prédécesseurs
-    const checkboxes = document.querySelectorAll("#field-tache-predecesseurs input[type='checkbox']:checked");
-    const predecessorIds = Array.from(checkboxes).map(cb => parseInt(cb.value));
-    const predecessorTasks = predecessorIds.map(pid => DB.taches.find(t => t.id === pid)).filter(t => t);
-
     const values={
-      Section:sectionId,
-      Campagne:campagne_id,
-      Tache:nom,
-      Date_debut:Math.floor(new Date(debut).getTime()/1000),
-      Duree_jours:duree,
-      Statut:statutId,
-      Responsable:respId,
-      Commentaires:comments,
-      Predecesseurs: predecessorTasks.length > 0 ? predecessorTasks : []
+      Section: sectionId,
+      Campagne: campagne_id,
+      Tache: nom,
+      Date_debut: Math.floor(new Date(debut).getTime()/1000),
+      Duree_jours: duree,
+      Statut: statutId,
+      Responsable: respId,
+      Commentaires: comments
     };
 
     if(id){
@@ -606,7 +455,7 @@ async function deplacerTache(taskId, statutNom, respId){
   }catch(e){ alert("Erreur: "+e.message); console.error(e); }
 }
 
-/* ---------- Construction Kanban ---------- */
+/* ---------- Construction du Kanban matriciel ---------- */
 
 function construire(){
   filtreCampagne = document.getElementById("filtre-campagne").value;
@@ -617,8 +466,10 @@ function construire(){
   matrix.innerHTML = "";
   matrix.style.setProperty("--n-cols", STATUTS.length);
 
+  // Coin haut-gauche
   matrix.appendChild(el("div", "corner", "Responsable"));
 
+  // En-têtes de colonnes (statuts)
   STATUTS.forEach(s=>{
     const header = el("div", "col-header");
     header.style.borderTop = `3px solid ${cssVarValue(s.couleur)}`;
@@ -632,6 +483,7 @@ function construire(){
   lignes.forEach(resp=>{
     const isNonAssigne = resp.id === null;
 
+    // Tâches de cette ligne, filtrées par campagne si besoin
     const tachesLigne = DB.taches.filter(t=>{
       const rid = refId(t.Responsable);
       // ✅ FIX: Gérer tous les cas où Responsable est absent/null/undefined
@@ -641,11 +493,13 @@ function construire(){
       return matchResp && matchCamp;
     });
 
+    // Label de ligne
     const label = el("div", "row-label"+(isNonAssigne?" non-assigne":""));
     label.appendChild(el("span", "nom", resp.Nom));
     label.appendChild(el("span", "count", `${tachesLigne.length} tâche${tachesLigne.length>1?"s":""}`));
     matrix.appendChild(label);
 
+    // Une cellule par statut
     STATUTS.forEach(s=>{
       const cell = el("div", "cell");
       cell.dataset.statut = s.nom;
@@ -660,32 +514,12 @@ function construire(){
         tachesVisibles++;
         const camp = DB.campagnes.find(c=>c.id===refId(t.Campagne));
         const card = el("div", "card "+s.cls);
-        
-        const blocked = getPredecessorsBlocked(t);
-        if(blocked.length > 0){
-          card.classList.add("blocked");
-        }
-        
-        if(PERT_DATA[t.id] && PERT_DATA[t.id].isCritical){
-          card.classList.add("critical");
-        }
-        
         card.draggable = true;
 
         const titre = el("div", "titre", t.Tache);
         card.appendChild(titre);
 
         if(camp) card.appendChild(el("span", "badge-camp", camp.Campagne));
-        
-        const preds = getPredecessorTasks(t);
-        if(preds.length > 0){
-          const badge = el("span", "badge-preds", `📌 ${preds.length}`);
-          card.appendChild(badge);
-        }
-        
-        if(PERT_DATA[t.id] && PERT_DATA[t.id].isCritical){
-          card.appendChild(el("span", "badge-critical", "⚠️ CRITIQUE"));
-        }
 
         const dIdx = dayIndex(t.Date_debut);
         if(dIdx!==null){
@@ -752,12 +586,6 @@ function rendreLegende(){
     item.appendChild(document.createTextNode(s.nom));
     l.appendChild(item);
   });
-  
-  const itemCritical=el("div","item");
-  const puceCritical=el("span","puce"); puceCritical.style.background="#CE0500";
-  itemCritical.appendChild(puceCritical);
-  itemCritical.appendChild(document.createTextNode("Tâche critique"));
-  l.appendChild(itemCritical);
 }
 
 function el(tag,cls,txt){
@@ -771,9 +599,6 @@ document.getElementById("btn-add-tache").onclick = () => openTacheCreate();
 document.getElementById("filtre-campagne").addEventListener("change", construire);
 document.getElementById("field-tache-debut").addEventListener("change", majDuree);
 document.getElementById("field-tache-fin").addEventListener("change", majDuree);
-document.getElementById("field-tache-campagne").addEventListener("change", (e)=>{
-  populatePredecessorsSelect(parseInt(e.target.value), []);
-});
 grist.onRecords(()=>init());
 init();
 </script>
