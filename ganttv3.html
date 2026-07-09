@@ -1121,12 +1121,15 @@ function construire(){
   // lundi, et l'infobulle "du Lundi... au Vendredi..." affiche un jour faux).
   const jourSemaineMinI = new Date(minI*86400000).getUTCDay(); // 0=dim,1=lun,...6=sam
   const decalageLundi = (jourSemaineMinI + 6) % 7; // nb de jours depuis le lundi précédent
-  minI -= decalageLundi;
+  const minILundi = minI - decalageLundi; // ✅ repère "vrai lundi", pour les blocs de semaine
 
   // ✅ FIX: recule d'1 jour supplémentaire pour que l'étiquette de date de la
   // toute première tâche ne soit pas masquée par la colonne des libellés (figée
   // à gauche), qui se superpose sinon exactement au début de la grille.
-  minI -= 1;
+  // ⚠️ Cette marge sert UNIQUEMENT au décalage visuel de la grille jour par jour
+  // (positions des barres, jalons...) — les blocs de semaine, eux, continuent de
+  // démarrer sur minILundi (le vrai lundi), pas sur ce minI décalé.
+  minI = minILundi - 1;
 
   const totalJours=maxI-minI+1;
   const tlW=totalJours*16;
@@ -1144,7 +1147,10 @@ function construire(){
   const NOMS_JOURS=['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi'];
   const head=el("div","head-track");
   const headInner=el("div","head-inner");
-  for(let i=minI;i<=maxI;i+=7){
+  // ✅ FIX: la boucle des semaines démarre sur minILundi (vrai lundi), pas sur
+  // minI (qui inclut la marge de -1 jour). Seule la position en pixels (left)
+  // reste calculée par rapport à minI, pour rester alignée avec la grille des jours.
+  for(let i=minILundi;i<=maxI;i+=7){
     const wn=getWeekNumber(new Date(i*86400000));
     const label=el("div","week-label");
     label.style.left=((i-minI)*16)+"px";
