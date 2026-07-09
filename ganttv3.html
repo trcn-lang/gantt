@@ -1351,9 +1351,20 @@ function construire(){
     });
     campGroup.appendChild(svg);
 
-    DB.jalons.filter(j=>refId(j.Campagne)===camp.id).forEach(jalon=>{
-      const dIdx=dayIndex(jalon.Date);
-      if(dIdx!==null && dIdx>=minI && dIdx<=maxI){
+    // ✅ FIX: on traite les jalons triés par date, pour détecter les vrais
+    // chevauchements de noms entre voisins (pas une alternance systématique,
+    // qui décalerait aussi des jalons qui ne se touchent pas).
+    const jalonsCamp = DB.jalons
+      .filter(j=>refId(j.Campagne)===camp.id)
+      .map(j=>({ jalon:j, dIdx:dayIndex(j.Date) }))
+      .filter(x=>x.dIdx!==null && x.dIdx>=minI && x.dIdx<=maxI)
+      .sort((a,b)=>a.dIdx-b.dIdx);
+
+    const NIVEAU_TOP = [3, 14]; // 2 niveaux de hauteur possibles pour le nom
+    const MARGE_MIN = 6; // px minimum entre 2 noms au même niveau
+    const dernierDroite = [-Infinity, -Infinity];
+
+    jalonsCamp.forEach(({jalon, dIdx})=>{
         const leftPx=((dIdx-minI)*16)+"px";
         const couleur=cssVarValue(jalonCouleur(jalon.Type));
 
@@ -1368,6 +1379,38 @@ function construire(){
         nameEl.onclick=(e)=>{ e.stopPropagation(); openJalonEdit(jalon); };
         campGroup.appendChild(nameEl);
 
+        // ✅ FIX: le nom est centré par défaut (CSS transform:translateX(-50%)),
+        // ce qui peut le faire déborder en x négatif (ou au-delà de la frise) si
+        // le jalon est proche du bord — zone non atteignable au scroll, donc le
+        // texte apparaît tronqué. On recale après mesure de sa largeur réelle.
+        const centerX = (dIdx-minI)*16;
+        let nameW = nameEl.offsetWidth;
+        let nameLeft = centerX - nameW/2;
+        if(nameLeft < 0) nameLeft = 0;
+        if(nameLeft + nameW > tlW) nameLeft = tlW - nameW;
+
+        // ✅ Choix du niveau : niveau 0 par défaut, niveau 1 si collision avec le
+        // dernier nom placé au niveau 0. Si collision persiste même au niveau 1,
+        // on tronque le texte (ellipsis) en dernier recours (info complète au survol).
+        let niveau = 0;
+        if(nameLeft < dernierDroite[0] + MARGE_MIN){
+          niveau = 1;
+          if(nameLeft < dernierDroite[1] + MARGE_MIN){
+            nameEl.style.maxWidth = "90px";
+            nameEl.style.overflow = "hidden";
+            nameEl.style.textOverflow = "ellipsis";
+            nameW = nameEl.offsetWidth;
+            nameLeft = centerX - nameW/2;
+            if(nameLeft < 0) nameLeft = 0;
+            if(nameLeft + nameW > tlW) nameLeft = tlW - nameW;
+          }
+        }
+
+        nameEl.style.top = NIVEAU_TOP[niveau]+"px";
+        nameEl.style.left = nameLeft+"px";
+        nameEl.style.transform = "none";
+        dernierDroite[niveau] = nameLeft + nameW;
+
         const dateTxt=fmtJourComplet(jalon.Date);
         const typeTxt=jalon.Type?` (${jalon.Type})`:"";
 
@@ -1379,7 +1422,6 @@ function construire(){
         diamond.style.background=couleur;
         markerWrap.appendChild(diamond);
         campGroup.appendChild(markerWrap);
-      }
     });
 
     grid.appendChild(campGroup);
