@@ -64,7 +64,7 @@
   .btn-danger{background:#CE0500}
   .btn-danger:hover{background:#a80400}
 
-  .scroll{flex:1;overflow:auto;position:relative}
+  .scroll{flex:1;overflow:auto;position:relative;padding-bottom:18px}
   .grid-wrapper{display:flex}
 
   .labels-col{
@@ -1108,6 +1108,18 @@ function construire(){
     maxI = today + 21;
   }
 
+  // ✅ FIX: aligner le début de la grille sur le LUNDI de la semaine contenant
+  // la première date (sinon les colonnes "S xx" ne démarrent pas vraiment un
+  // lundi, et l'infobulle "du Lundi... au Vendredi..." affiche un jour faux).
+  const jourSemaineMinI = new Date(minI*86400000).getUTCDay(); // 0=dim,1=lun,...6=sam
+  const decalageLundi = (jourSemaineMinI + 6) % 7; // nb de jours depuis le lundi précédent
+  minI -= decalageLundi;
+
+  // ✅ FIX: recule d'1 jour supplémentaire pour que l'étiquette de date de la
+  // toute première tâche ne soit pas masquée par la colonne des libellés (figée
+  // à gauche), qui se superpose sinon exactement au début de la grille.
+  minI -= 1;
+
   const totalJours=maxI-minI+1;
   const tlW=totalJours*16;
   const todayI=Math.floor(Date.now()/86400000);
@@ -1121,6 +1133,7 @@ function construire(){
   grid.style.setProperty("--today", todayOffset);
   labelsDiv.innerHTML="";
 
+  const NOMS_JOURS=['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi'];
   const head=el("div","head-track");
   const headInner=el("div","head-inner");
   for(let i=minI;i<=maxI;i+=7){
@@ -1128,8 +1141,12 @@ function construire(){
     const label=el("div","week-label");
     label.style.left=((i-minI)*16)+"px";
     const start=fmtJJMM(i), end=fmtJJMM(i+4);
+    // ✅ Jours de la semaine calculés dynamiquement (jamais codés en dur), pour
+    // rester corrects même si la grille n'est pas parfaitement alignée sur lundi.
+    const jourDebut=NOMS_JOURS[new Date(i*86400000).getUTCDay()];
+    const jourFin=NOMS_JOURS[new Date((i+4)*86400000).getUTCDay()];
     label.innerHTML=`<div class="week-num">S${wn}</div><div class="week-date">${start}<br>${end}</div>`;
-    label.setAttribute("data-tooltip",`du Lundi ${start} au Vendredi ${end}\n(5 j. ouvrés)`);
+    label.setAttribute("data-tooltip",`du ${jourDebut.charAt(0).toUpperCase()+jourDebut.slice(1)} ${start} au ${jourFin.charAt(0).toUpperCase()+jourFin.slice(1)} ${end}\n(5 j. ouvrés)`);
     headInner.appendChild(label);
   }
   head.appendChild(headInner);
@@ -1259,8 +1276,9 @@ function construire(){
 
         // ✅ Règle basée directement sur l'écart de dates entre les 2 tâches :
         //    écart = date de début de B - date de fin de A
-        //    écart > 2  → Est(A) → Ouest(B)   (coude horizontal, virage vertical au milieu)
-        //    écart <= 2 → Sud(A) → Ouest(B)   (coude en L : sortie verticale, un seul virage, entrée horizontale)
+        //    écart > 2         → Est(A) → Ouest(B)  (coude en Z : virage vertical au milieu)
+        //    -1 <= écart <= 2  → Sud(A) → Ouest(B)  (coude en L : un seul virage)
+        //    écart < -1        → Sud(A) → Nord(B)   (coude en Z : chevauchement fort, virage horizontal au milieu)
         const ecart = taskPos.dIdx - predPos.finIdxReel;
 
         let p1, p2, arriveeCote, path;
@@ -1274,13 +1292,21 @@ function construire(){
           // milieu, entrée perpendiculaire dans la cible. Plus de courbe lissée.
           const midX = (p1.x + p2.x) / 2;
           path = `M ${p1.x} ${p1.y} L ${midX} ${p1.y} L ${midX} ${p2.y} L ${p2.x} ${p2.y}`;
-        } else {
+        } else if(ecart >= -1){
           p1 = ancrageBarre(predPos, "sud");
           p2 = ancrageBarre(taskPos, "ouest");
           arriveeCote = "ouest";
           // ✅ Coude en L : un seul virage, exactement à la verticale de la queue
           // et à l'horizontale de la pointe (sortie verticale, entrée horizontale).
           path = `M ${p1.x} ${p1.y} L ${p1.x} ${p2.y} L ${p2.x} ${p2.y}`;
+        } else {
+          p1 = ancrageBarre(predPos, "sud");
+          p2 = ancrageBarre(taskPos, "nord");
+          arriveeCote = "nord";
+          // ✅ Coude en Z vertical : sortie verticale, virage horizontal au
+          // milieu, entrée verticale (chevauchement fort entre les 2 tâches).
+          const midY = (p1.y + p2.y) / 2;
+          path = `M ${p1.x} ${p1.y} L ${p1.x} ${midY} L ${p2.x} ${midY} L ${p2.x} ${p2.y}`;
         }
 
         const isCritical = t.Est_critique === true;
