@@ -1259,8 +1259,8 @@ function construire(){
 
         // ✅ Règle basée directement sur l'écart de dates entre les 2 tâches :
         //    écart = date de début de B - date de fin de A
-        //    écart > 2  → Est(A) → Ouest(B)
-        //    écart <= 2 → Sud(A) → Nord(B)   (chevauchement ou adjacence, toujours ce sens)
+        //    écart > 2  → Est(A) → Ouest(B)   (coude horizontal, virage vertical au milieu)
+        //    écart <= 2 → Sud(A) → Ouest(B)   (coude en L : sortie verticale, un seul virage, entrée horizontale)
         const ecart = taskPos.dIdx - predPos.finIdxReel;
 
         let p1, p2, arriveeCote, path;
@@ -1276,14 +1276,11 @@ function construire(){
           path = `M ${p1.x} ${p1.y} L ${midX} ${p1.y} L ${midX} ${p2.y} L ${p2.x} ${p2.y}`;
         } else {
           p1 = ancrageBarre(predPos, "sud");
-          p2 = ancrageBarre(taskPos, "nord");
-          arriveeCote = "nord";
-          // ✅ Petite marge de dégagement sur la queue (départ), pour qu'elle
-          // ne démarre pas collée à l'étiquette de date de la ligne suivante.
-          const QUEUE_MARGE = 4;
-          const p1Depart = { x: p1.x, y: p1.y + QUEUE_MARGE };
-          const midY = (p1Depart.y + p2.y) / 2;
-          path = `M ${p1Depart.x} ${p1Depart.y} L ${p1Depart.x} ${midY} L ${p2.x} ${midY} L ${p2.x} ${p2.y}`;
+          p2 = ancrageBarre(taskPos, "ouest");
+          arriveeCote = "ouest";
+          // ✅ Coude en L : un seul virage, exactement à la verticale de la queue
+          // et à l'horizontale de la pointe (sortie verticale, entrée horizontale).
+          path = `M ${p1.x} ${p1.y} L ${p1.x} ${p2.y} L ${p2.x} ${p2.y}`;
         }
 
         const isCritical = t.Est_critique === true;
