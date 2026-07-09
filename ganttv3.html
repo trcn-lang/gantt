@@ -1218,16 +1218,21 @@ function construire(){
     // ✅ Flèches de dépendances (uniquement entre tâches de cette campagne)
     const CAMP_H = 46, ROW_H = 44;
 
-    // Ancrage d'une cellule-jour, façon "point de connexion" (Word/Visio) :
-    // chaque cellule-jour a un ancrage gauche, droite et centre, sur l'axe
-    // vertical de la ligne (rowIndex) qui la porte.
-    function ancrageCellule(dayIdx, cote, rowIndex){
-      const gauche = (dayIdx - minI) * 16;
-      const droite = gauche + 16;
-      const centre = gauche + 8;
-      const x = cote === "gauche" ? gauche : cote === "droite" ? droite : centre;
-      const y = CAMP_H + rowIndex * ROW_H + ROW_H / 2;
-      return { x, y };
+    // 4 points d'ancrage par tâche (façon connecteur Word/Visio), toujours au
+    // centre du bord correspondant de la barre — jamais un point flottant.
+    function ancrageBarre(pos, cote){
+      const gauche = (pos.dIdx - minI) * 16;
+      const droite = (pos.finIdxReel - minI + 1) * 16;
+      const centreX = (gauche + droite) / 2;
+      const yHaut = CAMP_H + pos.rowIndex * ROW_H;
+      const yBas = yHaut + ROW_H;
+      const yCentre = yHaut + ROW_H / 2;
+      switch(cote){
+        case "est":   return { x: droite,  y: yCentre };
+        case "ouest": return { x: gauche,  y: yCentre };
+        case "nord":  return { x: centreX, y: yHaut };
+        case "sud":   return { x: centreX, y: yBas };
+      }
     }
 
     const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -1243,37 +1248,57 @@ function construire(){
         const predPos = taskPositions[predId];
         if(!predPos) return;
 
-        // Ancrage candidat par défaut : droite de la dernière cellule du prédécesseur
-        // → gauche de la première cellule de la tâche suivante (connexion horizontale).
-        const sortiePred = ancrageCellule(predPos.finIdxReel, "droite", predPos.rowIndex);
-        const entreeSucc = ancrageCellule(taskPos.dIdx, "gauche", taskPos.rowIndex);
+        // Candidat par défaut : Est(prédécesseur) → Ouest(suivant) — cas normal,
+        // les deux barres ne se chevauchent pas dans le temps.
+        const sortieEst = ancrageBarre(predPos, "est");
+        const entreeOuest = ancrageBarre(taskPos, "ouest");
+        const horizontalValide = entreeOuest.x >= sortieEst.x;
 
-        // Si cet ancrage horizontal n'est plus géométriquement valide (les cellules
-        // se touchent ou se chevauchent, la flèche partirait à l'envers), on bascule
-        // sur le centre de chaque cellule concernée (ancrage vertical, façon Word).
-        const valide = entreeSucc.x >= sortiePred.x;
-        const p1 = valide ? sortiePred : ancrageCellule(predPos.finIdxReel, "centre", predPos.rowIndex);
-        const p2 = valide ? entreeSucc : ancrageCellule(taskPos.dIdx, "centre", taskPos.rowIndex);
+        let p1, p2, arriveeCote, path;
 
-        const x1 = p1.x, y1 = p1.y, x2 = p2.x, y2 = p2.y;
+        if(horizontalValide){
+          p1 = sortieEst;
+          p2 = entreeOuest;
+          arriveeCote = "ouest";
+          const midX = (p1.x + p2.x) / 2;
+          path = `M ${p1.x} ${p1.y} C ${midX} ${p1.y}, ${midX} ${p2.y}, ${p2.x} ${p2.y}`;
+        } else {
+          // Chevauchement horizontal : l'axe Est/Ouest n'a plus de sens (la flèche
+          // partirait à l'envers). On bascule sur Nord/Sud, selon l'ordre des lignes.
+          if(predPos.rowIndex < taskPos.rowIndex){
+            p1 = ancrageBarre(predPos, "sud");
+            p2 = ancrageBarre(taskPos, "nord");
+            arriveeCote = "nord";
+          } else {
+            p1 = ancrageBarre(predPos, "nord");
+            p2 = ancrageBarre(taskPos, "sud");
+            arriveeCote = "sud";
+          }
+          const midY = (p1.y + p2.y) / 2;
+          path = `M ${p1.x} ${p1.y} C ${p1.x} ${midY}, ${p2.x} ${midY}, ${p2.x} ${p2.y}`;
+        }
 
         const isCritical = t.Est_critique === true;
         const strokeColor = isCritical ? "#CE0500" : "#BBBBBB";
-        const midX = (x1 + x2) / 2;
 
-        const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-        path.setAttribute("d", `M ${x1} ${y1} C ${midX} ${y1}, ${midX} ${y2}, ${x2} ${y2}`);
-        path.setAttribute("stroke", strokeColor);
-        path.setAttribute("stroke-width", "1.5");
-        path.setAttribute("fill", "none");
-        svg.appendChild(path);
+        const pathEl = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        pathEl.setAttribute("d", path);
+        pathEl.setAttribute("stroke", strokeColor);
+        pathEl.setAttribute("stroke-width", "1.5");
+        pathEl.setAttribute("fill", "none");
+        svg.appendChild(pathEl);
 
-        const arrowSize = 4;
-        const angle = Math.atan2(y2 - y1, x2 - x1);
-        const arrowX = x2 - arrowSize*2*Math.cos(angle);
-        const arrowY = y2 - arrowSize*2*Math.sin(angle);
+        // ✅ La pointe de la flèche est TOUJOURS exactement sur le point d'ancrage
+        // d'arrivée (p2), orientée selon l'axe réel de la tangente de la courbe à
+        // ce point (donc toujours alignée avec la "queue" du trait, jamais en biais).
+        const angleParCote = { ouest: 0, nord: Math.PI/2, sud: -Math.PI/2 };
+        const angle = angleParCote[arriveeCote];
+        const arrowSize = 5;
+        const tipX = p2.x, tipY = p2.y;
+        const baseX = tipX - arrowSize * 2 * Math.cos(angle);
+        const baseY = tipY - arrowSize * 2 * Math.sin(angle);
         const polygon = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
-        polygon.setAttribute("points", `${x2},${y2} ${arrowX - arrowSize*Math.sin(angle)},${arrowY + arrowSize*Math.cos(angle)} ${arrowX + arrowSize*Math.sin(angle)},${arrowY - arrowSize*Math.cos(angle)}`);
+        polygon.setAttribute("points", `${tipX},${tipY} ${baseX - arrowSize*Math.sin(angle)},${baseY + arrowSize*Math.cos(angle)} ${baseX + arrowSize*Math.sin(angle)},${baseY - arrowSize*Math.cos(angle)}`);
         polygon.setAttribute("fill", strokeColor);
         svg.appendChild(polygon);
       });
