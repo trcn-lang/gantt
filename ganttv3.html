@@ -1255,17 +1255,17 @@ function construire(){
         const predPos = taskPositions[predId];
         if(!predPos) return;
 
-        // Candidat par défaut : Est(prédécesseur) → Ouest(suivant) — cas normal,
-        // les deux barres ne se chevauchent pas dans le temps.
-        const sortieEst = ancrageBarre(predPos, "est");
-        const entreeOuest = ancrageBarre(taskPos, "ouest");
-        const horizontalValide = entreeOuest.x >= sortieEst.x;
+        // ✅ Règle basée directement sur l'écart de dates entre les 2 tâches :
+        //    écart = date de début de B - date de fin de A
+        //    écart > 0  → Est(A) → Ouest(B)  (cas normal, pas de chevauchement)
+        //    écart <= 0 → Sud(A) → Nord(B)   (chevauchement, toujours ce sens)
+        const ecart = taskPos.dIdx - predPos.finIdxReel;
 
         let p1, p2, arriveeCote, path;
 
-        if(horizontalValide){
-          p1 = sortieEst;
-          p2 = entreeOuest;
+        if(ecart > 0){
+          p1 = ancrageBarre(predPos, "est");
+          p2 = ancrageBarre(taskPos, "ouest");
           arriveeCote = "ouest";
           // ✅ Connecteur orthogonal "en coude" (style Word/Visio) : segments
           // droits uniquement, sortie perpendiculaire de la source, virage au
@@ -1273,17 +1273,9 @@ function construire(){
           const midX = (p1.x + p2.x) / 2;
           path = `M ${p1.x} ${p1.y} L ${midX} ${p1.y} L ${midX} ${p2.y} L ${p2.x} ${p2.y}`;
         } else {
-          // Chevauchement horizontal : l'axe Est/Ouest n'a plus de sens (la flèche
-          // partirait à l'envers). On bascule sur Nord/Sud, selon l'ordre des lignes.
-          if(predPos.rowIndex < taskPos.rowIndex){
-            p1 = ancrageBarre(predPos, "sud");
-            p2 = ancrageBarre(taskPos, "nord");
-            arriveeCote = "nord";
-          } else {
-            p1 = ancrageBarre(predPos, "nord");
-            p2 = ancrageBarre(taskPos, "sud");
-            arriveeCote = "sud";
-          }
+          p1 = ancrageBarre(predPos, "sud");
+          p2 = ancrageBarre(taskPos, "nord");
+          arriveeCote = "nord";
           const midY = (p1.y + p2.y) / 2;
           path = `M ${p1.x} ${p1.y} L ${p1.x} ${midY} L ${p2.x} ${midY} L ${p2.x} ${p2.y}`;
         }
