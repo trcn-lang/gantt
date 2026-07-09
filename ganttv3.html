@@ -1259,15 +1259,13 @@ function construire(){
 
         // ✅ Règle basée directement sur l'écart de dates entre les 2 tâches :
         //    écart = date de début de B - date de fin de A
-        //    écart > 1  → Est(A) → Ouest(B)  (au moins 1 jour plein d'écart réel,
-        //                 sinon les bords Est/Ouest coïncident et le coude n'a pas
-        //                 de largeur pour se dessiner proprement)
-        //    écart <= 1 → Sud(A) → Nord(B)   (chevauchement ou adjacence, toujours ce sens)
+        //    écart > 2  → Est(A) → Ouest(B)
+        //    écart <= 2 → Sud(A) → Nord(B)   (chevauchement ou adjacence, toujours ce sens)
         const ecart = taskPos.dIdx - predPos.finIdxReel;
 
         let p1, p2, arriveeCote, path;
 
-        if(ecart > 1){
+        if(ecart > 2){
           p1 = ancrageBarre(predPos, "est");
           p2 = ancrageBarre(taskPos, "ouest");
           arriveeCote = "ouest";
@@ -1280,8 +1278,12 @@ function construire(){
           p1 = ancrageBarre(predPos, "sud");
           p2 = ancrageBarre(taskPos, "nord");
           arriveeCote = "nord";
-          const midY = (p1.y + p2.y) / 2;
-          path = `M ${p1.x} ${p1.y} L ${p1.x} ${midY} L ${p2.x} ${midY} L ${p2.x} ${p2.y}`;
+          // ✅ Petite marge de dégagement sur la queue (départ), pour qu'elle
+          // ne démarre pas collée à l'étiquette de date de la ligne suivante.
+          const QUEUE_MARGE = 4;
+          const p1Depart = { x: p1.x, y: p1.y + QUEUE_MARGE };
+          const midY = (p1Depart.y + p2.y) / 2;
+          path = `M ${p1Depart.x} ${p1Depart.y} L ${p1Depart.x} ${midY} L ${p2.x} ${midY} L ${p2.x} ${p2.y}`;
         }
 
         const isCritical = t.Est_critique === true;
@@ -1297,9 +1299,10 @@ function construire(){
         // ✅ La pointe de la flèche est TOUJOURS exactement sur le point d'ancrage
         // d'arrivée (p2), orientée selon l'axe réel de la tangente de la courbe à
         // ce point (donc toujours alignée avec la "queue" du trait, jamais en biais).
+        // ✅ Pointe réduite (moins intrusive visuellement).
         const angleParCote = { ouest: 0, nord: Math.PI/2, sud: -Math.PI/2 };
         const angle = angleParCote[arriveeCote];
-        const arrowSize = 5;
+        const arrowSize = 3.5;
         const tipX = p2.x, tipY = p2.y;
         const baseX = tipX - arrowSize * 2 * Math.cos(angle);
         const baseY = tipY - arrowSize * 2 * Math.sin(angle);
