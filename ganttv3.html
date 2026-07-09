@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Rétroplanning général</title>
+<title>Rétroplanning</title>
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
 <style>
   :root{
@@ -1220,18 +1220,25 @@ function construire(){
 
     // 4 points d'ancrage par tâche (façon connecteur Word/Visio), toujours au
     // centre du bord correspondant de la barre — jamais un point flottant.
+    // ✅ Doit correspondre exactement à la CSS .barre { top:20px; height:22px }
+    const BARRE_TOP = 20, BARRE_H = 22;
+
     function ancrageBarre(pos, cote){
       const gauche = (pos.dIdx - minI) * 16;
       const droite = (pos.finIdxReel - minI + 1) * 16;
       const centreX = (gauche + droite) / 2;
-      const yHaut = CAMP_H + pos.rowIndex * ROW_H;
-      const yBas = yHaut + ROW_H;
-      const yCentre = yHaut + ROW_H / 2;
+      // ✅ FIX: on ancre sur le vrai rectangle de la barre (décalée dans sa ligne
+      // pour laisser la place aux étiquettes de date), pas sur le centre de la
+      // ligne entière — sinon l'ancrage tombe près du haut de la barre au lieu
+      // de son centre réel.
+      const yHautBarre = CAMP_H + pos.rowIndex * ROW_H + BARRE_TOP;
+      const yBasBarre = yHautBarre + BARRE_H;
+      const yCentreBarre = yHautBarre + BARRE_H / 2;
       switch(cote){
-        case "est":   return { x: droite,  y: yCentre };
-        case "ouest": return { x: gauche,  y: yCentre };
-        case "nord":  return { x: centreX, y: yHaut };
-        case "sud":   return { x: centreX, y: yBas };
+        case "est":   return { x: droite,  y: yCentreBarre };
+        case "ouest": return { x: gauche,  y: yCentreBarre };
+        case "nord":  return { x: centreX, y: yHautBarre };
+        case "sud":   return { x: centreX, y: yBasBarre };
       }
     }
 
@@ -1260,8 +1267,11 @@ function construire(){
           p1 = sortieEst;
           p2 = entreeOuest;
           arriveeCote = "ouest";
+          // ✅ Connecteur orthogonal "en coude" (style Word/Visio) : segments
+          // droits uniquement, sortie perpendiculaire de la source, virage au
+          // milieu, entrée perpendiculaire dans la cible. Plus de courbe lissée.
           const midX = (p1.x + p2.x) / 2;
-          path = `M ${p1.x} ${p1.y} C ${midX} ${p1.y}, ${midX} ${p2.y}, ${p2.x} ${p2.y}`;
+          path = `M ${p1.x} ${p1.y} L ${midX} ${p1.y} L ${midX} ${p2.y} L ${p2.x} ${p2.y}`;
         } else {
           // Chevauchement horizontal : l'axe Est/Ouest n'a plus de sens (la flèche
           // partirait à l'envers). On bascule sur Nord/Sud, selon l'ordre des lignes.
@@ -1275,7 +1285,7 @@ function construire(){
             arriveeCote = "sud";
           }
           const midY = (p1.y + p2.y) / 2;
-          path = `M ${p1.x} ${p1.y} C ${p1.x} ${midY}, ${p2.x} ${midY}, ${p2.x} ${p2.y}`;
+          path = `M ${p1.x} ${p1.y} L ${p1.x} ${midY} L ${p2.x} ${midY} L ${p2.x} ${p2.y}`;
         }
 
         const isCritical = t.Est_critique === true;
