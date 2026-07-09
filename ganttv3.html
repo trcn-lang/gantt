@@ -64,7 +64,13 @@
   .btn-danger{background:#CE0500}
   .btn-danger:hover{background:#a80400}
 
-  .scroll{flex:1;overflow:auto;position:relative;padding-bottom:18px}
+  .scroll{flex:1;overflow:auto;position:relative;padding-bottom:28px}
+  /* ✅ Ascenseur à taille fixe : évite qu'il s'épaississe au survol et masque
+     davantage la dernière ligne de tâches (comportement natif macOS/Chrome). */
+  .scroll::-webkit-scrollbar{height:10px;width:10px}
+  .scroll::-webkit-scrollbar-thumb{background:#B0B0B0;border-radius:5px}
+  .scroll::-webkit-scrollbar-track{background:transparent}
+  .scroll{scrollbar-width:thin}
   .grid-wrapper{display:flex}
 
   .labels-col{
@@ -157,6 +163,7 @@
     transform:translateX(-50%);
     font-size:9px;font-weight:600;color:var(--texte-mention);
     white-space:nowrap;pointer-events:none;line-height:1.2;
+    background:var(--fond);padding:0 2px;border-radius:2px;
   }
 
   .dependencies-svg{
