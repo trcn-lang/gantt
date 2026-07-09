@@ -1194,7 +1194,9 @@ function construire(){
           debutLabel.style.left = ((dIdx-minI)*16 + 8) + "px";
           track.appendChild(debutLabel);
 
-          if(finIdxReel !== dIdx){
+          // ✅ Si la tâche dure 2 jours ou moins, on n'affiche que la date de
+          // début (la date de fin serait redondante sur une barre aussi courte).
+          if(finIdxReel !== dIdx && duree > 2){
             const finLabel = el("div","date-label", fmtJJMM(finIdxReel));
             finLabel.style.left = ((finIdxReel-minI)*16 + 8) + "px";
             track.appendChild(finLabel);
@@ -1257,13 +1259,15 @@ function construire(){
 
         // ✅ Règle basée directement sur l'écart de dates entre les 2 tâches :
         //    écart = date de début de B - date de fin de A
-        //    écart > 0  → Est(A) → Ouest(B)  (cas normal, pas de chevauchement)
-        //    écart <= 0 → Sud(A) → Nord(B)   (chevauchement, toujours ce sens)
+        //    écart > 1  → Est(A) → Ouest(B)  (au moins 1 jour plein d'écart réel,
+        //                 sinon les bords Est/Ouest coïncident et le coude n'a pas
+        //                 de largeur pour se dessiner proprement)
+        //    écart <= 1 → Sud(A) → Nord(B)   (chevauchement ou adjacence, toujours ce sens)
         const ecart = taskPos.dIdx - predPos.finIdxReel;
 
         let p1, p2, arriveeCote, path;
 
-        if(ecart > 0){
+        if(ecart > 1){
           p1 = ancrageBarre(predPos, "est");
           p2 = ancrageBarre(taskPos, "ouest");
           arriveeCote = "ouest";
