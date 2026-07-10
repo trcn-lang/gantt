@@ -493,6 +493,17 @@ function parseListeReference(raw, table){
 function getJalonTachesRequises(jalon){
   return parseListeReference(jalon.Taches_requises, DB.taches);
 }
+// Décode le format "Choix multiple" de Grist (['L', 'Livrable']) en simple texte
+function getJalonTypeTexte(jalon){
+  const raw = jalon.Type;
+  if(!raw) return "";
+  if(Array.isArray(raw)){
+    if(raw[0]==='L') return raw[1] || "";
+    if(raw[0]==='E') return "";
+    return "";
+  }
+  return raw;
+}
 function getTacheJalonsDeclencheurs(task){
   return parseListeReference(task.Jalon_declencheur, DB.jalons);
 }
@@ -984,7 +995,7 @@ function openJalonEdit(jalon){
   document.getElementById("field-jalon-campagne").value=refId(jalon.Campagne);
   document.getElementById("field-jalon-nom").value=jalon.Nom||"";
   document.getElementById("field-jalon-date").value=toDateInput(jalon.Date);
-  document.getElementById("field-jalon-type").value=jalon.Type||"";
+  document.getElementById("field-jalon-type").value=getJalonTypeTexte(jalon)||"";
   document.getElementById("modal-jalon-title").textContent="Modifier le jalon";
   document.getElementById("btn-save-jalon").textContent="Enregistrer";
   document.getElementById("btn-delete-jalon").style.display="inline-block";
@@ -1016,7 +1027,8 @@ async function saveJalon(){
     }
 
     const values={
-      Campagne:campagne_id, Nom:nom, Date:Math.floor(new Date(date).getTime()/1000), Type: type || null,
+      Campagne:campagne_id, Nom:nom, Date:Math.floor(new Date(date).getTime()/1000),
+      Type: type ? ['L', type] : null,
       Taches_requises: ['L', ...tachesRequisesIds]
     };
     if(id){
@@ -1153,7 +1165,7 @@ function populateJalonsDeclencheursSelect(campagneId, selectedJalons){
     container.innerHTML = "<div style='padding:8px;color:#999;font-size:11px;'>Aucune campagne sélectionnée</div>";
     return;
   }
-  const campagneJalons = DB.jalons.filter(j => refId(j.Campagne) === campagneId && norm(j.Type)===norm("Livrable"));
+  const campagneJalons = DB.jalons.filter(j => refId(j.Campagne) === campagneId && norm(getJalonTypeTexte(j))===norm("Livrable"));
   if(campagneJalons.length === 0){
     container.innerHTML = "<div style='padding:8px;color:#999;font-size:11px;'>Aucun livrable dans cette campagne</div>";
     return;
@@ -1496,7 +1508,8 @@ function construire(){
         const leftPx=xDiamant+"px";
         const topNum=JALON_TOP_BASE + niveau * JALON_NIVEAU_ESPACEMENT;
         const topPx=topNum+"px";
-        const couleur=cssVarValue(jalonCouleur(jalon.Type));
+        const typeTexte = getJalonTypeTexte(jalon);
+        const couleur=cssVarValue(jalonCouleur(typeTexte));
         const jalonLine=el("div","jalon-line");
         jalonLine.style.left=leftPx;
         jalonLine.style.top=CAMP_H+"px";
@@ -1511,7 +1524,7 @@ function construire(){
         const markerWrap=el("div","jalon-marker-wrap");
         markerWrap.style.left=leftPx;
         markerWrap.style.top=topPx;
-        markerWrap.setAttribute("data-tooltip", `${jalon.Nom}${jalon.Type?` (${jalon.Type})`:""}\\n${fmtJourComplet(jalon.Date)}`);
+        markerWrap.setAttribute("data-tooltip", `${jalon.Nom}${typeTexte?` (${typeTexte})`:""}\\n${fmtJourComplet(jalon.Date)}`);
         markerWrap.onclick=(e)=>{ e.stopPropagation(); openJalonEdit(jalon); };
         const diamond=el("div","jalon-marker-diamond");
         diamond.style.background=couleur;
@@ -1519,7 +1532,7 @@ function construire(){
         campGroup.appendChild(markerWrap);
 
         // Flèches de dépendance Livrable : tâches requises → jalon, et jalon → tâches déclenchées
-        if(norm(jalon.Type)===norm("Livrable")){
+        if(norm(typeTexte)===norm("Livrable")){
           const pointJalon = {x: xDiamant, y: topNum};
           getJalonTachesRequises(jalon).forEach(reqTask=>{
             const pos = taskPositions[reqTask.id];
