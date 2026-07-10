@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Rétroplanning V3</title>
+<title>Rétroplanning</title>
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
 <style>
   :root{
@@ -190,26 +190,14 @@
     white-space:nowrap;cursor:pointer;
     line-height:1;
     margin-left:0;
-    left:16px;
+    left:22px;
     transform:translateY(-50%);
-  }
-  .jalon-name.align-top{
-    top:10px;
-  }
-  .jalon-name.align-bottom{
-    top:38px;
   }
 
   .jalon-marker-wrap{
     position:absolute;z-index:4;
     width:0;height:0;
     cursor:pointer;
-  }
-  .jalon-marker-wrap.align-top{
-    top:10px;
-  }
-  .jalon-marker-wrap.align-bottom{
-    top:38px;
   }
 
   .jalon-marker-diamond{
@@ -1239,31 +1227,52 @@ function construire(){
     });
     campGroup.appendChild(svg);
     const jalonsCamp = DB.jalons.filter(j=>refId(j.Campagne)===camp.id).map(j=>({ jalon:j, dIdx:dayIndex(j.Date) })).filter(x=>x.dIdx!==null && x.dIdx>=minI && x.dIdx<=maxI).sort((a,b)=>a.dIdx-b.dIdx);
-    let jalonCounter = 0;
-    jalonsCamp.forEach(({jalon, dIdx})=>{
+
+    // Empilement par niveaux : un jalon passe au niveau suivant (plus bas)
+    // si son texte chevaucherait le texte du dernier jalon placé au même niveau.
+    const NIVEAUX_TOP = [10, 38, 66, 94];
+    const MARGE_TEXTE = 8;
+    const finOccupeeParNiveau = []; // dernière position x libre par niveau
+    function estimerLargeurTexte(nom){
+      return 14 + nom.length * 5.5; // approximation : diamant + texte gras 10px
+    }
+    jalonsCamp.forEach(item=>{
+      const xPos = (item.dIdx-minI+1)*16;
+      let niveau = 0;
+      while(
+        finOccupeeParNiveau[niveau]!==undefined &&
+        xPos < finOccupeeParNiveau[niveau] + MARGE_TEXTE &&
+        niveau < NIVEAUX_TOP.length-1
+      ){
+        niveau++;
+      }
+      finOccupeeParNiveau[niveau] = xPos + estimerLargeurTexte(item.jalon.Nom);
+      item.niveau = niveau;
+    });
+
+    jalonsCamp.forEach(({jalon, dIdx, niveau})=>{
         const leftPx=((dIdx-minI+1)*16)+"px";
+        const topPx=NIVEAUX_TOP[niveau]+"px";
         const couleur=cssVarValue(jalonCouleur(jalon.Type));
         const jalonLine=el("div","jalon-line");
         jalonLine.style.left=leftPx;
         jalonLine.style.background=couleur;
         campGroup.appendChild(jalonLine);
-        const isAltTop = jalonCounter % 2 === 0;
         const nameEl=el("div","jalon-name",jalon.Nom);
-        nameEl.classList.add(isAltTop ? "align-top" : "align-bottom");
         nameEl.style.left=leftPx;
+        nameEl.style.top=topPx;
         nameEl.style.color=couleur;
         nameEl.onclick=(e)=>{ e.stopPropagation(); openJalonEdit(jalon); };
         campGroup.appendChild(nameEl);
         const markerWrap=el("div","jalon-marker-wrap");
-        markerWrap.classList.add(isAltTop ? "align-top" : "align-bottom");
         markerWrap.style.left=leftPx;
+        markerWrap.style.top=topPx;
         markerWrap.setAttribute("data-tooltip", `${jalon.Nom}${jalon.Type?` (${jalon.Type})`:""}\\n${fmtJourComplet(jalon.Date)}`);
         markerWrap.onclick=(e)=>{ e.stopPropagation(); openJalonEdit(jalon); };
         const diamond=el("div","jalon-marker-diamond");
         diamond.style.background=couleur;
         markerWrap.appendChild(diamond);
         campGroup.appendChild(markerWrap);
-        jalonCounter++;
     });
     grid.appendChild(campGroup);
   });
