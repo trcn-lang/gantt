@@ -19,7 +19,7 @@
     --st-termine:#18753C;
     --jalon-majeur:#C41E3A;
     --jalon-livrable:#FF6B35;
-    --jalon-etape:#6B6B6B;
+    --jalon-info:#6B6B6B;
     --jour:16px;
     --label-w:300px;
     --row-h:44px;
@@ -318,7 +318,7 @@
     <div class="form-group"><label>Nom du jalon *</label><input type="text" id="field-jalon-nom" placeholder="ex: Lancement"></div>
     <div class="form-group"><label>Date *</label><input type="date" id="field-jalon-date"></div>
     <div class="form-group"><label>Type</label>
-      <select id="field-jalon-type"><option>Jalon majeur</option><option>Livrable</option><option>Étape</option></select>
+      <select id="field-jalon-type"><option>Jalon majeur</option><option>Livrable</option><option>Pour information</option></select>
     </div>
     <div class="form-group" id="group-jalon-taches-requises" style="display:none;">
       <label>Tâches requises (livrable atteint une fois ces tâches terminées)</label>
@@ -382,10 +382,10 @@ const STATUTS = [
 const JALON_COULEURS = {
   "jalon majeur": "var(--jalon-majeur)",
   "livrable":     "var(--jalon-livrable)",
-  "etape":        "var(--jalon-etape)",
+  "pour information": "var(--jalon-info)",
 };
 function jalonCouleur(type){
-  return JALON_COULEURS[norm(type)] || "var(--jalon-livrable)";
+  return JALON_COULEURS[norm(type)] || "var(--jalon-info)";
 }
 
 function norm(s){
@@ -1584,7 +1584,7 @@ function rendreLegende(){
     item.appendChild(document.createTextNode(s.nom));
     l.appendChild(item);
   });
-  [["Jalon majeur","var(--jalon-majeur)"],["Livrable","var(--jalon-livrable)"],["Étape","var(--jalon-etape)"]].forEach(([label,couleur])=>{
+  [["Jalon majeur","var(--jalon-majeur)"],["Livrable","var(--jalon-livrable)"],["Pour information","var(--jalon-info)"]].forEach(([label,couleur])=>{
     const item=el("div","item");
     const puce=el("span","puce jalon-puce"); puce.style.background=couleur;
     item.appendChild(puce);
