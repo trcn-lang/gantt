@@ -519,10 +519,10 @@ function calculateEarlyDates(){
       if(!predTask) continue;
       const predStart = getEarlyStart(predTask.id);
       if(!predStart) continue;
-      const predEnd = new Date(predStart.getTime() + (predTask.Duree_jours||1) * 86400000);
+      const predEnd = ajouterJoursOuvres(predStart, predTask.Duree_jours||1);
       if(!maxEnd || predEnd > maxEnd) maxEnd = predEnd;
     }
-    memo[taskId] = maxEnd ? new Date(maxEnd.getTime() + 86400000) : parseDate(task.Date_debut);
+    memo[taskId] = maxEnd ? jourOuvreSuivant(maxEnd) : parseDate(task.Date_debut);
     return memo[taskId];
   }
   DB.taches.forEach(t=>{
@@ -530,7 +530,7 @@ function calculateEarlyDates(){
     PERT_DATA[t.id] = PERT_DATA[t.id] || {};
     PERT_DATA[t.id].earlyStart = early;
     if(early){
-      PERT_DATA[t.id].earlyEnd = new Date(early.getTime() + (t.Duree_jours||1) * 86400000);
+      PERT_DATA[t.id].earlyEnd = ajouterJoursOuvres(early, t.Duree_jours||1);
     }
   });
 }
@@ -556,11 +556,11 @@ function calculateLateDates(){
     for(const succ of successeurs){
       const succLateEnd = getLateEnd(succ.id);
       if(succLateEnd){
-        const succLateStart = new Date(succLateEnd.getTime() - (succ.Duree_jours||1) * 86400000);
+        const succLateStart = soustraireJoursOuvres(succLateEnd, succ.Duree_jours||1);
         if(!minStart || succLateStart < minStart) minStart = succLateStart;
       }
     }
-    memo[taskId] = minStart || projectEnd;
+    memo[taskId] = minStart ? jourOuvrePrecedent(minStart) : projectEnd;
     return memo[taskId];
   }
   DB.taches.forEach(t=>{
@@ -568,7 +568,7 @@ function calculateLateDates(){
     PERT_DATA[t.id] = PERT_DATA[t.id] || {};
     PERT_DATA[t.id].lateEnd = lateEnd;
     if(lateEnd){
-      PERT_DATA[t.id].lateStart = new Date(lateEnd.getTime() - (t.Duree_jours||1) * 86400000);
+      PERT_DATA[t.id].lateStart = soustraireJoursOuvres(lateEnd, t.Duree_jours||1);
     }
   });
 }
@@ -578,7 +578,8 @@ function calculateSlack(){
     PERT_DATA[t.id] = PERT_DATA[t.id] || {};
     const ls = PERT_DATA[t.id].lateStart, es = PERT_DATA[t.id].earlyStart;
     if(ls && es){
-      const slack = Math.floor((ls - es) / 86400000);
+      // Marge exprimée en jours ouvrés (et non calendaires)
+      const slack = ls >= es ? joursOuvres(es, ls) - 1 : 0;
       PERT_DATA[t.id].slack = Math.max(0, slack);
       PERT_DATA[t.id].isCritical = (PERT_DATA[t.id].slack === 0);
     }
@@ -737,6 +738,44 @@ function joursOuvres(d1, d2){
     cur.setDate(cur.getDate()+1);
   }
   return n;
+}
+
+// Utilitaires jours ouvrés pour la propagation PERT (chemin critique)
+function estJourOuvre(date){
+  const j=date.getDay();
+  return j!==0 && j!==6 && !estFerie(date);
+}
+function jourOuvreSuivant(date){
+  const d=new Date(date);
+  d.setDate(d.getDate()+1);
+  while(!estJourOuvre(d)) d.setDate(d.getDate()+1);
+  return d;
+}
+function jourOuvrePrecedent(date){
+  const d=new Date(date);
+  d.setDate(d.getDate()-1);
+  while(!estJourOuvre(d)) d.setDate(d.getDate()-1);
+  return d;
+}
+// Renvoie la date de fin après n jours ouvrés en comptant "date" comme jour 1 (cohérent avec Duree_jours)
+function ajouterJoursOuvres(date, n){
+  const d=new Date(date);
+  let restant=Math.max(1,n)-1;
+  while(restant>0){
+    d.setDate(d.getDate()+1);
+    if(estJourOuvre(d)) restant--;
+  }
+  return d;
+}
+// Opération inverse : retrouve la date de début connaissant la fin et la durée en jours ouvrés
+function soustraireJoursOuvres(date, n){
+  const d=new Date(date);
+  let restant=Math.max(1,n)-1;
+  while(restant>0){
+    d.setDate(d.getDate()-1);
+    if(estJourOuvre(d)) restant--;
+  }
+  return d;
 }
 function majDuree(){
   const debut=document.getElementById("field-tache-debut").value;
@@ -1250,8 +1289,8 @@ function construire(){
           const midY = (p1.y + p2.y) / 2;
           path = `M ${p1.x} ${p1.y} L ${p1.x} ${midY} L ${p2.x} ${midY} L ${p2.x} ${p2.y}`;
         }
-        const isCritical = t.Est_critique === true;
-        const strokeColor = isCritical ? "#CE0500" : "#BBBBBB";
+        const statutCible = resolveRef(DB.parametres, t.Statut, "Statut");
+        const strokeColor = cssVarValue(statutInfo(statutCible).couleur);
         const pathEl = document.createElementNS("http://www.w3.org/2000/svg", "path");
         pathEl.setAttribute("d", path);
         pathEl.setAttribute("stroke", strokeColor);
