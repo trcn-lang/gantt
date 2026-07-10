@@ -93,10 +93,7 @@
     position:absolute;top:0;bottom:0;
     width:112px;padding:8px;display:flex;flex-direction:column;
     align-items:center;justify-content:center;text-align:center;font-size:11px;cursor:help;
-  }
-  .week-label::before{
-    content:'';position:absolute;left:56px;top:0;bottom:0;width:1px;
-    background:rgba(0,0,0,0.08);pointer-events:none;
+    border-left:1px solid rgba(0,0,0,0.1);
   }
   .week-label:hover::after{
     content:attr(data-tooltip);position:absolute;top:100%;left:50%;transform:translateX(-50%);
