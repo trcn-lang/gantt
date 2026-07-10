@@ -189,8 +189,6 @@
     font-size:10px;font-weight:700;
     white-space:nowrap;cursor:pointer;
     line-height:1;
-    margin-left:0;
-    left:22px;
     transform:translateY(-50%);
   }
 
@@ -1275,7 +1273,8 @@ function construire(){
     campGroup.appendChild(svg);
 
     jalonsCamp.forEach(({jalon, dIdx, niveau})=>{
-        const leftPx=((dIdx-minI+1)*16)+"px";
+        const xDiamant=(dIdx-minI+1)*16;
+        const leftPx=xDiamant+"px";
         const topPx=(JALON_TOP_BASE + niveau * JALON_NIVEAU_ESPACEMENT)+"px";
         const couleur=cssVarValue(jalonCouleur(jalon.Type));
         const jalonLine=el("div","jalon-line");
@@ -1284,7 +1283,7 @@ function construire(){
         jalonLine.style.background=couleur;
         campGroup.appendChild(jalonLine);
         const nameEl=el("div","jalon-name",jalon.Nom);
-        nameEl.style.left=leftPx;
+        nameEl.style.left=(xDiamant + JALON_TEXTE_OFFSET)+"px";
         nameEl.style.top=topPx;
         nameEl.style.color=couleur;
         nameEl.onclick=(e)=>{ e.stopPropagation(); openJalonEdit(jalon); };
