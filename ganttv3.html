@@ -459,25 +459,18 @@ function columnarToRows(data){
   return rows;
 }
 
-// ========== DÉPENDANCES / PERT ==========
-
 function getPredecessorTasks(task){
   const raw = task.Predecesseurs;
   if(!raw) return [];
   if(!Array.isArray(raw)) return [];
-
   if(raw[0] === 'L'){
-    return raw.slice(1)
-      .map(id => DB.taches.find(t => t.id === id))
-      .filter(Boolean);
+    return raw.slice(1).map(id => DB.taches.find(t => t.id === id)).filter(Boolean);
   }
   if(raw[0] === 'E'){
     console.warn("⚠️ Cellule Predecesseurs corrompue pour la tâche", task.id);
     return [];
   }
-  return raw
-    .map(id => (typeof id === 'object' ? id : DB.taches.find(t => t.id === id)))
-    .filter(Boolean);
+  return raw.map(id => (typeof id === 'object' ? id : DB.taches.find(t => t.id === id))).filter(Boolean);
 }
 
 function getPredecessorsBlocked(task){
@@ -612,7 +605,6 @@ async function calculatePERT(){
   calculateEarlyDates();
   calculateLateDates();
   calculateSlack();
-
   const actions = [];
   DB.taches.forEach(t=>{
     const d = PERT_DATA[t.id];
@@ -652,9 +644,7 @@ async function init(){
 
     let nonAttribue = DB.responsables.find(r => norm(r.Nom) === norm("Non attribué"));
     if(!nonAttribue){
-      await grist.docApi.applyUserActions([
-        ["AddRecord","Responsables",null,{Nom:"Non attribué"}]
-      ]);
+      await grist.docApi.applyUserActions([["AddRecord","Responsables",null,{Nom:"Non attribué"}]]);
       DB.responsables = columnarToRows(await grist.docApi.fetchTable("Responsables"));
       nonAttribue = DB.responsables.find(r => norm(r.Nom) === norm("Non attribué"));
     }
@@ -721,19 +711,10 @@ function joursFeriesAnnee(annee){
   const paques = datePaques(annee);
   const addJours = (date, n) => { const d = new Date(date); d.setDate(d.getDate() + n); return d; };
   const cles = (d) => `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
-
   const feries = [
-    new Date(annee, 0, 1),
-    addJours(paques, 1),
-    new Date(annee, 4, 1),
-    new Date(annee, 4, 8),
-    addJours(paques, 39),
-    addJours(paques, 50),
-    new Date(annee, 6, 14),
-    new Date(annee, 7, 15),
-    new Date(annee, 10, 1),
-    new Date(annee, 10, 11),
-    new Date(annee, 11, 25),
+    new Date(annee, 0, 1), addJours(paques, 1), new Date(annee, 4, 1), new Date(annee, 4, 8),
+    addJours(paques, 39), addJours(paques, 50), new Date(annee, 6, 14), new Date(annee, 7, 15),
+    new Date(annee, 10, 1), new Date(annee, 10, 11), new Date(annee, 11, 25),
   ];
   return new Set(feries.map(cles));
 }
@@ -774,8 +755,6 @@ function findRespId(nom){
   return r?r.id:null;
 }
 
-/* ---------- CAMPAGNE : créer / éditer / supprimer ---------- */
-
 function openCampagneCreate(){
   document.getElementById("field-campagne-id").value="";
   document.getElementById("field-campagne-nom").value="";
@@ -810,17 +789,11 @@ async function saveCampagne(){
   try{
     const sectionId = DB.parametres.find(p => p.Section === section)?.id;
     const typeId = DB.parametres.find(p => p.Type_Campagne === type)?.id;
-    
     if(!sectionId || !typeId){ alert("Section ou Type invalide"); return; }
-
     if(id){
-      await grist.docApi.applyUserActions([
-        ["UpdateRecord","Campagnes",parseInt(id),{Campagne:nom, Section:sectionId, Type_Campagne:typeId, Description:desc}]
-      ]);
+      await grist.docApi.applyUserActions([["UpdateRecord","Campagnes",parseInt(id),{Campagne:nom, Section:sectionId, Type_Campagne:typeId, Description:desc}]]);
     }else{
-      await grist.docApi.applyUserActions([
-        ["AddRecord","Campagnes",null,{Campagne:nom, Section:sectionId, Type_Campagne:typeId, Description:desc}]
-      ]);
+      await grist.docApi.applyUserActions([["AddRecord","Campagnes",null,{Campagne:nom, Section:sectionId, Type_Campagne:typeId, Description:desc}]]);
     }
     closeModal("modal-campagne");
     init();
@@ -844,8 +817,6 @@ async function deleteCampagne(){
     init();
   }catch(e){ alert("Erreur: "+e.message); console.error(e); }
 }
-
-/* ---------- JALON : créer / éditer / supprimer ---------- */
 
 function openJalonCreate(campagneId){
   document.getElementById("field-jalon-id").value="";
@@ -879,20 +850,11 @@ async function saveJalon(){
   const type=document.getElementById("field-jalon-type").value;
   if(!nom || !date){ alert("Champs obligatoires"); return; }
   try{
-    const values={
-      Campagne:campagne_id,
-      Nom:nom,
-      Date:Math.floor(new Date(date).getTime()/1000),
-      Type:type
-    };
+    const values={Campagne:campagne_id, Nom:nom, Date:Math.floor(new Date(date).getTime()/1000), Type:type};
     if(id){
-      await grist.docApi.applyUserActions([
-        ["UpdateRecord","Jalons",parseInt(id),values]
-      ]);
+      await grist.docApi.applyUserActions([["UpdateRecord","Jalons",parseInt(id),values]]);
     }else{
-      await grist.docApi.applyUserActions([
-        ["AddRecord","Jalons",null,values]
-      ]);
+      await grist.docApi.applyUserActions([["AddRecord","Jalons",null,values]]);
     }
     closeModal("modal-jalon");
     init();
@@ -909,8 +871,6 @@ async function deleteJalon(){
     init();
   }catch(e){ alert("Erreur: "+e.message); console.error(e); }
 }
-
-/* ---------- TACHE : créer / éditer / supprimer ---------- */
 
 function openTacheCreate(campagneId){
   document.getElementById("field-tache-id").value="";
@@ -933,7 +893,6 @@ function openTacheCreate(campagneId){
 
 function openTacheEdit(t){
   const duree=t.Duree_jours||1;
-
   let finValue = t.Date_fin;
   if(!finValue){
     const debutDate=parseDate(t.Date_debut);
@@ -948,7 +907,6 @@ function openTacheEdit(t){
     }
     finValue = finDate ? Math.floor(finDate.getTime()/1000) : null;
   }
-
   document.getElementById("field-tache-id").value=t.id;
   document.getElementById("field-tache-campagne").value=refId(t.Campagne);
   document.getElementById("field-tache-nom").value=t.Tache||"";
@@ -961,7 +919,6 @@ function openTacheEdit(t){
   document.getElementById("modal-tache-title").textContent="Modifier la tâche";
   document.getElementById("btn-save-tache").textContent="Enregistrer";
   document.getElementById("btn-delete-tache").style.display="inline-block";
-
   const preds = getPredecessorTasks(t);
   if(preds.length > 0){
     const predNames = preds.map(p => p.Tache || p).join(", ");
@@ -970,7 +927,6 @@ function openTacheEdit(t){
   } else {
     document.getElementById("info-preds").style.display="none";
   }
-
   const blocked = getPredecessorsBlocked(t);
   if(blocked.length > 0){
     const blockedNames = blocked.map(p => p.Tache || p).join(", ");
@@ -979,7 +935,6 @@ function openTacheEdit(t){
   } else {
     document.getElementById("info-blocked").style.display="none";
   }
-
   populatePredecessorsSelect(refId(t.Campagne), preds);
   openModal("modal-tache");
 }
@@ -988,20 +943,16 @@ function populatePredecessorsSelect(campagneId, selectedPreds){
   selectedPreds = selectedPreds || [];
   const container = document.getElementById("field-tache-predecesseurs");
   container.innerHTML = "";
-
   if(!campagneId){
     container.innerHTML = "<div style='padding:8px;color:#999;font-size:11px;'>Aucune campagne sélectionnée</div>";
     return;
   }
-
   const currentTaskId = parseInt(document.getElementById("field-tache-id").value);
   const campagneTasks = DB.taches.filter(t => refId(t.Campagne) === campagneId && t.id !== currentTaskId);
-
   if(campagneTasks.length === 0){
     container.innerHTML = "<div style='padding:8px;color:#999;font-size:11px;'>Aucune autre tâche dans cette campagne</div>";
     return;
   }
-
   campagneTasks.forEach(task=>{
     const isSelected = selectedPreds.some(p => refId(p.id||p) === task.id);
     const label = document.createElement("label");
@@ -1026,22 +977,16 @@ async function saveTache(){
   const statut=document.getElementById("field-tache-statut").value;
   const comments=document.getElementById("field-tache-comments").value.trim();
   if(!nom || !debut || !fin){ alert("Champs obligatoires"); return; }
-
   const duree=joursOuvres(new Date(debut), new Date(fin));
-
   try{
     const camp=DB.campagnes.find(c=>c.id===campagne_id);
     if(!camp){ alert("Campagne non trouvée"); return; }
-
     const statutId=findParamId("Statut", statut);
     const respId=findRespId(resp) || NON_ATTRIBUE_ID;
-
     const sectionId = refId(camp.Section);
     if(!sectionId){ alert("Section invalide"); return; }
-
     const checkboxes = document.querySelectorAll("#field-tache-predecesseurs input[type='checkbox']:checked");
     const predecessorIds = Array.from(checkboxes).map(cb => parseInt(cb.value));
-
     if(id){
       const currentTaskId = parseInt(id);
       for(const predId of predecessorIds){
@@ -1051,22 +996,14 @@ async function saveTache(){
         }
       }
     }
-
     const predecessorTasks = ['L', ...predecessorIds];
-
     const values={
-      Section:sectionId,
-      Campagne:campagne_id,
-      Tache:nom,
+      Section:sectionId, Campagne:campagne_id, Tache:nom,
       Date_debut:Math.floor(new Date(debut).getTime()/1000),
       Date_fin: Math.floor(new Date(fin).getTime()/1000),
-      Duree_jours:duree,
-      Statut:statutId,
-      Responsable:respId,
-      Commentaires:comments,
-      Predecesseurs: predecessorTasks
+      Duree_jours:duree, Statut:statutId, Responsable:respId,
+      Commentaires:comments, Predecesseurs: predecessorTasks
     };
-
     if(id){
       await grist.docApi.applyUserActions([["UpdateRecord","Taches",parseInt(id),values]]);
     }else{
@@ -1092,11 +1029,8 @@ async function deleteTache(){
   }catch(e){ alert("Erreur: "+e.message); console.error(e); }
 }
 
-/* ---------- Construction du Gantt ---------- */
-
 function construire(){
   const allDates = [];
-  
   DB.taches.forEach(t => {
     const dIdx = dayIndex(t.Date_debut);
     if(dIdx !== null) {
@@ -1105,14 +1039,10 @@ function construire(){
       allDates.push(finIdx !== null ? finIdx : dIdx + (t.Duree_jours || 1) - 1);
     }
   });
-  
   DB.jalons.forEach(j => {
     const dIdx = dayIndex(j.Date);
-    if(dIdx !== null) {
-      allDates.push(dIdx);
-    }
+    if(dIdx !== null) allDates.push(dIdx);
   });
-  
   let minI, maxI;
   if(allDates.length > 0){
     minI = Math.min(...allDates);
@@ -1122,30 +1052,24 @@ function construire(){
     minI = today - 14;
     maxI = today + 21;
   }
-
   const jourSemaineMinI = new Date(minI*86400000).getUTCDay();
   const decalageLundi = (jourSemaineMinI + 6) % 7;
   const minILundi = minI - decalageLundi;
-
   minI = minILundi - 1;
-
   const totalJours=maxI-minI+1;
   const tlW=totalJours*16;
   const todayI=Math.floor(Date.now()/86400000);
   const todayOffset=todayI-minI;
   allData={minI, maxI, todayI, todayOffset, totalJours, tlW};
-
   const labelsDiv=document.getElementById("labels");
   const grid=document.createElement("div");
   grid.className="grid";
   grid.style.setProperty("--tl-w", tlW+"px");
   grid.style.setProperty("--today", todayOffset);
   labelsDiv.innerHTML="";
-
   const NOMS_JOURS=['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi'];
   const head=el("div","head-track");
   const headInner=el("div","head-inner");
-  
   for(let i=minILundi;i<=maxI;i+=7){
     const wn=getWeekNumber(new Date(i*86400000));
     const label=el("div","week-label");
@@ -1154,27 +1078,22 @@ function construire(){
     const jourDebut=NOMS_JOURS[new Date(i*86400000).getUTCDay()];
     const jourFin=NOMS_JOURS[new Date((i+4)*86400000).getUTCDay()];
     label.innerHTML=`<div class="week-num">S${wn}</div><div class="week-date">${start}<br>${end}</div>`;
-    label.setAttribute("data-tooltip",`du ${jourDebut.charAt(0).toUpperCase()+jourDebut.slice(1)} ${start} au ${jourFin.charAt(0).toUpperCase()+jourFin.slice(1)} ${end}\n(5 j. ouvrés)`);
+    label.setAttribute("data-tooltip",`du ${jourDebut.charAt(0).toUpperCase()+jourDebut.slice(1)} ${start} au ${jourFin.charAt(0).toUpperCase()+jourFin.slice(1)} ${end}\\n(5 j. ouvrés)`);
     headInner.appendChild(label);
   }
   head.appendChild(headInner);
   grid.appendChild(head);
-
   DB.campagnes.forEach(camp=>{
     const campGroup=el("div","camp-group");
     if(COLLAPSED_CAMPAGNES.has(camp.id)) campGroup.classList.add("collapsed");
-
     const labCamp=el("div","label campagne");
-    
     const btnCollapse=el("button","btn-collapse");
     btnCollapse.textContent="▼";
     btnCollapse.onclick=(e)=>{ e.stopPropagation(); toggleCampagneCollapse(camp.id); };
     labCamp.appendChild(btnCollapse);
-    
     const nomSpan=el("span","nom-campagne",camp.Campagne);
     nomSpan.onclick=(e)=>{ e.stopPropagation(); openCampagneEdit(camp); };
     labCamp.appendChild(nomSpan);
-    
     const actions=el("div","label-actions");
     const btnJalon=el("button","btn-tiny add"); btnJalon.textContent="🚩";
     btnJalon.onclick=()=>{ openJalonCreate(camp.id); };
@@ -1183,30 +1102,21 @@ function construire(){
     actions.appendChild(btnJalon); actions.appendChild(btnTache);
     labCamp.appendChild(actions);
     labelsDiv.appendChild(labCamp);
-
     const trackCamp=el("div","track campagne");
     campGroup.appendChild(trackCamp);
-
-    // ✅ TRIER les tâches par date de début
-    const tachesCamp = DB.taches
-      .filter(t=>refId(t.Campagne)===camp.id)
-      .sort((a, b) => {
-        const dateA = dayIndex(a.Date_debut) || Infinity;
-        const dateB = dayIndex(b.Date_debut) || Infinity;
-        return dateA - dateB;
-      });
-    
+    const tachesCamp = DB.taches.filter(t=>refId(t.Campagne)===camp.id).sort((a, b) => {
+      const dateA = dayIndex(a.Date_debut) || Infinity;
+      const dateB = dayIndex(b.Date_debut) || Infinity;
+      return dateA - dateB;
+    });
     const taskPositions = {};
-
     tachesCamp.forEach((t, idx)=>{
       const statutTexte=resolveRef(DB.parametres, t.Statut, "Statut");
       const respTexte=resolveRef(DB.responsables, t.Responsable, "Nom");
-
       const labTask=el("div","label tache");
       labTask.appendChild(el("span","nom",t.Tache));
       if(respTexte) labTask.appendChild(el("span","resp",respTexte));
       labelsDiv.appendChild(labTask);
-
       const track=el("div","track tache");
       const dIdx=dayIndex(t.Date_debut);
       if(dIdx!==null){
@@ -1215,34 +1125,25 @@ function construire(){
           const barre=el("div","barre "+info.cls);
           if(t.Est_critique === true) barre.classList.add("critique");
           barre.style.left=((dIdx-minI)*16)+"px";
-
           const finIdx = dayIndex(t.Date_fin);
           const duree = t.Duree_jours || 1;
           const finIdxReel = finIdx !== null ? finIdx : (dIdx + duree - 1);
           const etalementJours = finIdxReel - dIdx + 1;
-
           barre.style.width=(Math.max(16,etalementJours*16))+"px";
           barre.style.background=cssVarValue(info.couleur);
           barre.textContent=t.Tache;
           if(t.Commentaires) barre.title=t.Commentaires;
           barre.onclick=(e)=>{ e.stopPropagation(); openTacheEdit(t); };
           track.appendChild(barre);
-
           const debutLabel = el("div","date-label", fmtJJMM(dIdx));
           debutLabel.style.left = ((dIdx-minI)*16 + 8) + "px";
           track.appendChild(debutLabel);
-
           if(finIdxReel !== dIdx && duree > 2){
             const finLabel = el("div","date-label", fmtJJMM(finIdxReel));
             finLabel.style.left = ((finIdxReel-minI)*16 + 8) + "px";
             track.appendChild(finLabel);
           }
-
-          taskPositions[t.id] = {
-            dIdx: dIdx,
-            finIdxReel: finIdxReel,
-            rowIndex: idx
-          };
+          taskPositions[t.id] = {dIdx: dIdx, finIdxReel: finIdxReel, rowIndex: idx};
         }
       }else{
         const pill=el("div","pill-plan","à planifier");
@@ -1252,10 +1153,8 @@ function construire(){
       }
       campGroup.appendChild(track);
     });
-
     const CAMP_H = 46, ROW_H = 44;
     const BARRE_TOP = 20, BARRE_H = 22;
-
     function ancrageBarre(pos, cote){
       const gauche = (pos.dIdx - minI) * 16;
       const droite = (pos.finIdxReel - minI + 1) * 16;
@@ -1270,12 +1169,10 @@ function construire(){
         case "sud":   return { x: centreX, y: yBasBarre };
       }
     }
-
     const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     svg.setAttribute("class", "dependencies-svg");
     svg.setAttribute("width", tlW);
     svg.setAttribute("height", CAMP_H + tachesCamp.length * ROW_H);
-
     tachesCamp.forEach(t=>{
       const taskPos = taskPositions[t.id];
       if(!taskPos) return;
@@ -1283,11 +1180,8 @@ function construire(){
         const predId = refId(pred.id||pred);
         const predPos = taskPositions[predId];
         if(!predPos) return;
-
         const ecart = taskPos.dIdx - predPos.finIdxReel;
-
         let p1, p2, arriveeCote, path;
-
         if(ecart > 2){
           p1 = ancrageBarre(predPos, "est");
           p2 = ancrageBarre(taskPos, "ouest");
@@ -1306,17 +1200,14 @@ function construire(){
           const midY = (p1.y + p2.y) / 2;
           path = `M ${p1.x} ${p1.y} L ${p1.x} ${midY} L ${p2.x} ${midY} L ${p2.x} ${p2.y}`;
         }
-
         const isCritical = t.Est_critique === true;
         const strokeColor = isCritical ? "#CE0500" : "#BBBBBB";
-
         const pathEl = document.createElementNS("http://www.w3.org/2000/svg", "path");
         pathEl.setAttribute("d", path);
         pathEl.setAttribute("stroke", strokeColor);
         pathEl.setAttribute("stroke-width", "1.5");
         pathEl.setAttribute("fill", "none");
         svg.appendChild(pathEl);
-
         const angleParCote = { ouest: 0, nord: Math.PI/2, sud: -Math.PI/2 };
         const angle = angleParCote[arriveeCote];
         const arrowSize = 3.5;
@@ -1330,24 +1221,15 @@ function construire(){
       });
     });
     campGroup.appendChild(svg);
-
-    const jalonsCamp = DB.jalons
-      .filter(j=>refId(j.Campagne)===camp.id)
-      .map(j=>({ jalon:j, dIdx:dayIndex(j.Date) }))
-      .filter(x=>x.dIdx!==null && x.dIdx>=minI && x.dIdx<=maxI)
-      .sort((a,b)=>a.dIdx-b.dIdx);
-
+    const jalonsCamp = DB.jalons.filter(j=>refId(j.Campagne)===camp.id).map(j=>({ jalon:j, dIdx:dayIndex(j.Date) })).filter(x=>x.dIdx!==null && x.dIdx>=minI && x.dIdx<=maxI).sort((a,b)=>a.dIdx-b.dIdx);
     let jalonCounter = 0;
-
     jalonsCamp.forEach(({jalon, dIdx})=>{
         const leftPx=((dIdx-minI+1)*16)+"px";
         const couleur=cssVarValue(jalonCouleur(jalon.Type));
-
         const jalonLine=el("div","jalon-line");
         jalonLine.style.left=leftPx;
         jalonLine.style.background=couleur;
         campGroup.appendChild(jalonLine);
-
         const isAltTop = jalonCounter % 2 === 0;
         const nameEl=el("div","jalon-name",jalon.Nom);
         nameEl.classList.add(isAltTop ? "align-top" : "align-bottom");
@@ -1355,7 +1237,6 @@ function construire(){
         nameEl.style.color=couleur;
         nameEl.onclick=(e)=>{ e.stopPropagation(); openJalonEdit(jalon); };
         campGroup.appendChild(nameEl);
-
         const markerWrap=el("div","jalon-marker-wrap");
         markerWrap.classList.add(isAltTop ? "align-top" : "align-bottom");
         markerWrap.style.left=leftPx;
@@ -1365,13 +1246,10 @@ function construire(){
         diamond.style.background=couleur;
         markerWrap.appendChild(diamond);
         campGroup.appendChild(markerWrap);
-
         jalonCounter++;
     });
-
     grid.appendChild(campGroup);
   });
-
   document.getElementById("kanban").innerHTML="";
   document.getElementById("kanban").appendChild(grid);
   document.getElementById("meta").textContent=`${DB.campagnes.length} campagne(s) · ${DB.taches.length} tâche(s)`;
