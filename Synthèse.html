@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Rétroplanning — Vue synthétique</title>
+<script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
+<style>
+  :root{
+    --bleu-france:#000091;
+    --bleu-975:#ECECFE;
+    --texte:#161616;
+    --texte-mention:#666666;
+    --bordure:#DDDDDD;
+    --fond:#FFFFFF;
+    --fond-alt:#F6F6F6;
+    --st-faire:#929292;
+    --st-encours:#0063CB;
+    --st-termine:#18753C;
+    --jalon-majeur:#C41E3A;
+    --jalon-livrable:#FF6B35;
+    --jalon-etape:#6B6B6B;
+  }
+
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    font-family:"Marianne",-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;
+    color:var(--texte);
+    background:var(--fond-alt);
+    font-size:14px;
+    line-height:1.5;
+  }
+
+  .app{max-width:900px;margin:0 auto;padding:24px 24px 64px}
+
+  .topbar{
+    display:flex;align-items:flex-start;justify-content:space-between;
+    gap:16px;margin-bottom:24px;flex-wrap:wrap;
+  }
+  .topbar h1{font-size:22px;font-weight:700;color:var(--bleu-france);margin-bottom:4px}
+  .topbar .sous-titre{font-size:13px;color:var(--texte-mention)}
+  .topbar .actions{display:flex;gap:8px;align-items:center}
+
+  .btn{
+    padding:8px 16px;background:var(--bleu-france);color:#fff;border:none;
+    border-radius:4px;cursor:pointer;font-size:13px;font-weight:600;transition:background 0.2s;
+  }
+  .btn:hover{background:#0056b3}
+  .btn-outline{background:#fff;color:var(--bleu-france);border:1px solid var(--bleu-france)}
+  .btn-outline:hover{background:var(--bleu-975)}
+
+  .toolbar{
+    display:flex;gap:8px;align-items:center;margin-bottom:24px;flex-wrap:wrap;
+  }
+  .toolbar label{font-size:12px;color:var(--texte-mention);font-weight:600}
+  .toolbar select{
+    padding:6px 10px;border:1px solid var(--bordure);border-radius:4px;font-size:13px;background:#fff;
+  }
+
+  .status{font-size:12px;color:var(--texte-mention);margin-bottom:16px}
+
+  .campagne-bloc{
+    background:#fff;border:1px solid var(--bordure);border-radius:6px;overflow:hidden;
+    margin-bottom:20px;break-inside:avoid;
+  }
+  .campagne-entete{
+    background:var(--bleu-975);color:var(--bleu-france);font-weight:700;font-size:15px;
+    padding:12px 16px;border-bottom:1px solid var(--bordure);
+    display:flex;justify-content:space-between;align-items:baseline;gap:12px;
+  }
+  .campagne-entete .meta-camp{font-size:11px;font-weight:400;color:var(--texte-mention)}
+
+  .frise{padding:4px 0}
+  .ligne{
+    display:flex;align-items:flex-start;gap:12px;
+    padding:10px 16px;border-bottom:1px solid var(--fond-alt);
+  }
+  .ligne:last-child{border-bottom:none}
+
+  .repere{
+    flex:0 0 auto;width:14px;display:flex;justify-content:center;padding-top:3px;
+  }
+  .repere .diamant{
+    width:9px;height:9px;transform:rotate(45deg);border:1.5px solid #fff;box-shadow:0 0 0 1px var(--bordure);
+  }
+  .repere .trait{
+    width:9px;height:9px;border-radius:2px;
+  }
+
+  .date-col{
+    flex:0 0 92px;font-weight:600;font-size:13px;color:var(--texte);white-space:nowrap;
+  }
+
+  .contenu{flex:1;min-width:0}
+  .contenu .nom{font-size:13px;font-weight:600;color:var(--texte)}
+  .contenu .nom.jalon{color:var(--jalon-livrable)}
+  .contenu .details{font-size:11px;color:var(--texte-mention);margin-top:2px;display:flex;gap:10px;flex-wrap:wrap}
+
+  .badge{
+    display:inline-block;font-size:10px;font-weight:600;border-radius:10px;padding:1px 8px;
+    border:1px solid currentColor;
+  }
+  .badge.st-faire{color:var(--st-faire)}
+  .badge.st-encours{color:var(--st-encours)}
+  .badge.st-termine{color:var(--st-termine)}
+
+  .type-jalon{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.02em}
+
+  .empty-state{
+    text-align:center;padding:48px 16px;color:var(--texte-mention);font-size:13px;
+  }
+
+  .legende-print{
+    display:none;
+  }
+
+  @media print{
+    body{background:#fff}
+    .app{max-width:100%;padding:0}
+    .toolbar, .topbar .actions{display:none}
+    .topbar{margin-bottom:16px}
+    .campagne-bloc{
+      border:1px solid #999;box-shadow:none;margin-bottom:14px;
+      break-inside:avoid;page-break-inside:avoid;
+    }
+    .campagne-entete{background:#ECECFE !important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    .status{display:none}
+    @page{margin:16mm 14mm}
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="topbar">
+    <div>
+      <h1>Rétroplanning — Vue synthétique</h1>
+      <div class="sous-titre" id="date-edition"></div>
+    </div>
+    <div class="actions">
+      <button class="btn-outline btn" onclick="window.print()">🖨️ Imprimer</button>
+    </div>
+  </div>
+
+  <div class="toolbar">
+    <label>Campagne :</label>
+    <select id="filtre-campagne"><option value="">Toutes</option></select>
+  </div>
+
+  <div class="status" id="status">Chargement…</div>
+
+  <div id="contenu"></div>
+</div>
+
+<script>
+const STATUTS = [
+  {nom:"À faire",   cls:"st-faire"},
+  {nom:"En cours",  cls:"st-encours"},
+  {nom:"Terminé",   cls:"st-termine"},
+];
+const JALON_COULEURS = {
+  "jalon majeur": "var(--jalon-majeur)",
+  "livrable":     "var(--jalon-livrable)",
+  "etape":        "var(--jalon-etape)",
+};
+
+function norm(s){
+  return String(s||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").trim();
+}
+function statutInfo(s){
+  return STATUTS.find(x=>norm(x.nom)===norm(s)) || {nom:s||"—",cls:"st-faire"};
+}
+function jalonCouleur(type){
+  return JALON_COULEURS[norm(type)] || "var(--jalon-livrable)";
+}
+function parseDate(v){
+  if(v===null||v===undefined||v==="") return null;
+  if(typeof v==="number") return new Date(v*1000);
+  const d=new Date(String(v).trim());
+  return isNaN(d.getTime())?null:d;
+}
+function refId(v){
+  if(Array.isArray(v)) return v[1];
+  return v;
+}
+function resolveRef(table, id, col){
+  const rid=refId(id);
+  if(rid===null||rid===undefined) return null;
+  const ligne=table.find(row=>row.id===rid);
+  return ligne?ligne[col]:null;
+}
+function fmtDateFR(v){
+  const d=parseDate(v);
+  if(!d) return "";
+  const jj=String(d.getUTCDate()).padStart(2,"0");
+  const mm=String(d.getUTCMonth()+1).padStart(2,"0");
+  return `${jj}/${mm}/${d.getUTCFullYear()}`;
+}
+
+let DB={};
+
+grist.ready({requiredAccess:"full"});
+
+function columnarToRows(data){
+  if(!data || typeof data!=="object") return [];
+  if(Array.isArray(data)) return data;
+  const keys=Object.keys(data);
+  if(keys.length===0) return [];
+  const firstCol=data[keys[0]];
+  if(!Array.isArray(firstCol)) return [];
+  const rows=[];
+  for(let i=0;i<firstCol.length;i++){
+    const row={};
+    keys.forEach(k=>row[k]=data[k][i]);
+    rows.push(row);
+  }
+  return rows;
+}
+
+async function init(){
+  try{
+    document.getElementById("status").textContent="Chargement...";
+    DB.campagnes    = columnarToRows(await grist.docApi.fetchTable("Campagnes"));
+    DB.jalons       = columnarToRows(await grist.docApi.fetchTable("Jalons"));
+    DB.taches       = columnarToRows(await grist.docApi.fetchTable("Taches"));
+    DB.responsables = columnarToRows(await grist.docApi.fetchTable("Responsables"));
+    DB.parametres   = columnarToRows(await grist.docApi.fetchTable("PARAMETRES"));
+    populateFiltre();
+    majDateEdition();
+    construire();
+    document.getElementById("status").textContent="✓ Données chargées";
+  }catch(e){
+    console.error("❌", e);
+    document.getElementById("status").textContent="❌ "+e.message;
+  }
+}
+
+function majDateEdition(){
+  const now=new Date();
+  const jj=String(now.getDate()).padStart(2,"0");
+  const mm=String(now.getMonth()+1).padStart(2,"0");
+  document.getElementById("date-edition").textContent=`Édité le ${jj}/${mm}/${now.getFullYear()}`;
+}
+
+function populateFiltre(){
+  const sel=document.getElementById("filtre-campagne");
+  const prev=sel.value;
+  sel.innerHTML='<option value="">Toutes</option>';
+  DB.campagnes.forEach(c=>{
+    const opt=document.createElement("option");
+    opt.value=c.id; opt.textContent=c.Campagne;
+    sel.appendChild(opt);
+  });
+  sel.value=prev;
+}
+
+function el(tag,cls,txt){
+  const e=document.createElement(cls?"div":tag);
+  if(cls)e.className=cls;
+  if(txt!==undefined&&txt!==null)e.textContent=txt;
+  return e;
+}
+
+function construire(){
+  const filtreCampagne=document.getElementById("filtre-campagne").value;
+  const contenu=document.getElementById("contenu");
+  contenu.innerHTML="";
+
+  const campagnes = filtreCampagne
+    ? DB.campagnes.filter(c=>c.id===parseInt(filtreCampagne))
+    : DB.campagnes;
+
+  if(campagnes.length===0){
+    contenu.appendChild(el("div","empty-state","Aucune campagne à afficher."));
+    return;
+  }
+
+  let totalEvenements=0;
+
+  campagnes.forEach(camp=>{
+    const taches = DB.taches.filter(t=>refId(t.Campagne)===camp.id).map(t=>({
+      type:"tache",
+      date: t.Date_debut,
+      dateFin: t.Date_fin,
+      nom: t.Tache,
+      statut: resolveRef(DB.parametres, t.Statut, "Statut"),
+      responsable: resolveRef(DB.responsables, t.Responsable, "Nom"),
+      raw: t
+    }));
+    const jalons = DB.jalons.filter(j=>refId(j.Campagne)===camp.id).map(j=>({
+      type:"jalon",
+      date: j.Date,
+      nom: j.Nom,
+      typeJalon: j.Type,
+      raw: j
+    }));
+
+    const evenements = [...taches, ...jalons]
+      .filter(e=>parseDate(e.date)!==null)
+      .sort((a,b)=>parseDate(a.date)-parseDate(b.date));
+
+    if(evenements.length===0) return;
+    totalEvenements += evenements.length;
+
+    const bloc=el("div","campagne-bloc");
+    const entete=el("div","campagne-entete");
+    entete.appendChild(el("span",null,camp.Campagne));
+    entete.appendChild(el("span","meta-camp",`${evenements.length} événement${evenements.length>1?"s":""}`));
+    bloc.appendChild(entete);
+
+    const frise=el("div","frise");
+    evenements.forEach(ev=>{
+      const ligne=el("div","ligne");
+
+      const repere=el("div","repere");
+      if(ev.type==="jalon"){
+        const diamant=el("div","diamant");
+        diamant.style.background=jalonCouleur(ev.typeJalon);
+        repere.appendChild(diamant);
+      }else{
+        const info=statutInfo(ev.statut);
+        const trait=el("div","trait");
+        trait.style.background=`var(--${info.cls})`;
+        repere.appendChild(trait);
+      }
+      ligne.appendChild(repere);
+
+      ligne.appendChild(el("div","date-col",fmtDateFR(ev.date)));
+
+      const contenuLigne=el("div","contenu");
+      const nomEl=el("div", ev.type==="jalon" ? "nom jalon" : "nom", ev.nom);
+      contenuLigne.appendChild(nomEl);
+
+      const details=el("div","details");
+      if(ev.type==="jalon"){
+        if(ev.typeJalon){
+          const t=el("span","type-jalon",ev.typeJalon);
+          t.style.color=jalonCouleur(ev.typeJalon);
+          details.appendChild(t);
+        }
+      }else{
+        const info=statutInfo(ev.statut);
+        const badge=el("span","badge "+info.cls,info.nom);
+        details.appendChild(badge);
+        if(ev.responsable) details.appendChild(el("span",null,ev.responsable));
+        if(ev.dateFin && fmtDateFR(ev.dateFin)!==fmtDateFR(ev.date)){
+          details.appendChild(el("span",null,`→ ${fmtDateFR(ev.dateFin)}`));
+        }
+      }
+      if(details.children.length>0) contenuLigne.appendChild(details);
+
+      ligne.appendChild(contenuLigne);
+      frise.appendChild(ligne);
+    });
+
+    bloc.appendChild(frise);
+    contenu.appendChild(bloc);
+  });
+
+  if(totalEvenements===0){
+    contenu.appendChild(el("div","empty-state","Aucune tâche ni jalon daté à afficher."));
+  }
+}
+
+document.getElementById("filtre-campagne").addEventListener("change", construire);
+grist.onRecords(()=>init());
+init();
+</script>
+</body>
+</html>
