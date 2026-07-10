@@ -452,6 +452,17 @@ function parseListeReference(raw, table){
 function getJalonTachesRequises(jalon){
   return parseListeReference(jalon.Taches_requises, DB.taches);
 }
+// Décode le format "Choix multiple" de Grist (['L', 'Livrable']) en simple texte
+function getJalonTypeTexte(jalon){
+  const raw = jalon.Type;
+  if(!raw) return "";
+  if(Array.isArray(raw)){
+    if(raw[0]==='L') return raw[1] || "";
+    if(raw[0]==='E') return "";
+    return "";
+  }
+  return raw;
+}
 function getTacheJalonsDeclencheurs(task){
   return parseListeReference(task.Jalon_declencheur, DB.jalons);
 }
@@ -462,6 +473,10 @@ function getJalonAtteint(jalon){
   }
   const d = parseDate(jalon.Date);
   return d ? (Date.now() >= d.getTime()) : false;
+}
+// Jalons-livrables que CETTE tâche conditionne (elle fait partie de leurs Taches_requises)
+function getJalonsConditionnesParTache(task){
+  return DB.jalons.filter(j => norm(getJalonTypeTexte(j))===norm("Livrable") && getJalonTachesRequises(j).some(t=>t.id===task.id));
 }
 
 // Détection de cycle unifiée sur le graphe mixte Tâches + Jalons (liens Livrable)
@@ -855,7 +870,7 @@ function populateJalonsDeclencheursSelect(campagneId, selectedJalons){
     container.innerHTML = "<div style='padding:8px;color:#999;font-size:11px;'>Sélectionner une campagne d'abord</div>";
     return;
   }
-  const campagneJalons = DB.jalons.filter(j => refId(j.Campagne) === campagneId && norm(j.Type)===norm("Livrable"));
+  const campagneJalons = DB.jalons.filter(j => refId(j.Campagne) === campagneId && norm(getJalonTypeTexte(j))===norm("Livrable"));
   if(campagneJalons.length === 0){
     container.innerHTML = "<div style='padding:8px;color:#999;font-size:11px;'>Aucun livrable dans cette campagne</div>";
     return;
@@ -1057,6 +1072,10 @@ function construire(){
         const blocked = getPredecessorsBlocked(t);
         const jalonsDecl = getTacheJalonsDeclencheurs(t);
         const jalonsNonAtteints = jalonsDecl.filter(j => !getJalonAtteint(j));
+        const statutTache = resolveRef(DB.parametres, t.Statut, "Statut");
+        const jalonsConditionnesNonAtteints = norm(statutTache) !== norm("Terminé")
+          ? getJalonsConditionnesParTache(t).filter(j => !getJalonAtteint(j))
+          : [];
 
         if(blocked.length > 0){
           const noms = blocked.map(p => p.Tache || p).join(", ");
@@ -1070,6 +1089,13 @@ function construire(){
           const ligne = el("div", "dep-line");
           ligne.appendChild(el("span","puce","🔶"));
           ligne.appendChild(document.createTextNode(`Livrable non atteint : ${noms}`));
+          card.appendChild(ligne);
+        }
+        if(jalonsConditionnesNonAtteints.length > 0){
+          const noms = jalonsConditionnesNonAtteints.map(j => j.Nom).join(", ");
+          const ligne = el("div", "dep-line");
+          ligne.appendChild(el("span","puce","🔶"));
+          ligne.appendChild(document.createTextNode(`Conditionne livrable non atteint : ${noms}`));
           card.appendChild(ligne);
         }
         if(preds.length > 0){
