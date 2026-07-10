@@ -1088,14 +1088,14 @@ function construire(){
           const noms = jalonsNonAtteints.map(j => j.Nom).join(", ");
           const ligne = el("div", "dep-line");
           ligne.appendChild(el("span","puce","🔶"));
-          ligne.appendChild(document.createTextNode(`Livrable non atteint : ${noms}`));
+          ligne.appendChild(document.createTextNode(`En attente de : ${noms}`));
           card.appendChild(ligne);
         }
         if(jalonsConditionnesNonAtteints.length > 0){
           const noms = jalonsConditionnesNonAtteints.map(j => j.Nom).join(", ");
           const ligne = el("div", "dep-line");
           ligne.appendChild(el("span","puce","🔶"));
-          ligne.appendChild(document.createTextNode(`Conditionne livrable non atteint : ${noms}`));
+          ligne.appendChild(document.createTextNode(`Conditionne : ${noms}`));
           card.appendChild(ligne);
         }
         if(preds.length > 0){
