@@ -1016,7 +1016,7 @@ async function saveJalon(){
     }
 
     const values={
-      Campagne:campagne_id, Nom:nom, Date:Math.floor(new Date(date).getTime()/1000), Type:type,
+      Campagne:campagne_id, Nom:nom, Date:Math.floor(new Date(date).getTime()/1000), Type: type || null,
       Taches_requises: ['L', ...tachesRequisesIds]
     };
     if(id){
