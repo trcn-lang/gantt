@@ -17,9 +17,9 @@
     --st-faire:#929292;
     --st-encours:#0063CB;
     --st-termine:#18753C;
-    --jalon-majeur:#B1332A;
-    --jalon-livrable:#B45300;
-    --jalon-etape:#5E5F62;
+    --jalon-majeur:#C41E3A;
+    --jalon-livrable:#FF6B35;
+    --jalon-etape:#6B6B6B;
     --jour:16px;
     --label-w:300px;
     --row-h:44px;
@@ -65,8 +65,6 @@
   .btn-danger:hover{background:#a80400}
 
   .scroll{flex:1;overflow:auto;position:relative}
-  /* ✅ FIX: c'est CETTE zone (défilement horizontal de la frise) qui a besoin
-     de la marge et de l'ascenseur à taille fixe, pas .scroll (vertical). */
   .timeline-scroll{overflow:auto;padding-bottom:28px}
   .timeline-scroll::-webkit-scrollbar{height:10px;width:10px}
   .timeline-scroll::-webkit-scrollbar-thumb{background:#B0B0B0;border-radius:5px}
@@ -92,7 +90,7 @@
   .head-inner{position:relative;height:100%}
 
   .week-label{
-    position:absolute;top:0;bottom:0;border-left:1px solid var(--bordure);
+    position:absolute;top:0;bottom:0;border-left:1px solid rgba(0,0,0,0.08);
     width:112px;padding:8px;display:flex;flex-direction:column;
     align-items:center;justify-content:center;text-align:center;font-size:11px;cursor:help;
   }
@@ -122,6 +120,11 @@
     cursor:pointer;border-radius:3px;padding:2px 4px;margin:-2px -4px;
   }
   .label.campagne .nom-campagne:hover{background:rgba(0,0,145,0.08);text-decoration:underline}
+  .label.campagne .btn-collapse{
+    background:none;border:none;color:var(--bleu-france);cursor:pointer;font-size:16px;
+    padding:4px 8px;margin-right:8px;transition:transform 0.2s;font-weight:700;
+  }
+  .label.campagne .btn-collapse.collapsed{transform:rotate(-90deg)}
   .label.tache{padding-left:12px;font-size:13px;gap:8px}
   .label.tache .nom{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
   .label.tache .resp{font-size:11px;color:var(--texte-mention);flex:0 0 auto}
@@ -134,12 +137,14 @@
   .btn-tiny.add:hover{background:#0056b3}
 
   .camp-group{position:relative}
+  .camp-group.collapsed .track.tache{display:none}
+  .camp-group.collapsed .dependencies-svg{display:none}
 
   .track{
     position:relative;height:var(--row-h);border-bottom:1px solid var(--fond-alt);
     background-image:
       repeating-linear-gradient(to right, rgba(0,0,0,0.035) 0 1px, transparent 1px var(--jour)),
-      repeating-linear-gradient(to right, var(--fond-alt) 0 1px, transparent 1px calc(7 * var(--jour)));
+      repeating-linear-gradient(to right, rgba(0,0,145,0.06) 0 1px, transparent 1px calc(7 * var(--jour)));
   }
   .track.campagne{
     height:var(--camp-h);background:var(--bleu-975);border-bottom:1px solid var(--bordure);
@@ -172,24 +177,36 @@
   }
 
   .jalon-line{
-    position:absolute;top:38px;bottom:0;width:2px;z-index:3;
+    position:absolute;top:38px;bottom:0;width:2px;z-index:0;
     opacity:0.55;pointer-events:none;
   }
 
   .jalon-name{
-    position:absolute;top:3px;z-index:4;
-    transform:translateX(-50%);
+    position:absolute;z-index:4;
     font-size:10px;font-weight:700;
     white-space:nowrap;cursor:pointer;
     line-height:1.2;
+    margin-left:4px;
+  }
+  .jalon-name.align-top{
+    top:2px;
+  }
+  .jalon-name.align-bottom{
+    bottom:8px;
   }
 
   .jalon-marker-wrap{
     position:absolute;top:26px;z-index:4;
     width:0;height:0;
-    transform:translateX(-50%);
     cursor:pointer;
   }
+  .jalon-marker-wrap.align-top{
+    top:8px;
+  }
+  .jalon-marker-wrap.align-bottom{
+    top:32px;
+  }
+
   .jalon-marker-diamond{
     position:absolute;top:0;left:0;
     width:11px;height:11px;
@@ -282,7 +299,7 @@
   </div>
 </div>
 
-<!-- MODALE CAMPAGNE (création + édition) -->
+<!-- MODALE CAMPAGNE -->
 <div class="modal-overlay" id="modal-campagne">
   <div class="modal">
     <h2 id="modal-campagne-title">Nouvelle Campagne</h2>
@@ -301,7 +318,7 @@
   </div>
 </div>
 
-<!-- MODALE JALON (création + édition) -->
+<!-- MODALE JALON -->
 <div class="modal-overlay" id="modal-jalon">
   <div class="modal">
     <h2 id="modal-jalon-title">Nouveau Jalon</h2>
@@ -322,7 +339,7 @@
   </div>
 </div>
 
-<!-- MODALE TACHE (création + édition) -->
+<!-- MODALE TACHE -->
 <div class="modal-overlay" id="modal-tache">
   <div class="modal">
     <h2 id="modal-tache-title">Nouvelle Tâche</h2>
@@ -421,6 +438,7 @@ let DB={};
 let NON_ATTRIBUE_ID = null;
 let allData={};
 let PERT_DATA={};
+let COLLAPSED_CAMPAGNES = new Set();
 
 grist.ready({requiredAccess:"full"});
 
@@ -447,18 +465,15 @@ function getPredecessorTasks(task){
   if(!raw) return [];
   if(!Array.isArray(raw)) return [];
 
-  // Format Grist pour une liste de références : ['L', id1, id2, ...]
   if(raw[0] === 'L'){
     return raw.slice(1)
       .map(id => DB.taches.find(t => t.id === id))
       .filter(Boolean);
   }
-  // Cellule corrompue (ex: ancienne sauvegarde erronée) → on ignore
   if(raw[0] === 'E'){
-    console.warn("⚠️ Cellule Predecesseurs corrompue pour la tâche", task.id, "- réenregistrez la tâche pour corriger.");
+    console.warn("⚠️ Cellule Predecesseurs corrompue pour la tâche", task.id);
     return [];
   }
-  // Fallback : tableau déjà composé d'IDs bruts
   return raw
     .map(id => (typeof id === 'object' ? id : DB.taches.find(t => t.id === id)))
     .filter(Boolean);
@@ -472,8 +487,6 @@ function getPredecessorsBlocked(task){
   });
 }
 
-// Vérifie si candidateId est déjà un "successeur" (direct ou indirect) de taskId.
-// Si oui, ajouter candidateId comme prédécesseur de taskId créerait un cycle.
 function isDescendant(taskId, candidateId, visited){
   visited = visited || new Set();
   if(taskId === candidateId) return true;
@@ -618,7 +631,6 @@ async function calculatePERT(){
   syncPertIntoDB();
 }
 
-// Reporte les résultats PERT (calculés en mémoire) dans DB.taches pour un affichage immédiat
 function syncPertIntoDB(){
   DB.taches.forEach(t=>{
     const d = PERT_DATA[t.id];
@@ -637,7 +649,6 @@ async function init(){
     DB.responsables = columnarToRows(await grist.docApi.fetchTable("Responsables"));
     DB.parametres   = columnarToRows(await grist.docApi.fetchTable("PARAMETRES"));
 
-    // ✅ S'assurer qu'un responsable réel "Non attribué" existe
     let nonAttribue = DB.responsables.find(r => norm(r.Nom) === norm("Non attribué"));
     if(!nonAttribue){
       await grist.docApi.applyUserActions([
@@ -678,9 +689,16 @@ function populateSelects(){
 function openModal(id){ document.getElementById(id).classList.add("active"); }
 function closeModal(id){ document.getElementById(id).classList.remove("active"); }
 
-// ✅ Jours fériés français (fixes + mobiles calculés automatiquement, valable toute année)
+function toggleCampagneCollapse(campId){
+  if(COLLAPSED_CAMPAGNES.has(campId)){
+    COLLAPSED_CAMPAGNES.delete(campId);
+  } else {
+    COLLAPSED_CAMPAGNES.add(campId);
+  }
+  construire();
+}
+
 function datePaques(annee){
-  // Algorithme de Meeus/Jones/Butcher
   const a = annee % 19;
   const b = Math.floor(annee / 100);
   const c = annee % 100;
@@ -704,17 +722,17 @@ function joursFeriesAnnee(annee){
   const cles = (d) => `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
 
   const feries = [
-    new Date(annee, 0, 1),    // Jour de l'an
-    addJours(paques, 1),      // Lundi de Pâques
-    new Date(annee, 4, 1),    // Fête du travail
-    new Date(annee, 4, 8),    // Victoire 1945
-    addJours(paques, 39),     // Ascension
-    addJours(paques, 50),     // Lundi de Pentecôte
-    new Date(annee, 6, 14),   // Fête nationale
-    new Date(annee, 7, 15),   // Assomption
-    new Date(annee, 10, 1),   // Toussaint
-    new Date(annee, 10, 11),  // Armistice 1918
-    new Date(annee, 11, 25),  // Noël
+    new Date(annee, 0, 1),
+    addJours(paques, 1),
+    new Date(annee, 4, 1),
+    new Date(annee, 4, 8),
+    addJours(paques, 39),
+    addJours(paques, 50),
+    new Date(annee, 6, 14),
+    new Date(annee, 7, 15),
+    new Date(annee, 10, 1),
+    new Date(annee, 10, 11),
+    new Date(annee, 11, 25),
   ];
   return new Set(feries.map(cles));
 }
@@ -789,7 +807,6 @@ async function saveCampagne(){
   const desc=document.getElementById("field-campagne-desc").value.trim();
   if(!nom || !section || !type){ alert("Champs obligatoires"); return; }
   try{
-    // ✅ CORRECTION: Convertir les strings en IDs pour les références
     const sectionId = DB.parametres.find(p => p.Section === section)?.id;
     const typeId = DB.parametres.find(p => p.Type_Campagne === type)?.id;
     
@@ -916,8 +933,6 @@ function openTacheCreate(campagneId){
 function openTacheEdit(t){
   const duree=t.Duree_jours||1;
 
-  // ✅ FIX: On lit Date_fin directement si présente (nouvelles tâches).
-  // Fallback: reconstruction pour les tâches créées avant ce correctif.
   let finValue = t.Date_fin;
   if(!finValue){
     const debutDate=parseDate(t.Date_debut);
@@ -1018,14 +1033,11 @@ async function saveTache(){
     if(!camp){ alert("Campagne non trouvée"); return; }
 
     const statutId=findParamId("Statut", statut);
-    // ✅ Par défaut "Non attribué" si aucun responsable n'est choisi
     const respId=findRespId(resp) || NON_ATTRIBUE_ID;
 
-    // ✅ CORRECTION: Chercher le Section ID correctement
     const sectionId = refId(camp.Section);
     if(!sectionId){ alert("Section invalide"); return; }
 
-    // Prédécesseurs sélectionnés + vérification anti-cycle
     const checkboxes = document.querySelectorAll("#field-tache-predecesseurs input[type='checkbox']:checked");
     const predecessorIds = Array.from(checkboxes).map(cb => parseInt(cb.value));
 
@@ -1039,7 +1051,6 @@ async function saveTache(){
       }
     }
 
-    // ✅ FIX: Grist attend un tableau encodé ['L', id1, id2, ...] pour une Référence multiple
     const predecessorTasks = ['L', ...predecessorIds];
 
     const values={
@@ -1083,22 +1094,17 @@ async function deleteTache(){
 /* ---------- Construction du Gantt ---------- */
 
 function construire(){
-  // ✅ FIX: Inclure TACHES ET JALONS pour min/max des dates
   const allDates = [];
   
-  // Dates des tâches (début et fin)
   DB.taches.forEach(t => {
     const dIdx = dayIndex(t.Date_debut);
     if(dIdx !== null) {
       allDates.push(dIdx);
-      // ✅ FIX: fin calendaire réelle (Date_fin) plutôt que Duree_jours (jours ouvrés),
-      // qui sous-estime l'étalement quand la tâche traverse un week-end.
       const finIdx = dayIndex(t.Date_fin);
       allDates.push(finIdx !== null ? finIdx : dIdx + (t.Duree_jours || 1) - 1);
     }
   });
   
-  // Dates des jalons
   DB.jalons.forEach(j => {
     const dIdx = dayIndex(j.Date);
     if(dIdx !== null) {
@@ -1116,19 +1122,10 @@ function construire(){
     maxI = today + 21;
   }
 
-  // ✅ FIX: aligner le début de la grille sur le LUNDI de la semaine contenant
-  // la première date (sinon les colonnes "S xx" ne démarrent pas vraiment un
-  // lundi, et l'infobulle "du Lundi... au Vendredi..." affiche un jour faux).
-  const jourSemaineMinI = new Date(minI*86400000).getUTCDay(); // 0=dim,1=lun,...6=sam
-  const decalageLundi = (jourSemaineMinI + 6) % 7; // nb de jours depuis le lundi précédent
-  const minILundi = minI - decalageLundi; // ✅ repère "vrai lundi", pour les blocs de semaine
+  const jourSemaineMinI = new Date(minI*86400000).getUTCDay();
+  const decalageLundi = (jourSemaineMinI + 6) % 7;
+  const minILundi = minI - decalageLundi;
 
-  // ✅ FIX: recule d'1 jour supplémentaire pour que l'étiquette de date de la
-  // toute première tâche ne soit pas masquée par la colonne des libellés (figée
-  // à gauche), qui se superpose sinon exactement au début de la grille.
-  // ⚠️ Cette marge sert UNIQUEMENT au décalage visuel de la grille jour par jour
-  // (positions des barres, jalons...) — les blocs de semaine, eux, continuent de
-  // démarrer sur minILundi (le vrai lundi), pas sur ce minI décalé.
   minI = minILundi - 1;
 
   const totalJours=maxI-minI+1;
@@ -1147,16 +1144,12 @@ function construire(){
   const NOMS_JOURS=['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi'];
   const head=el("div","head-track");
   const headInner=el("div","head-inner");
-  // ✅ FIX: la boucle des semaines démarre sur minILundi (vrai lundi), pas sur
-  // minI (qui inclut la marge de -1 jour). Seule la position en pixels (left)
-  // reste calculée par rapport à minI, pour rester alignée avec la grille des jours.
+  
   for(let i=minILundi;i<=maxI;i+=7){
     const wn=getWeekNumber(new Date(i*86400000));
     const label=el("div","week-label");
     label.style.left=((i-minI)*16)+"px";
     const start=fmtJJMM(i), end=fmtJJMM(i+4);
-    // ✅ Jours de la semaine calculés dynamiquement (jamais codés en dur), pour
-    // rester corrects même si la grille n'est pas parfaitement alignée sur lundi.
     const jourDebut=NOMS_JOURS[new Date(i*86400000).getUTCDay()];
     const jourFin=NOMS_JOURS[new Date((i+4)*86400000).getUTCDay()];
     label.innerHTML=`<div class="week-num">S${wn}</div><div class="week-date">${start}<br>${end}</div>`;
@@ -1168,11 +1161,19 @@ function construire(){
 
   DB.campagnes.forEach(camp=>{
     const campGroup=el("div","camp-group");
+    if(COLLAPSED_CAMPAGNES.has(camp.id)) campGroup.classList.add("collapsed");
 
     const labCamp=el("div","label campagne");
+    
+    const btnCollapse=el("button","btn-collapse");
+    btnCollapse.textContent="▼";
+    btnCollapse.onclick=(e)=>{ e.stopPropagation(); toggleCampagneCollapse(camp.id); };
+    labCamp.appendChild(btnCollapse);
+    
     const nomSpan=el("span","nom-campagne",camp.Campagne);
     nomSpan.onclick=(e)=>{ e.stopPropagation(); openCampagneEdit(camp); };
     labCamp.appendChild(nomSpan);
+    
     const actions=el("div","label-actions");
     const btnJalon=el("button","btn-tiny add"); btnJalon.textContent="🚩";
     btnJalon.onclick=()=>{ openJalonCreate(camp.id); };
@@ -1185,7 +1186,15 @@ function construire(){
     const trackCamp=el("div","track campagne");
     campGroup.appendChild(trackCamp);
 
-    const tachesCamp = DB.taches.filter(t=>refId(t.Campagne)===camp.id);
+    // ✅ TRIER les tâches par date de début
+    const tachesCamp = DB.taches
+      .filter(t=>refId(t.Campagne)===camp.id)
+      .sort((a, b) => {
+        const dateA = dayIndex(a.Date_debut) || Infinity;
+        const dateB = dayIndex(b.Date_debut) || Infinity;
+        return dateA - dateB;
+      });
+    
     const taskPositions = {};
 
     tachesCamp.forEach((t, idx)=>{
@@ -1206,8 +1215,6 @@ function construire(){
           if(t.Est_critique === true) barre.classList.add("critique");
           barre.style.left=((dIdx-minI)*16)+"px";
 
-          // ✅ FIX: largeur basée sur l'écart calendaire réel (Date_fin), pas sur
-          // Duree_jours (jours ouvrés) qui sous-estime la barre si un week-end est traversé.
           const finIdx = dayIndex(t.Date_fin);
           const duree = t.Duree_jours || 1;
           const finIdxReel = finIdx !== null ? finIdx : (dIdx + duree - 1);
@@ -1220,13 +1227,10 @@ function construire(){
           barre.onclick=(e)=>{ e.stopPropagation(); openTacheEdit(t); };
           track.appendChild(barre);
 
-          // ✅ Étiquettes de date, centrées sur la cellule-jour de début et de fin
           const debutLabel = el("div","date-label", fmtJJMM(dIdx));
           debutLabel.style.left = ((dIdx-minI)*16 + 8) + "px";
           track.appendChild(debutLabel);
 
-          // ✅ Si la tâche dure 2 jours ou moins, on n'affiche que la date de
-          // début (la date de fin serait redondante sur une barre aussi courte).
           if(finIdxReel !== dIdx && duree > 2){
             const finLabel = el("div","date-label", fmtJJMM(finIdxReel));
             finLabel.style.left = ((finIdxReel-minI)*16 + 8) + "px";
@@ -1248,22 +1252,13 @@ function construire(){
       campGroup.appendChild(track);
     });
 
-    // ✅ Flèches de dépendances (uniquement entre tâches de cette campagne)
     const CAMP_H = 46, ROW_H = 44;
-
-    // 4 points d'ancrage par tâche (façon connecteur Word/Visio), toujours au
-    // centre du bord correspondant de la barre — jamais un point flottant.
-    // ✅ Doit correspondre exactement à la CSS .barre { top:20px; height:22px }
     const BARRE_TOP = 20, BARRE_H = 22;
 
     function ancrageBarre(pos, cote){
       const gauche = (pos.dIdx - minI) * 16;
       const droite = (pos.finIdxReel - minI + 1) * 16;
       const centreX = (gauche + droite) / 2;
-      // ✅ FIX: on ancre sur le vrai rectangle de la barre (décalée dans sa ligne
-      // pour laisser la place aux étiquettes de date), pas sur le centre de la
-      // ligne entière — sinon l'ancrage tombe près du haut de la barre au lieu
-      // de son centre réel.
       const yHautBarre = CAMP_H + pos.rowIndex * ROW_H + BARRE_TOP;
       const yBasBarre = yHautBarre + BARRE_H;
       const yCentreBarre = yHautBarre + BARRE_H / 2;
@@ -1288,11 +1283,6 @@ function construire(){
         const predPos = taskPositions[predId];
         if(!predPos) return;
 
-        // ✅ Règle basée directement sur l'écart de dates entre les 2 tâches :
-        //    écart = date de début de B - date de fin de A
-        //    écart > 2         → Est(A) → Ouest(B)  (coude en Z : virage vertical au milieu)
-        //    -1 <= écart <= 2  → Sud(A) → Ouest(B)  (coude en L : un seul virage)
-        //    écart < -1        → Sud(A) → Nord(B)   (coude en Z : chevauchement fort, virage horizontal au milieu)
         const ecart = taskPos.dIdx - predPos.finIdxReel;
 
         let p1, p2, arriveeCote, path;
@@ -1301,24 +1291,17 @@ function construire(){
           p1 = ancrageBarre(predPos, "est");
           p2 = ancrageBarre(taskPos, "ouest");
           arriveeCote = "ouest";
-          // ✅ Connecteur orthogonal "en coude" (style Word/Visio) : segments
-          // droits uniquement, sortie perpendiculaire de la source, virage au
-          // milieu, entrée perpendiculaire dans la cible. Plus de courbe lissée.
           const midX = (p1.x + p2.x) / 2;
           path = `M ${p1.x} ${p1.y} L ${midX} ${p1.y} L ${midX} ${p2.y} L ${p2.x} ${p2.y}`;
         } else if(ecart >= -1){
           p1 = ancrageBarre(predPos, "sud");
           p2 = ancrageBarre(taskPos, "ouest");
           arriveeCote = "ouest";
-          // ✅ Coude en L : un seul virage, exactement à la verticale de la queue
-          // et à l'horizontale de la pointe (sortie verticale, entrée horizontale).
           path = `M ${p1.x} ${p1.y} L ${p1.x} ${p2.y} L ${p2.x} ${p2.y}`;
         } else {
           p1 = ancrageBarre(predPos, "sud");
           p2 = ancrageBarre(taskPos, "nord");
           arriveeCote = "nord";
-          // ✅ Coude en Z vertical : sortie verticale, virage horizontal au
-          // milieu, entrée verticale (chevauchement fort entre les 2 tâches).
           const midY = (p1.y + p2.y) / 2;
           path = `M ${p1.x} ${p1.y} L ${p1.x} ${midY} L ${p2.x} ${midY} L ${p2.x} ${p2.y}`;
         }
@@ -1333,10 +1316,6 @@ function construire(){
         pathEl.setAttribute("fill", "none");
         svg.appendChild(pathEl);
 
-        // ✅ La pointe de la flèche est TOUJOURS exactement sur le point d'ancrage
-        // d'arrivée (p2), orientée selon l'axe réel de la tangente de la courbe à
-        // ce point (donc toujours alignée avec la "queue" du trait, jamais en biais).
-        // ✅ Pointe réduite (moins intrusive visuellement).
         const angleParCote = { ouest: 0, nord: Math.PI/2, sud: -Math.PI/2 };
         const angle = angleParCote[arriveeCote];
         const arrowSize = 3.5;
@@ -1351,21 +1330,16 @@ function construire(){
     });
     campGroup.appendChild(svg);
 
-    // ✅ FIX: on traite les jalons triés par date, pour détecter les vrais
-    // chevauchements de noms entre voisins (pas une alternance systématique,
-    // qui décalerait aussi des jalons qui ne se touchent pas).
     const jalonsCamp = DB.jalons
       .filter(j=>refId(j.Campagne)===camp.id)
       .map(j=>({ jalon:j, dIdx:dayIndex(j.Date) }))
       .filter(x=>x.dIdx!==null && x.dIdx>=minI && x.dIdx<=maxI)
       .sort((a,b)=>a.dIdx-b.dIdx);
 
-    const NIVEAU_TOP = [3, 14]; // 2 niveaux de hauteur possibles pour le nom
-    const MARGE_MIN = 6; // px minimum entre 2 noms au même niveau
-    const dernierDroite = [-Infinity, -Infinity];
+    let jalonCounter = 0;
 
     jalonsCamp.forEach(({jalon, dIdx})=>{
-        const leftPx=((dIdx-minI)*16)+"px";
+        const leftPx=((dIdx-minI+1)*16)+"px";
         const couleur=cssVarValue(jalonCouleur(jalon.Type));
 
         const jalonLine=el("div","jalon-line");
@@ -1373,55 +1347,25 @@ function construire(){
         jalonLine.style.background=couleur;
         campGroup.appendChild(jalonLine);
 
+        const isAltTop = jalonCounter % 2 === 0;
         const nameEl=el("div","jalon-name",jalon.Nom);
+        nameEl.classList.add(isAltTop ? "align-top" : "align-bottom");
         nameEl.style.left=leftPx;
         nameEl.style.color=couleur;
         nameEl.onclick=(e)=>{ e.stopPropagation(); openJalonEdit(jalon); };
         campGroup.appendChild(nameEl);
 
-        // ✅ FIX: le nom est centré par défaut (CSS transform:translateX(-50%)),
-        // ce qui peut le faire déborder en x négatif (ou au-delà de la frise) si
-        // le jalon est proche du bord — zone non atteignable au scroll, donc le
-        // texte apparaît tronqué. On recale après mesure de sa largeur réelle.
-        const centerX = (dIdx-minI)*16;
-        let nameW = nameEl.offsetWidth;
-        let nameLeft = centerX - nameW/2;
-        if(nameLeft < 0) nameLeft = 0;
-        if(nameLeft + nameW > tlW) nameLeft = tlW - nameW;
-
-        // ✅ Choix du niveau : niveau 0 par défaut, niveau 1 si collision avec le
-        // dernier nom placé au niveau 0. Si collision persiste même au niveau 1,
-        // on tronque le texte (ellipsis) en dernier recours (info complète au survol).
-        let niveau = 0;
-        if(nameLeft < dernierDroite[0] + MARGE_MIN){
-          niveau = 1;
-          if(nameLeft < dernierDroite[1] + MARGE_MIN){
-            nameEl.style.maxWidth = "90px";
-            nameEl.style.overflow = "hidden";
-            nameEl.style.textOverflow = "ellipsis";
-            nameW = nameEl.offsetWidth;
-            nameLeft = centerX - nameW/2;
-            if(nameLeft < 0) nameLeft = 0;
-            if(nameLeft + nameW > tlW) nameLeft = tlW - nameW;
-          }
-        }
-
-        nameEl.style.top = NIVEAU_TOP[niveau]+"px";
-        nameEl.style.left = nameLeft+"px";
-        nameEl.style.transform = "none";
-        dernierDroite[niveau] = nameLeft + nameW;
-
-        const dateTxt=fmtJourComplet(jalon.Date);
-        const typeTxt=jalon.Type?` (${jalon.Type})`:"";
-
         const markerWrap=el("div","jalon-marker-wrap");
+        markerWrap.classList.add(isAltTop ? "align-top" : "align-bottom");
         markerWrap.style.left=leftPx;
-        markerWrap.setAttribute("data-tooltip", `${jalon.Nom}${typeTxt}\n${dateTxt}`);
+        markerWrap.setAttribute("data-tooltip", `${jalon.Nom}${jalon.Type?` (${jalon.Type})`:""}\\n${fmtJourComplet(jalon.Date)}`);
         markerWrap.onclick=(e)=>{ e.stopPropagation(); openJalonEdit(jalon); };
         const diamond=el("div","jalon-marker-diamond");
         diamond.style.background=couleur;
         markerWrap.appendChild(diamond);
         campGroup.appendChild(markerWrap);
+
+        jalonCounter++;
     });
 
     grid.appendChild(campGroup);
