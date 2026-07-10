@@ -180,7 +180,7 @@
   }
 
   .jalon-line{
-    position:absolute;top:38px;bottom:0;width:2px;z-index:0;
+    position:absolute;bottom:0;width:2px;z-index:0;
     opacity:0.55;pointer-events:none;
   }
 
@@ -1032,6 +1032,40 @@ async function deleteTache(){
   }catch(e){ alert("Erreur: "+e.message); console.error(e); }
 }
 
+// Mesure précise de la largeur d'un texte avec la police réelle du widget
+let _canvasCtx = null;
+function mesurerLargeurTexte(texte){
+  if(!_canvasCtx){
+    const canvas = document.createElement("canvas");
+    _canvasCtx = canvas.getContext("2d");
+    _canvasCtx.font = '700 10px "Marianne", -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif';
+  }
+  return _canvasCtx.measureText(texte).width;
+}
+
+// Calcule le niveau vertical de chaque jalon pour éviter les chevauchements de texte
+const JALON_TOP_BASE = 10;
+const JALON_NIVEAU_ESPACEMENT = 18;
+const JALON_TEXTE_OFFSET = 22;  // doit correspondre au "left" CSS de .jalon-name
+const JALON_MARGE = 10;
+
+function calculerNiveauxJalons(jalonsCamp, minI){
+  const finOccupeeParNiveau = [];
+  jalonsCamp.forEach(item=>{
+    const xDiamant = (item.dIdx - minI + 1) * 16;
+    const xDebutTexte = xDiamant - 6;  // le diamant déborde à gauche
+    const xFinTexte = xDiamant + JALON_TEXTE_OFFSET + mesurerLargeurTexte(item.jalon.Nom);
+    let niveau = 0;
+    while(finOccupeeParNiveau[niveau] !== undefined && xDebutTexte < finOccupeeParNiveau[niveau] + JALON_MARGE){
+      niveau++;
+    }
+    finOccupeeParNiveau[niveau] = xFinTexte;
+    item.niveau = niveau;
+  });
+  const nbNiveaux = finOccupeeParNiveau.length || 1;
+  return nbNiveaux;
+}
+
 function construire(){
   const allDates = [];
   DB.taches.forEach(t => {
@@ -1087,9 +1121,21 @@ function construire(){
   head.appendChild(headInner);
   grid.appendChild(head);
   DB.campagnes.forEach(camp=>{
+    // 1. Calcul des jalons et de leurs niveaux AVANT de créer le bandeau
+    const jalonsCamp = DB.jalons
+      .filter(j=>refId(j.Campagne)===camp.id)
+      .map(j=>({ jalon:j, dIdx:dayIndex(j.Date) }))
+      .filter(x=>x.dIdx!==null && x.dIdx>=minI && x.dIdx<=maxI)
+      .sort((a,b)=>a.dIdx-b.dIdx);
+    const nbNiveaux = calculerNiveauxJalons(jalonsCamp, minI);
+
+    // 2. Hauteur dynamique du bandeau campagne
+    const CAMP_H = Math.max(46, JALON_TOP_BASE + (nbNiveaux - 1) * JALON_NIVEAU_ESPACEMENT + 26);
+
     const campGroup=el("div","camp-group");
     if(COLLAPSED_CAMPAGNES.has(camp.id)) campGroup.classList.add("collapsed");
     const labCamp=el("div","label campagne");
+    labCamp.style.height = CAMP_H + "px";
     const btnCollapse=el("button","btn-collapse");
     btnCollapse.textContent="▼";
     btnCollapse.onclick=(e)=>{ e.stopPropagation(); toggleCampagneCollapse(camp.id); };
@@ -1106,6 +1152,7 @@ function construire(){
     labCamp.appendChild(actions);
     labelsDiv.appendChild(labCamp);
     const trackCamp=el("div","track campagne");
+    trackCamp.style.height = CAMP_H + "px";
     campGroup.appendChild(trackCamp);
     const tachesCamp = DB.taches.filter(t=>refId(t.Campagne)===camp.id).sort((a, b) => {
       const dateA = dayIndex(a.Date_debut) || Infinity;
@@ -1158,7 +1205,7 @@ function construire(){
       }
       campGroup.appendChild(track);
     });
-    const CAMP_H = 46, ROW_H = 44;
+    const ROW_H = 44;
     const BARRE_TOP = 20, BARRE_H = 22;
     function ancrageBarre(pos, cote){
       const gauche = (pos.dIdx - minI) * 16;
@@ -1226,36 +1273,14 @@ function construire(){
       });
     });
     campGroup.appendChild(svg);
-    const jalonsCamp = DB.jalons.filter(j=>refId(j.Campagne)===camp.id).map(j=>({ jalon:j, dIdx:dayIndex(j.Date) })).filter(x=>x.dIdx!==null && x.dIdx>=minI && x.dIdx<=maxI).sort((a,b)=>a.dIdx-b.dIdx);
-
-    // Empilement par niveaux : un jalon passe au niveau suivant (plus bas)
-    // si son texte chevaucherait le texte du dernier jalon placé au même niveau.
-    const NIVEAUX_TOP = [10, 38, 66, 94];
-    const MARGE_TEXTE = 8;
-    const finOccupeeParNiveau = []; // dernière position x libre par niveau
-    function estimerLargeurTexte(nom){
-      return 14 + nom.length * 5.5; // approximation : diamant + texte gras 10px
-    }
-    jalonsCamp.forEach(item=>{
-      const xPos = (item.dIdx-minI+1)*16;
-      let niveau = 0;
-      while(
-        finOccupeeParNiveau[niveau]!==undefined &&
-        xPos < finOccupeeParNiveau[niveau] + MARGE_TEXTE &&
-        niveau < NIVEAUX_TOP.length-1
-      ){
-        niveau++;
-      }
-      finOccupeeParNiveau[niveau] = xPos + estimerLargeurTexte(item.jalon.Nom);
-      item.niveau = niveau;
-    });
 
     jalonsCamp.forEach(({jalon, dIdx, niveau})=>{
         const leftPx=((dIdx-minI+1)*16)+"px";
-        const topPx=NIVEAUX_TOP[niveau]+"px";
+        const topPx=(JALON_TOP_BASE + niveau * JALON_NIVEAU_ESPACEMENT)+"px";
         const couleur=cssVarValue(jalonCouleur(jalon.Type));
         const jalonLine=el("div","jalon-line");
         jalonLine.style.left=leftPx;
+        jalonLine.style.top=CAMP_H+"px";
         jalonLine.style.background=couleur;
         campGroup.appendChild(jalonLine);
         const nameEl=el("div","jalon-name",jalon.Nom);
