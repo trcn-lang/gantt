@@ -191,6 +191,7 @@
     line-height:1;
     margin-left:0;
     left:16px;
+    transform:translateY(-50%);
   }
   .jalon-name.align-top{
     top:10px;
@@ -1069,7 +1070,7 @@ function construire(){
   const jourSemaineMinI = new Date(minI*86400000).getUTCDay();
   const decalageLundi = (jourSemaineMinI + 6) % 7;
   const minILundi = minI - decalageLundi;
-  minI = minILundi - 1;
+  minI = minILundi;
   const totalJours=maxI-minI+1;
   const tlW=totalJours*16;
   const todayI=Math.floor(Date.now()/86400000);
