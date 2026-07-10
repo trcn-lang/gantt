@@ -93,7 +93,7 @@
     position:absolute;top:0;bottom:0;
     width:112px;padding:8px;display:flex;flex-direction:column;
     align-items:center;justify-content:center;text-align:center;font-size:11px;cursor:help;
-    border-left:1px solid rgba(0,0,0,0.1);
+    border-left:1.5px solid rgba(0,0,0,0.12);
   }
   .week-label:hover::after{
     content:attr(data-tooltip);position:absolute;top:100%;left:50%;transform:translateX(-50%);
@@ -140,6 +140,7 @@
   .camp-group{position:relative}
   .camp-group.collapsed .track.tache{display:none}
   .camp-group.collapsed .dependencies-svg{display:none}
+  .camp-group.collapsed .label.tache{display:none}
 
   .track{
     position:relative;height:var(--row-h);border-bottom:1px solid var(--fond-alt);
@@ -186,14 +187,15 @@
     position:absolute;z-index:4;
     font-size:10px;font-weight:700;
     white-space:nowrap;cursor:pointer;
-    line-height:1.2;
-    margin-left:4px;
+    line-height:1;
+    margin-left:0;
+    left:16px;
   }
   .jalon-name.align-top{
-    top:8px;
+    top:10px;
   }
   .jalon-name.align-bottom{
-    top:36px;
+    top:38px;
   }
 
   .jalon-marker-wrap{
@@ -202,10 +204,10 @@
     cursor:pointer;
   }
   .jalon-marker-wrap.align-top{
-    top:8px;
+    top:10px;
   }
   .jalon-marker-wrap.align-bottom{
-    top:36px;
+    top:38px;
   }
 
   .jalon-marker-diamond{
@@ -687,6 +689,16 @@ function toggleCampagneCollapse(campId){
     COLLAPSED_CAMPAGNES.add(campId);
   }
   construire();
+  // Masquer/afficher les labels des tâches
+  const labelsDiv = document.getElementById("labels");
+  const tacheLabels = labelsDiv.querySelectorAll(`[data-campagne="${campId}"]`);
+  tacheLabels.forEach(label => {
+    if(COLLAPSED_CAMPAGNES.has(campId)){
+      label.style.display = "none";
+    } else {
+      label.style.display = "flex";
+    }
+  });
 }
 
 function datePaques(annee){
@@ -1114,6 +1126,7 @@ function construire(){
       const statutTexte=resolveRef(DB.parametres, t.Statut, "Statut");
       const respTexte=resolveRef(DB.responsables, t.Responsable, "Nom");
       const labTask=el("div","label tache");
+      labTask.setAttribute("data-campagne", camp.id);
       labTask.appendChild(el("span","nom",t.Tache));
       if(respTexte) labTask.appendChild(el("span","resp",respTexte));
       labelsDiv.appendChild(labTask);
