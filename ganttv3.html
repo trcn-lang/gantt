@@ -140,7 +140,8 @@
   .camp-group{position:relative}
   .camp-group.collapsed .track.tache{display:none}
   .camp-group.collapsed .dependencies-svg{display:none}
-  .camp-group.collapsed .label.tache{display:none}
+
+  .label.tache.hidden{display:none !important}
 
   .track{
     position:relative;height:var(--row-h);border-bottom:1px solid var(--fond-alt);
@@ -689,14 +690,15 @@ function toggleCampagneCollapse(campId){
     COLLAPSED_CAMPAGNES.add(campId);
   }
   construire();
-  // Masquer/afficher les labels des tâches
+  
+  // Masquer/afficher les labels des tâches de cette campagne
   const labelsDiv = document.getElementById("labels");
-  const tacheLabels = labelsDiv.querySelectorAll(`[data-campagne="${campId}"]`);
+  const tacheLabels = labelsDiv.querySelectorAll(`.label.tache[data-campagne="${campId}"]`);
   tacheLabels.forEach(label => {
     if(COLLAPSED_CAMPAGNES.has(campId)){
-      label.style.display = "none";
+      label.classList.add("hidden");
     } else {
-      label.style.display = "flex";
+      label.classList.remove("hidden");
     }
   });
 }
@@ -1127,6 +1129,7 @@ function construire(){
       const respTexte=resolveRef(DB.responsables, t.Responsable, "Nom");
       const labTask=el("div","label tache");
       labTask.setAttribute("data-campagne", camp.id);
+      if(COLLAPSED_CAMPAGNES.has(camp.id)) labTask.classList.add("hidden");
       labTask.appendChild(el("span","nom",t.Tache));
       if(respTexte) labTask.appendChild(el("span","resp",respTexte));
       labelsDiv.appendChild(labTask);
