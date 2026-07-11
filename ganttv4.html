@@ -251,6 +251,11 @@
     color:#856404;line-height:1.4;
   }
   .info-box.warning{background:#F8D7DA;border-color:#F5C6CB;color:#721C24}
+  .info-box .dep-line{
+    display:flex;gap:6px;align-items:baseline;color:var(--texte);
+  }
+  .info-box .dep-line:not(:last-child){margin-bottom:4px}
+  .info-box .dep-line .puce{flex:0 0 auto;font-size:11px}
 
   .multi-select{
     border:1px solid var(--bordure);border-radius:4px;padding:8px;max-height:150px;overflow-y:auto;
@@ -341,8 +346,7 @@
     <input type="hidden" id="field-tache-id">
     <input type="hidden" id="field-tache-campagne">
 
-    <div id="info-preds" class="info-box" style="display:none;"></div>
-    <div id="info-blocked" class="info-box warning" style="display:none;"></div>
+    <div id="info-dependances" class="info-box" style="display:none;"></div>
 
     <div class="form-group"><label>Tâche *</label><input type="text" id="field-tache-nom" placeholder="ex: Publication liste"></div>
     <div class="form-group"><label>Date début *</label><input type="date" id="field-tache-debut"></div>
@@ -522,6 +526,10 @@ function getJalonAtteint(jalon){
   }
   const d = parseDate(jalon.Date);
   return d ? (Date.now() >= d.getTime()) : false;
+}
+// Jalons-livrables que CETTE tâche conditionne (elle fait partie de leurs Taches_requises)
+function getJalonsConditionnesParTache(task){
+  return DB.jalons.filter(j => norm(getJalonTypeTexte(j))===norm("Livrable") && getJalonTachesRequises(j).some(t=>t.id===task.id));
 }
 
 // Détection de cycle unifiée sur le graphe mixte Tâches + Jalons (liens Livrable)
@@ -1065,8 +1073,7 @@ function openTacheCreate(campagneId){
   document.getElementById("modal-tache-title").textContent="Nouvelle Tâche";
   document.getElementById("btn-save-tache").textContent="Créer";
   document.getElementById("btn-delete-tache").style.display="none";
-  document.getElementById("info-preds").style.display="none";
-  document.getElementById("info-blocked").style.display="none";
+  document.getElementById("info-dependances").style.display="none";
   populatePredecessorsSelect(campagneId, []);
   populateJalonsDeclencheursSelect(campagneId, []);
   openModal("modal-tache");
@@ -1101,29 +1108,40 @@ function openTacheEdit(t){
   document.getElementById("btn-save-tache").textContent="Enregistrer";
   document.getElementById("btn-delete-tache").style.display="inline-block";
   const preds = getPredecessorTasks(t);
-  if(preds.length > 0){
-    const predNames = preds.map(p => p.Tache || p).join(", ");
-    document.getElementById("info-preds").innerHTML = `📌 Dépend de : <strong>${predNames}</strong>`;
-    document.getElementById("info-preds").style.display="block";
-  } else {
-    document.getElementById("info-preds").style.display="none";
-  }
   const blocked = getPredecessorsBlocked(t);
   const jalonsDecl = getTacheJalonsDeclencheurs(t);
   const jalonsNonAtteints = jalonsDecl.filter(j => !getJalonAtteint(j));
-  const messagesBlocage = [];
+  const statutTache = resolveRef(DB.parametres, t.Statut, "Statut");
+  const jalonsConditionnesNonAtteints = norm(statutTache) !== norm("Terminé")
+    ? getJalonsConditionnesParTache(t).filter(j => !getJalonAtteint(j))
+    : [];
+
+  const infoDiv = document.getElementById("info-dependances");
+  infoDiv.innerHTML = "";
+  let auMoinsUneLigne = false;
+  function ajouterLigneDep(puce, texte){
+    const ligne = document.createElement("div");
+    ligne.className = "dep-line";
+    const p = document.createElement("span"); p.className="puce"; p.textContent=puce;
+    ligne.appendChild(p);
+    ligne.appendChild(document.createTextNode(texte));
+    infoDiv.appendChild(ligne);
+    auMoinsUneLigne = true;
+  }
   if(blocked.length > 0){
-    messagesBlocage.push(`en attente de : ${blocked.map(p => p.Tache || p).join(", ")}`);
+    ajouterLigneDep("🔴", `Bloqué par : ${blocked.map(p => p.Tache || p).join(", ")}`);
   }
   if(jalonsNonAtteints.length > 0){
-    messagesBlocage.push(`livrable(s) non atteint(s) : ${jalonsNonAtteints.map(j => j.Nom).join(", ")}`);
+    ajouterLigneDep("🔶", `En attente de : ${jalonsNonAtteints.map(j => j.Nom).join(", ")}`);
   }
-  if(messagesBlocage.length > 0){
-    document.getElementById("info-blocked").innerHTML = `⚠️ <strong>BLOQUÉE :</strong> ${messagesBlocage.join(" · ")}`;
-    document.getElementById("info-blocked").style.display="block";
-  } else {
-    document.getElementById("info-blocked").style.display="none";
+  if(jalonsConditionnesNonAtteints.length > 0){
+    ajouterLigneDep("🔶", `Conditionne : ${jalonsConditionnesNonAtteints.map(j => j.Nom).join(", ")}`);
   }
+  if(preds.length > 0){
+    ajouterLigneDep("🟡", `Dépend de : ${preds.map(p => p.Tache || p).join(", ")}`);
+  }
+  infoDiv.style.display = auMoinsUneLigne ? "block" : "none";
+
   populatePredecessorsSelect(refId(t.Campagne), preds);
   populateJalonsDeclencheursSelect(refId(t.Campagne), jalonsDecl);
   openModal("modal-tache");
