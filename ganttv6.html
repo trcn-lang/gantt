@@ -265,6 +265,120 @@
   }
   .multi-select-item:hover{background:var(--fond-alt)}
   .multi-select-item input[type="checkbox"]{cursor:pointer}
+
+  /* ========== MODALE TÂCHE 2 COLONNES (identique Kanban) ========== */
+  .modal.modal-2col{
+    max-width:90vw;width:90%;max-height:90vh;
+    display:flex;
+    flex-direction:column;
+    overflow:hidden;
+  }
+  .modal-columns-wrapper{
+    display:grid;
+    grid-template-columns:50% 50%;
+    gap:24px;
+    flex:1 1 auto;
+    min-height:0;
+    overflow:hidden;
+  }
+  .modal.modal-2col h2{margin-bottom:16px}
+  .modal-left-column{
+    overflow-y:auto;
+    min-height:0;
+  }
+  .modal-right-column{
+    display:flex;
+    flex-direction:column;
+    border-left:1px solid var(--bordure);
+    padding-left:24px;
+    min-height:0;
+    overflow:hidden;
+  }
+  .modal-right-column h3{
+    margin:0 0 12px 0;
+    font-size:14px;
+    font-weight:700;
+    color:var(--bleu-france);
+    flex-shrink:0;
+  }
+  .sous-actions-list-wrapper{
+    flex:1 1 auto;
+    min-height:0;
+    overflow-y:auto;
+    margin-bottom:12px;
+    border:1px solid var(--bordure);
+    border-radius:4px;
+    background:var(--fond-alt);
+    padding:8px;
+  }
+  .sous-actions-list-wrapper::-webkit-scrollbar{width:8px}
+  .sous-actions-list-wrapper::-webkit-scrollbar-thumb{background:#B0B0B0;border-radius:4px}
+  #sous-action-create-area{flex-shrink:0}
+
+  .modal.modal-2col .form-actions{
+    flex-shrink:0;
+    margin-top:16px;
+  }
+
+  /* ========== ACTIONS (sous-tâches) ========== */
+  .action-item{
+    display:flex;align-items:center;gap:8px;padding:8px;
+    background:var(--fond);border-radius:4px;margin-bottom:6px;
+    border-left:3px solid var(--bleu-france);
+  }
+  .action-item:hover{background:var(--bleu-975)}
+  .action-item input[type="checkbox"]{cursor:pointer;width:18px;height:18px;flex-shrink:0}
+  .action-nom{
+    flex:1;font-size:12px;font-weight:500;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  }
+  .action-porteur{
+    font-size:11px;color:var(--texte-mention);width:80px;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:0;
+  }
+  .action-actions{display:flex;gap:4px;opacity:0;flex-shrink:0}
+  .action-item:hover .action-actions{opacity:1}
+  .btn-edit-action,.btn-delete-action{
+    background:none;border:none;color:var(--texte-mention);cursor:pointer;
+    padding:2px;font-size:12px;border-radius:3px;
+  }
+  .btn-edit-action:hover{background:var(--bordure);color:var(--bleu-france)}
+  .btn-delete-action:hover{background:#f5e6e6;color:#CE0500}
+  .action-input-create{
+    width:100%;padding:8px;border:1px solid var(--bordure);border-radius:4px;
+    font-size:12px;font-family:inherit;
+  }
+  .action-input-create:focus{
+    outline:none;border-color:var(--bleu-france);
+    box-shadow:0 0 0 3px rgba(0, 0, 145, 0.1);
+  }
+  .btn-add-action{
+    width:100%;padding:10px;background:var(--fond);border:1px dashed var(--bordure);
+    color:var(--texte-mention);border-radius:4px;cursor:pointer;
+    font-size:12px;font-weight:600;transition:all 0.15s;
+  }
+  .btn-add-action:hover{border-color:var(--bleu-france);color:var(--bleu-france);background:var(--bleu-975)}
+
+  .modal-sous-action{padding:20px}
+  .modal-sous-action h3{font-size:16px;color:var(--bleu-france);margin-bottom:12px;font-weight:700}
+  .sous-action-form-group{margin-bottom:12px}
+  .sous-action-form-group label{display:block;font-weight:600;margin-bottom:6px;font-size:12px}
+  .sous-action-form-group input,
+  .sous-action-form-group select,
+  .sous-action-form-group textarea{
+    width:100%;padding:8px 12px;border:1px solid var(--bordure);border-radius:4px;font-size:13px;
+  }
+  .sous-action-form-group textarea{resize:vertical;min-height:60px}
+  .sous-action-form-actions{display:flex;gap:8px;margin-top:16px;justify-content:flex-end}
+
+  @media (max-width: 768px) {
+    .modal.modal-2col{ max-width:95vw; }
+    .modal-columns-wrapper{ grid-template-columns:1fr; overflow-y:auto; }
+    .modal-right-column{
+      border-left:none;border-top:1px solid var(--bordure);
+      padding-left:0;padding-top:12px;
+    }
+  }
 </style>
 </head>
 <body>
@@ -341,36 +455,108 @@
 
 <!-- MODALE TACHE -->
 <div class="modal-overlay" id="modal-tache">
-  <div class="modal">
+  <div class="modal modal-2col">
     <h2 id="modal-tache-title">Nouvelle Tâche</h2>
-    <input type="hidden" id="field-tache-id">
-    <input type="hidden" id="field-tache-projet">
 
-    <div id="info-dependances" class="info-box" style="display:none;"></div>
+    <div class="modal-columns-wrapper">
 
-    <div class="form-group"><label>Tâche *</label><input type="text" id="field-tache-nom" placeholder="ex: Publication liste"></div>
-    <div class="form-group"><label>Date début *</label><input type="date" id="field-tache-debut"></div>
-    <div class="form-group"><label>Date fin *</label><input type="date" id="field-tache-fin"></div>
-    <div class="form-group"><label>Durée (jours ouvrés)</label><input type="number" id="field-tache-duree" readonly placeholder="calculée automatiquement"></div>
-    <div class="form-group"><label>Porteur</label><select id="field-tache-porteur"></select></div>
-    <div class="form-group"><label>Statut</label><select id="field-tache-statut"></select></div>
+      <!-- COLONNE GAUCHE: Champs -->
+      <div class="modal-left-column">
+        <input type="hidden" id="field-tache-id">
+        <input type="hidden" id="field-tache-projet">
 
-    <div class="form-group">
-      <label>Prédécesseurs (tâches dont dépend celle-ci)</label>
-      <div class="multi-select" id="field-tache-predecesseurs"></div>
+        <div id="info-dependances" class="info-box" style="display:none;"></div>
+
+        <div class="form-group"><label>Tâche *</label><input type="text" id="field-tache-nom" placeholder="ex: Publication liste"></div>
+        <div class="form-group"><label>Date début *</label><input type="date" id="field-tache-debut"></div>
+        <div class="form-group"><label>Date fin *</label><input type="date" id="field-tache-fin"></div>
+        <div class="form-group"><label>Durée (jours ouvrés)</label><input type="number" id="field-tache-duree" readonly placeholder="calculée automatiquement"></div>
+        <div class="form-group"><label>Porteur</label><select id="field-tache-porteur"></select></div>
+        <div class="form-group"><label>Statut</label><select id="field-tache-statut"></select></div>
+
+        <div class="form-group">
+          <label>Prédécesseurs (tâches dont dépend celle-ci)</label>
+          <div class="multi-select" id="field-tache-predecesseurs"></div>
+        </div>
+
+        <div class="form-group">
+          <label>Livrable(s) déclencheur(s) (jalons dont dépend cette tâche)</label>
+          <div class="multi-select" id="field-tache-jalons-declencheurs"></div>
+        </div>
+
+        <div class="form-group"><label>Commentaires</label><textarea id="field-tache-comments" placeholder="Notes optionnelles"></textarea></div>
+      </div>
+
+      <!-- COLONNE DROITE: Sous-Actions -->
+      <div class="modal-right-column">
+        <h3>Sous-Actions</h3>
+        <div class="sous-actions-list-wrapper" id="sous-actions-list"></div>
+        <div id="sous-action-create-area">
+          <button type="button" class="btn-add-action" id="btn-add-action">
+            + Ajouter une sous-action
+          </button>
+        </div>
+      </div>
+
     </div>
 
-    <div class="form-group">
-      <label>Livrable(s) déclencheur(s) (jalons dont dépend cette tâche)</label>
-      <div class="multi-select" id="field-tache-jalons-declencheurs"></div>
-    </div>
-
-    <div class="form-group"><label>Commentaires</label><textarea id="field-tache-comments" placeholder="Notes optionnelles"></textarea></div>
     <div class="form-actions" id="modal-tache-actions">
       <button class="btn btn-danger" id="btn-delete-tache" style="display:none" onclick="deleteTache()">Supprimer</button>
       <div style="display:flex;gap:8px;">
         <button class="btn btn-cancel" onclick="closeModal('modal-tache')">Annuler</button>
         <button class="btn" id="btn-save-tache" onclick="saveTache()">Créer</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- MODALE ACTION (édition sous-action) -->
+<div class="modal-overlay" id="modal-action-overlay">
+  <div class="modal" style="max-width:500px;">
+    <div class="modal-sous-action">
+      <h3 id="modal-action-title">Modifier une sous-action</h3>
+
+      <input type="hidden" id="field-action-id">
+      <input type="hidden" id="field-action-tache">
+
+      <div class="sous-action-form-group">
+        <label>Nom *</label>
+        <input type="text" id="field-action-nom" maxlength="100">
+      </div>
+
+      <div class="sous-action-form-group">
+        <label>Statut</label>
+        <select id="field-action-statut">
+          <option>À faire</option>
+          <option>En cours</option>
+          <option>Terminé</option>
+        </select>
+      </div>
+
+      <div class="sous-action-form-group">
+        <label>Porteur (optionnel)</label>
+        <select id="field-action-porteur">
+          <option value="">-- Aucun --</option>
+        </select>
+      </div>
+
+      <div class="sous-action-form-group">
+        <label>Commentaires</label>
+        <textarea id="field-action-commentaires" placeholder="Notes spécifiques..."></textarea>
+      </div>
+
+      <div class="sous-action-form-actions">
+        <button type="button" class="btn btn-danger" id="btn-delete-action" style="display:none" onclick="deleteAction()">
+          Supprimer
+        </button>
+        <div style="display:flex;gap:8px;margin-left:auto;">
+          <button type="button" class="btn btn-cancel" onclick="closeActionModal()">
+            Annuler
+          </button>
+          <button type="button" class="btn" id="btn-save-action" onclick="saveAction()">
+            Créer
+          </button>
+        </div>
       </div>
     </div>
   </div>
@@ -763,6 +949,7 @@ function populateSelects(){
   fillSelect("field-projet-type",    uniq(DB.parametres.filter(p=>p.Type_Projet).map(p=>p.Type_Projet)), "-- Sélectionner --");
   fillSelect("field-tache-statut",     uniq(DB.parametres.filter(p=>p.Statut).map(p=>p.Statut)), "-- Sélectionner --");
   fillSelect("field-tache-porteur",       DB.porteurs.map(r=>r.Nom), "-- Aucun --");
+  fillSelect("field-action-porteur",      DB.porteurs.map(r=>r.Nom), "-- Aucun --");
 }
 
 function openModal(id){ document.getElementById(id).classList.add("active"); }
@@ -1063,6 +1250,224 @@ async function deleteJalon(){
   }catch(e){ alert("Erreur: "+e.message); console.error(e); }
 }
 
+// ========== ACTIONS (SOUS-TÂCHES) ==========
+
+function getActionsTache(tacheId){
+  return DB.actions
+    .filter(a => refId(a.Tache) === tacheId)
+    .sort((a, b) => (a.Ordre || 0) - (b.Ordre || 0));
+}
+
+function displayActionsInModal(tacheId){
+  const container = document.getElementById("sous-actions-list");
+  container.innerHTML = "";
+
+  if(!tacheId){
+    container.innerHTML = '<div style="padding:12px;color:var(--texte-mention);font-size:12px;text-align:center;">Aucune sous-action</div>';
+    return;
+  }
+
+  const actions = getActionsTache(tacheId);
+
+  if(actions.length === 0){
+    container.innerHTML = '<div style="padding:12px;color:var(--texte-mention);font-size:12px;text-align:center;">Aucune sous-action</div>';
+  } else {
+    actions.forEach(action => {
+      const item = document.createElement("div");
+      item.className = "action-item";
+
+      const statutTexte = resolveRef(DB.parametres, action.Statut, "Statut");
+      const porteurTexte = resolveRef(DB.porteurs, action.Porteur, "Nom") || "Non attribué";
+
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.checked = norm(statutTexte) === norm("Terminé");
+      checkbox.onchange = async (e) => {
+        const newStatut = e.target.checked ? "Terminé" : "À faire";
+        const newStatutId = findParamId("Statut", newStatut);
+        await grist.docApi.applyUserActions([
+          ["UpdateRecord", "ACTIONS", action.id, {Statut: newStatutId}]
+        ]);
+        init();
+      };
+      item.appendChild(checkbox);
+
+      const nomSpan = document.createElement("span");
+      nomSpan.className = "action-nom";
+      nomSpan.textContent = action.Nom;
+      item.appendChild(nomSpan);
+
+      const porteurSpan = document.createElement("span");
+      porteurSpan.className = "action-porteur";
+      porteurSpan.textContent = porteurTexte;
+      item.appendChild(porteurSpan);
+
+      const actionsDiv = document.createElement("div");
+      actionsDiv.className = "action-actions";
+
+      const btnEdit = document.createElement("button");
+      btnEdit.type = "button";
+      btnEdit.className = "btn-edit-action";
+      btnEdit.textContent = "✏";
+      btnEdit.onclick = (e) => { e.stopPropagation(); openActionModal(tacheId, action.id); };
+      actionsDiv.appendChild(btnEdit);
+
+      const btnDelete = document.createElement("button");
+      btnDelete.type = "button";
+      btnDelete.className = "btn-delete-action";
+      btnDelete.textContent = "🗑";
+      btnDelete.onclick = async (e) => {
+        e.stopPropagation();
+        if(confirm("Supprimer cette sous-action?")){
+          await grist.docApi.applyUserActions([
+            ["RemoveRecord", "ACTIONS", action.id]
+          ]);
+          init();
+        }
+      };
+      actionsDiv.appendChild(btnDelete);
+
+      item.appendChild(actionsDiv);
+      container.appendChild(item);
+    });
+  }
+}
+
+function activateCreateInput(tacheId){
+  const area = document.getElementById("sous-action-create-area");
+  area.innerHTML = '';
+
+  const input = document.createElement("input");
+  input.type = "text";
+  input.className = "action-input-create";
+  input.placeholder = "Taper le nom de la sous-action...";
+  input.maxLength = 100;
+
+  input.onkeydown = async (e) => {
+    if(e.key === "Enter"){
+      e.preventDefault();
+      const nom = input.value.trim();
+      if(!nom) return;
+
+      try {
+        const existantes = getActionsTache(tacheId);
+        const ordre = existantes.length + 1;
+        const statutId = findParamId("Statut", "À faire");
+
+        await grist.docApi.applyUserActions([
+          ["AddRecord", "ACTIONS", null, {
+            Tache: tacheId,
+            Nom: nom,
+            Ordre: ordre,
+            Statut: statutId
+          }]
+        ]);
+
+        await init();
+        displayActionsInModal(tacheId);
+        activateCreateInput(tacheId);
+      } catch(e){
+        alert("Erreur: " + e.message);
+      }
+    } else if(e.key === "Escape"){
+      input.value = "";
+    }
+  };
+
+  area.appendChild(input);
+  input.focus();
+}
+
+function openActionModal(tacheId, actionId = null){
+  const overlay = document.getElementById("modal-action-overlay");
+
+  if(actionId){
+    const action = DB.actions.find(x => x.id === actionId);
+    document.getElementById("modal-action-title").textContent = "Modifier une sous-action";
+    document.getElementById("field-action-id").value = action.id;
+    document.getElementById("field-action-nom").value = action.Nom || "";
+    document.getElementById("field-action-statut").value =
+      resolveRef(DB.parametres, action.Statut, "Statut") || "À faire";
+    document.getElementById("field-action-porteur").value =
+      resolveRef(DB.porteurs, action.Porteur, "Nom") || "";
+    document.getElementById("field-action-commentaires").value = action.Commentaires || "";
+    document.getElementById("btn-delete-action").style.display = "inline-block";
+    document.getElementById("btn-save-action").textContent = "Enregistrer";
+  } else {
+    document.getElementById("modal-action-title").textContent = "Ajouter une sous-action";
+    document.getElementById("field-action-id").value = "";
+    document.getElementById("field-action-nom").value = "";
+    document.getElementById("field-action-statut").value = "À faire";
+    document.getElementById("field-action-porteur").value = "";
+    document.getElementById("field-action-commentaires").value = "";
+    document.getElementById("btn-delete-action").style.display = "none";
+    document.getElementById("btn-save-action").textContent = "Créer";
+  }
+
+  document.getElementById("field-action-tache").value = tacheId;
+  overlay.classList.add("active");
+}
+
+function closeActionModal(){
+  document.getElementById("modal-action-overlay").classList.remove("active");
+}
+
+async function saveAction(){
+  const id = document.getElementById("field-action-id").value;
+  const nom = document.getElementById("field-action-nom").value.trim();
+  const statut = document.getElementById("field-action-statut").value;
+  const porteur = document.getElementById("field-action-porteur").value;
+  const commentaires = document.getElementById("field-action-commentaires").value.trim();
+
+  if(!nom){ alert("Le nom est obligatoire"); return; }
+
+  try {
+    const statutId = findParamId("Statut", statut);
+    const porteurId = porteur ? findPorteurId(porteur) : null;
+
+    const values = {
+      Nom: nom,
+      Statut: statutId,
+      Porteur: porteurId,
+      Commentaires: commentaires
+    };
+
+    if(id){
+      await grist.docApi.applyUserActions([
+        ["UpdateRecord", "ACTIONS", parseInt(id), values]
+      ]);
+    } else {
+      const tacheId = parseInt(document.getElementById("field-action-tache").value);
+      values.Tache = tacheId;
+      values.Ordre = getActionsTache(tacheId).length + 1;
+      await grist.docApi.applyUserActions([
+        ["AddRecord", "ACTIONS", null, values]
+      ]);
+    }
+
+    closeActionModal();
+    init();
+  } catch(e){
+    alert("Erreur: " + e.message);
+  }
+}
+
+async function deleteAction(){
+  const id = parseInt(document.getElementById("field-action-id").value);
+  if(!id) return;
+  if(!confirm("Supprimer cette sous-action?")) return;
+
+  try {
+    await grist.docApi.applyUserActions([
+      ["RemoveRecord", "ACTIONS", id]
+    ]);
+    closeActionModal();
+    init();
+  } catch(e){
+    alert("Erreur: " + e.message);
+  }
+}
+
 function openTacheCreate(projetId){
   document.getElementById("field-tache-id").value="";
   document.getElementById("field-tache-projet").value=projetId;
@@ -1079,6 +1484,7 @@ function openTacheCreate(projetId){
   document.getElementById("info-dependances").style.display="none";
   populatePredecessorsSelect(projetId, []);
   populateJalonsDeclencheursSelect(projetId, []);
+  displayActionsInModal(null);
   openModal("modal-tache");
 }
 
@@ -1147,6 +1553,7 @@ function openTacheEdit(t){
 
   populatePredecessorsSelect(refId(t.Projet), preds);
   populateJalonsDeclencheursSelect(refId(t.Projet), jalonsDecl);
+  displayActionsInModal(t.id);
   openModal("modal-tache");
 }
 
@@ -1642,6 +2049,15 @@ document.getElementById("btn-add-projet").onclick=()=>openProjetCreate();
 document.getElementById("field-jalon-type").addEventListener("change", toggleJalonTachesRequisesVisibilite);
 document.getElementById("field-tache-debut").addEventListener("change", majDuree);
 document.getElementById("field-tache-fin").addEventListener("change", majDuree);
+document.getElementById("btn-add-action").addEventListener("click", (e) => {
+  e.preventDefault();
+  const tacheId = parseInt(document.getElementById("field-tache-id").value);
+  if(!tacheId){
+    alert("Enregistrez la tâche d'abord");
+    return;
+  }
+  activateCreateInput(tacheId);
+});
 grist.onRecords(()=>init());
 init();
 </script>
