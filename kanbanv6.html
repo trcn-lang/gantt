@@ -132,6 +132,18 @@
   }
   .card .dates{font-size:11px;color:var(--texte-mention);display:flex;align-items:center;gap:4px}
 
+  .card-footer{
+    display:flex;align-items:center;justify-content:space-between;gap:8px;
+  }
+  .card-footer .dates{margin:0}
+  .card-actions-indicateurs{
+    display:flex;align-items:center;gap:10px;flex-shrink:0;
+  }
+  .indicateur-action{
+    display:flex;align-items:center;gap:3px;font-size:11px;color:var(--texte-mention);
+  }
+  .indicateur-action.termine{color:var(--st-termine)}
+
 
   .btn-add-cell{
     background:none;border:1px dashed var(--bordure);color:var(--texte-mention);
@@ -1611,10 +1623,45 @@ function construire(){
         }
 
         const dIdx = dayIndex(t.Date_debut);
-        if(dIdx!==null){
-          const duree = t.Duree_jours||1;
-          const dates = el("div", "dates", `${fmtJJMM(t.Date_debut)} · ${duree} j`);
-          card.appendChild(dates);
+        const actionsTache = getSousActionsTache(t.id);
+        const hasDates = dIdx !== null;
+        const hasActions = actionsTache.length > 0;
+
+        if(hasDates || hasActions){
+          const footer = el("div", "card-footer");
+
+          if(hasDates){
+            const duree = t.Duree_jours||1;
+            footer.appendChild(el("span", "dates", `${fmtJJMM(t.Date_debut)} · ${duree} j`));
+          } else {
+            footer.appendChild(el("span", "dates", ""));
+          }
+
+          if(hasActions){
+            const nbTerminees = actionsTache.filter(a => {
+              const st = resolveRef(DB.parametres, a.Statut, "Statut");
+              return norm(st) === norm("Terminé");
+            }).length;
+            const nbAFaire = actionsTache.length - nbTerminees;
+
+            const indicateurs = el("div", "card-actions-indicateurs");
+
+            if(nbAFaire > 0){
+              const indAFaire = el("span", "indicateur-action");
+              indAFaire.appendChild(document.createTextNode("☐ " + nbAFaire));
+              indicateurs.appendChild(indAFaire);
+            }
+
+            if(nbTerminees > 0){
+              const indTerminees = el("span", "indicateur-action termine");
+              indTerminees.appendChild(document.createTextNode("☑ " + nbTerminees));
+              indicateurs.appendChild(indTerminees);
+            }
+
+            footer.appendChild(indicateurs);
+          }
+
+          card.appendChild(footer);
         }
 
         card.onclick = () => openTacheEdit(t);
