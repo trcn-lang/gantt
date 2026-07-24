@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Kanban par Porteur</title>
+<title>Rétroplanning</title>
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
 <style>
   :root{
@@ -17,8 +17,13 @@
     --st-faire:#929292;
     --st-encours:#0063CB;
     --st-termine:#18753C;
-    --label-w:200px;
-    --col-w:300px;
+    --jalon-majeur:#C41E3A;
+    --jalon-livrable:#FF6B35;
+    --jalon-info:#6B6B6B;
+    --jour:16px;
+    --label-w:300px;
+    --row-h:44px;
+    --proj-h:46px;
   }
 
   *{box-sizing:border-box;margin:0;padding:0}
@@ -43,15 +48,13 @@
   .legende{display:flex;gap:14px;flex-wrap:wrap;align-items:center}
   .legende .item{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--texte-mention)}
   .legende .puce{width:12px;height:12px;border-radius:3px;flex:0 0 auto}
+  .legende .puce.jalon-puce{border-radius:0;transform:rotate(45deg)}
+  .legende .puce.critique-puce{background:var(--st-faire);border:2px solid #CE0500;box-shadow:0 0 0 1px #fff inset}
 
   .toolbar{
     padding:12px 16px;border-bottom:1px solid var(--bordure);
-    display:flex;gap:8px;flex-wrap:wrap;align-items:center;
+    display:flex;gap:8px;flex-wrap:wrap;
   }
-  .toolbar select{
-    padding:6px 10px;border:1px solid var(--bordure);border-radius:4px;font-size:13px;background:#fff;
-  }
-  .toolbar label{font-size:12px;color:var(--texte-mention);font-weight:600}
 
   .btn{
     padding:8px 16px;background:var(--bleu-france);color:#fff;border:none;
@@ -60,84 +63,166 @@
   .btn:hover{background:#0056b3}
   .btn-danger{background:#CE0500}
   .btn-danger:hover{background:#a80400}
-  .btn-cancel{background:#ccc;color:#000}
-  .btn-cancel:hover{background:#aaa}
 
   .scroll{flex:1;overflow:auto;position:relative}
+  .timeline-scroll{overflow:auto;padding-bottom:28px}
+  .timeline-scroll::-webkit-scrollbar{height:10px;width:10px}
+  .timeline-scroll::-webkit-scrollbar-thumb{background:#B0B0B0;border-radius:5px}
+  .timeline-scroll::-webkit-scrollbar-track{background:transparent}
+  .timeline-scroll{scrollbar-width:thin}
+  .grid-wrapper{display:flex}
 
-  .matrix{
-    display:grid;
-    grid-template-columns:var(--label-w) repeat(var(--n-cols,3), minmax(var(--col-w), 1fr));
-    align-content:start;
-    min-width:fit-content;
+  .labels-col{
+    width:var(--label-w);flex-shrink:0;border-right:1px solid var(--bordure);
+    display:flex;flex-direction:column;overflow:hidden;z-index:3;
   }
+
+  .grid{display:grid;grid-template-columns:var(--tl-w,600px);align-content:start;flex:1}
 
   .corner{
-    position:sticky;top:0;left:0;z-index:6;
+    position:sticky;top:0;left:0;z-index:5;
     background:var(--fond);border-right:1px solid var(--bordure);border-bottom:1px solid var(--bordure);
-    padding:0 12px;display:flex;align-items:center;font-size:12px;font-weight:700;color:var(--texte-mention);
-    height:56px;flex-shrink:0;
+    padding:0 12px;display:flex;align-items:center;font-size:12px;font-weight:700;
+    height:72px;flex-shrink:0;
   }
 
-  .col-header{
-    position:sticky;top:0;z-index:5;
-    background:var(--fond);border-bottom:1px solid var(--bordure);border-left:1px solid var(--bordure);
-    height:56px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;
+  .head-track{position:sticky;top:0;z-index:6;height:72px;background:var(--fond);border-bottom:1px solid var(--bordure)}
+  .head-inner{position:relative;height:100%}
+
+  .week-label{
+    position:absolute;top:0;bottom:0;
+    width:112px;padding:8px;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;text-align:center;font-size:11px;cursor:help;
+    border-left:1.5px solid rgba(0,0,0,0.12);
   }
-  .col-header .nom{font-size:13px;font-weight:700}
-  .col-header .count{
-    font-size:11px;color:#fff;background:var(--texte-mention);border-radius:10px;padding:1px 8px;
+  .week-label:hover::after{
+    content:attr(data-tooltip);position:absolute;top:100%;left:50%;transform:translateX(-50%);
+    background:#222;color:#fff;padding:12px 16px;border-radius:6px;font-size:12px;
+    white-space:pre-line;line-height:1.4;z-index:200;box-shadow:0 4px 12px rgba(0,0,0,0.2);
+    margin-top:8px;min-width:220px;text-align:center;pointer-events:none;
+  }
+  .week-label:hover::before{
+    content:'';position:absolute;top:100%;left:50%;transform:translateX(-50%);
+    border:6px solid transparent;border-bottom-color:#222;z-index:200;
+    margin-top:2px;pointer-events:none;
+  }
+  .week-num{font-size:13px;font-weight:700;color:var(--bleu-france);margin-bottom:4px}
+  .week-date{font-weight:600;color:var(--texte);line-height:1.3}
+
+  .label{
+    background:var(--fond);border-bottom:1px solid var(--fond-alt);
+    display:flex;align-items:center;height:var(--row-h);padding:0 12px;overflow:hidden;position:relative;
+  }
+  .label.projet{
+    background:var(--bleu-975);color:var(--bleu-france);font-weight:700;
+    height:var(--proj-h);border-bottom:1px solid var(--bordure);
+  }
+  .label.projet .nom-projet{
+    cursor:pointer;border-radius:3px;padding:2px 4px;margin:-2px -4px;
+  }
+  .label.projet .nom-projet:hover{background:rgba(0,0,145,0.08);text-decoration:underline}
+  .label.projet .btn-collapse{
+    background:none;border:none;color:var(--bleu-france);cursor:pointer;font-size:16px;
+    padding:4px 8px;margin-right:8px;transition:transform 0.2s;font-weight:700;
+  }
+  .label.projet .btn-collapse.collapsed{transform:rotate(-90deg)}
+  .label.tache{padding-left:12px;font-size:13px;gap:8px}
+  .label.tache .nom{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+  .label.tache .porteur{font-size:11px;color:var(--texte-mention);flex:0 0 auto}
+
+  .label-actions{position:absolute;right:8px;display:none;gap:4px;background:var(--fond);padding-left:6px}
+  .label:hover .label-actions{display:flex}
+  .btn-tiny{padding:2px 6px;font-size:10px;background:#666;color:#fff;border:none;border-radius:3px;cursor:pointer}
+  .btn-tiny:hover{background:#333}
+  .btn-tiny.add{background:var(--bleu-france)}
+  .btn-tiny.add:hover{background:#0056b3}
+
+  .proj-group{position:relative}
+  .proj-group.collapsed .track.tache{display:none}
+  .proj-group.collapsed .dependencies-svg{display:none}
+
+  .label.tache.hidden{display:none !important}
+
+  .track{
+    position:relative;height:var(--row-h);border-bottom:1px solid var(--fond-alt);
+    background-image:
+      repeating-linear-gradient(to right, rgba(0,0,0,0.035) 0 1px, transparent 1px var(--jour)),
+      repeating-linear-gradient(to right, rgba(0,0,145,0.06) 0 1px, transparent 1px calc(7 * var(--jour)));
+  }
+  .track.projet{
+    height:var(--proj-h);background:var(--bleu-975);border-bottom:1px solid var(--bordure);
   }
 
-  .row-label{
-    position:sticky;left:0;z-index:4;
-    background:var(--bleu-975);border-right:1px solid var(--bordure);border-bottom:1px solid var(--bordure);
-    padding:10px 12px;display:flex;flex-direction:column;justify-content:center;gap:2px;
-    min-height:80px;
+  .track.tache::before{
+    content:"";position:absolute;top:0;bottom:0;left:calc(var(--today) * var(--jour));
+    width:2px;background:#6A6AF4;opacity:.55;z-index:0;
   }
-  .row-label.non-assigne{background:var(--fond-alt)}
-  .row-label .nom{font-size:13px;font-weight:700;color:var(--bleu-france)}
-  .row-label.non-assigne .nom{color:var(--texte-mention);font-style:italic}
-  .row-label .count{font-size:11px;color:var(--texte-mention)}
 
-  .cell{
-    border-bottom:1px solid var(--bordure);border-left:1px solid var(--bordure);
-    padding:8px;display:flex;flex-direction:column;gap:8px;min-height:80px;
-    transition:background 0.15s;
+  .barre{
+    position:absolute;top:20px;height:22px;border-radius:4px;z-index:1;
+    display:flex;align-items:center;padding:0 6px;font-size:11px;color:#fff;
+    white-space:nowrap;overflow:hidden;cursor:pointer;
+    transition:filter 0.15s;
   }
-  .cell.drag-over{background:var(--bleu-975)}
+  .barre:hover{filter:brightness(0.9)}
+  .barre.critique{border:2px solid #fff;box-shadow:0 0 0 1px #CE0500}
 
-  .card{
-    background:#fff;border:1px solid var(--bordure);border-left:4px solid var(--st-faire);
-    border-radius:6px;padding:8px 10px;cursor:grab;
-    box-shadow:0 1px 2px rgba(0,0,0,0.06);transition:box-shadow 0.15s, transform 0.15s;
+  .date-label{
+    position:absolute;top:2px;z-index:2;
+    transform:translateX(-50%);
+    font-size:9px;font-weight:600;color:var(--texte-mention);
+    white-space:nowrap;pointer-events:none;line-height:1.2;
+    background:var(--fond);padding:0 2px;border-radius:2px;
   }
-  .card:hover{box-shadow:0 3px 8px rgba(0,0,0,0.12);transform:translateY(-1px)}
-  .card.dragging{opacity:0.4}
-  .card.st-encours{border-left-color:var(--st-encours)}
-  .card.st-termine{border-left-color:var(--st-termine)}
-  .card .titre{font-size:13px;font-weight:700;margin-bottom:4px;line-height:1.3}
-  .card .badge-proj{
-    display:inline-block;font-size:10px;color:var(--bleu-france);background:var(--bleu-975);
-    border-radius:10px;padding:1px 8px;margin-bottom:4px;
-  }
-  .card .dep-line{
-    font-size:11px;color:var(--texte);line-height:1.3;margin-bottom:3px;
-    display:flex;gap:5px;align-items:baseline;
-  }
-  .card .dep-line .puce{flex:0 0 auto;font-size:9px}
-  .card .commentaire{
-    font-size:11px;color:var(--texte-mention);font-style:italic;margin-bottom:4px;
-    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
-  }
-  .card .dates{font-size:11px;color:var(--texte-mention);display:flex;align-items:center;gap:4px}
 
-
-  .btn-add-cell{
-    background:none;border:1px dashed var(--bordure);color:var(--texte-mention);
-    border-radius:4px;padding:6px;font-size:12px;cursor:pointer;text-align:center;
+  .dependencies-svg{
+    position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:0;
   }
-  .btn-add-cell:hover{background:var(--fond-alt);border-color:var(--bleu-france);color:var(--bleu-france)}
+
+  .jalon-line{
+    position:absolute;bottom:0;width:2px;z-index:0;
+    opacity:0.55;pointer-events:none;
+  }
+
+  .jalon-name{
+    position:absolute;z-index:4;
+    font-size:10px;font-weight:700;
+    white-space:nowrap;cursor:pointer;
+    line-height:1;
+    transform:translateY(-50%);
+  }
+
+  .jalon-marker-wrap{
+    position:absolute;z-index:4;
+    width:0;height:0;
+    cursor:pointer;
+  }
+
+  .jalon-marker-diamond{
+    position:absolute;top:0;left:0;
+    width:11px;height:11px;
+    margin-top:-5.5px;margin-left:-5.5px;
+    transform:rotate(45deg);
+    border:1.5px solid #fff;
+    box-shadow:0 1px 3px rgba(0,0,0,0.3);
+    transition:filter 0.15s;
+  }
+  .jalon-marker-wrap:hover .jalon-marker-diamond{filter:brightness(0.85)}
+  .jalon-marker-wrap:hover::after{
+    content:attr(data-tooltip);position:absolute;top:14px;left:0;transform:translateX(-50%);
+    background:#222;color:#fff;padding:8px 12px;border-radius:6px;font-size:12px;
+    white-space:nowrap;line-height:1.4;z-index:200;box-shadow:0 4px 12px rgba(0,0,0,0.2);
+    pointer-events:none;
+  }
+  .jalon-marker-wrap:hover::before{
+    content:'';position:absolute;top:6px;left:0;transform:translateX(-50%);
+    border:5px solid transparent;border-bottom-color:#222;z-index:200;pointer-events:none;
+  }
+
+  .pill-plan{
+    position:absolute;top:8px;left:6px;z-index:1;font-size:10px;color:var(--texte-mention);
+    background:#EEE;border:1px solid var(--bordure);border-radius:10px;padding:1px 8px;
+  }
 
   .modal-overlay{
     position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);
@@ -155,15 +240,22 @@
     width:100%;padding:8px 12px;border:1px solid var(--bordure);border-radius:4px;font-size:13px;
   }
   .form-group input[readonly]{background:var(--fond-alt);color:var(--texte-mention)}
-  .form-group textarea{resize:vertical;min-height:70px}
-  .form-actions{display:flex;gap:8px;margin-top:24px;justify-content:space-between}
-  .form-actions .right{display:flex;gap:8px}
+  .form-group textarea{resize:vertical;min-height:80px}
+  .form-actions{display:flex;gap:8px;margin-top:24px;justify-content:flex-end}
+  .form-actions.with-delete{justify-content:space-between}
+  .btn-cancel{background:#ccc;color:#000}
+  .btn-cancel:hover{background:#aaa}
 
   .info-box{
     background:#FFF3CD;border:1px solid #FFC107;border-radius:4px;padding:12px;margin-bottom:16px;font-size:12px;
     color:#856404;line-height:1.4;
   }
   .info-box.warning{background:#F8D7DA;border-color:#F5C6CB;color:#721C24}
+  .info-box .dep-line{
+    display:flex;gap:6px;align-items:baseline;color:var(--texte);
+  }
+  .info-box .dep-line:not(:last-child){margin-bottom:4px}
+  .info-box .dep-line .puce{flex:0 0 auto;font-size:11px}
 
   .multi-select{
     border:1px solid var(--bordure);border-radius:4px;padding:8px;max-height:150px;overflow-y:auto;
@@ -174,192 +266,114 @@
   .multi-select-item:hover{background:var(--fond-alt)}
   .multi-select-item input[type="checkbox"]{cursor:pointer}
 
-  .empty-state{padding:40px;text-align:center;color:var(--texte-mention)}
-
-  /* ========================================================= */
-  /* ============  MODALE TÂCHE : LAYOUT 2 COLONNES  =========== */
-  /* ========================================================= */
-
-  #modal-tache .modal{
-    max-width:900px;
-    width:95%;
-    max-height:90vh;
-    display:flex;
-    flex-direction:column;
-    padding:24px;
-  }
-
-  .modal-tache-body{
+  /* ========== MODALE TÂCHE 2 COLONNES (identique Kanban) ========== */
+  .modal.modal-2col{
+    max-width:90vw;width:90%;max-height:90vh;
     display:grid;
-    grid-template-columns:1fr 1fr;
+    grid-template-columns:50% 50%;
     gap:24px;
-    flex:1;
-    min-height:0; /* nécessaire pour que les enfants puissent scroller */
+    overflow:hidden;
   }
-
+  .modal.modal-2col h2{grid-column:1}
+  .modal.modal-2col .form-group,
+  .modal.modal-2col .info-box{grid-column:1}
   .modal-left-column{
     overflow-y:auto;
-    padding-right:4px;
-    min-height:0;
+    max-height:calc(90vh - 80px);
   }
-
   .modal-right-column{
     display:flex;
     flex-direction:column;
     border-left:1px solid var(--bordure);
     padding-left:24px;
-    min-height:0;
+    overflow:hidden;
   }
-
   .modal-right-column h3{
     margin:0 0 12px 0;
     font-size:14px;
     font-weight:700;
     color:var(--bleu-france);
   }
-
   .sous-actions-list-wrapper{
     flex:1;
     overflow-y:auto;
     margin-bottom:12px;
-    min-height:60px;
-  }
-
-  #modal-tache .form-actions{
-    margin-top:20px;
-    flex-shrink:0;
-  }
-
-  /* Responsive : empile les 2 colonnes sur petit écran */
-  @media (max-width: 768px){
-    #modal-tache .modal{
-      max-width:95%;
-    }
-    .modal-tache-body{
-      grid-template-columns:1fr;
-      overflow-y:auto;
-    }
-    .modal-left-column{
-      overflow-y:visible;
-      max-height:none;
-    }
-    .modal-right-column{
-      border-left:none;
-      border-top:1px solid var(--bordure);
-      padding-left:0;
-      padding-top:16px;
-      min-height:200px;
-    }
-  }
-
-  /* ========================================================= */
-  /* ==================  SOUS-ACTIONS (ACTIONS)  ================ */
-  /* ========================================================= */
-
-  .sous-action-item{
-    display:flex;
-    align-items:center;
-    gap:8px;
-    padding:8px;
-    background:var(--fond-alt);
+    border:1px solid var(--bordure);
     border-radius:4px;
-    margin-bottom:6px;
+    background:var(--fond-alt);
+    padding:8px;
+  }
+  .sous-actions-list-wrapper::-webkit-scrollbar{width:8px}
+  .sous-actions-list-wrapper::-webkit-scrollbar-thumb{background:#B0B0B0;border-radius:4px}
+
+  .modal.modal-2col .form-actions{grid-column:1/-1}
+
+  /* ========== ACTIONS (sous-tâches) ========== */
+  .action-item{
+    display:flex;align-items:center;gap:8px;padding:8px;
+    background:var(--fond);border-radius:4px;margin-bottom:6px;
     border-left:3px solid var(--bleu-france);
   }
-  .sous-action-item:hover{background:var(--bleu-975)}
+  .action-item:hover{background:var(--bleu-975)}
+  .action-item input[type="checkbox"]{cursor:pointer;width:18px;height:18px;flex-shrink:0}
+  .action-nom{
+    flex:1;font-size:12px;font-weight:500;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  }
+  .action-porteur{
+    font-size:11px;color:var(--texte-mention);width:80px;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:0;
+  }
+  .action-actions{display:flex;gap:4px;opacity:0;flex-shrink:0}
+  .action-item:hover .action-actions{opacity:1}
+  .btn-edit-action,.btn-delete-action{
+    background:none;border:none;color:var(--texte-mention);cursor:pointer;
+    padding:2px;font-size:12px;border-radius:3px;
+  }
+  .btn-edit-action:hover{background:var(--bordure);color:var(--bleu-france)}
+  .btn-delete-action:hover{background:#f5e6e6;color:#CE0500}
+  .action-input-create{
+    width:100%;padding:8px;border:1px solid var(--bordure);border-radius:4px;
+    font-size:12px;font-family:inherit;
+  }
+  .action-input-create:focus{
+    outline:none;border-color:var(--bleu-france);
+    box-shadow:0 0 0 3px rgba(0, 0, 145, 0.1);
+  }
+  .btn-add-action{
+    width:100%;padding:10px;background:var(--fond);border:1px dashed var(--bordure);
+    color:var(--texte-mention);border-radius:4px;cursor:pointer;
+    font-size:12px;font-weight:600;transition:all 0.15s;
+  }
+  .btn-add-action:hover{border-color:var(--bleu-france);color:var(--bleu-france);background:var(--bleu-975)}
 
-  .sous-action-item input[type="checkbox"]{
-    cursor:pointer;
-    width:18px;
-    height:18px;
-    flex-shrink:0;
-    accent-color:var(--bleu-france);
+  .modal-sous-action{padding:20px}
+  .modal-sous-action h3{font-size:16px;color:var(--bleu-france);margin-bottom:12px;font-weight:700}
+  .sous-action-form-group{margin-bottom:12px}
+  .sous-action-form-group label{display:block;font-weight:600;margin-bottom:6px;font-size:12px}
+  .sous-action-form-group input,
+  .sous-action-form-group select,
+  .sous-action-form-group textarea{
+    width:100%;padding:8px 12px;border:1px solid var(--bordure);border-radius:4px;font-size:13px;
   }
+  .sous-action-form-group textarea{resize:vertical;min-height:60px}
+  .sous-action-form-actions{display:flex;gap:8px;margin-top:16px;justify-content:flex-end}
 
-  .sous-action-nom{
-    flex:1;
-    font-size:13px;
-    font-weight:500;
-    overflow:hidden;
-    text-overflow:ellipsis;
-    white-space:nowrap;
+  @media (max-width: 768px) {
+    .modal.modal-2col{ grid-template-columns:1fr; }
+    .modal.modal-2col .modal-right-column{
+      border-left:none;border-top:1px solid var(--bordure);
+      padding-left:0;padding-top:12px;
+    }
+    .modal.modal-2col .form-group,
+    .modal.modal-2col .info-box{ grid-column:1 !important; }
   }
-
-  .sous-action-porteur{
-    font-size:11px;
-    color:var(--texte-mention);
-    max-width:90px;
-    overflow:hidden;
-    text-overflow:ellipsis;
-    white-space:nowrap;
-    flex-shrink:0;
-  }
-
-  .sous-action-actions{
-    display:flex;
-    gap:2px;
-    flex-shrink:0;
-  }
-
-  .btn-edit-sous-action,
-  .btn-delete-sous-action{
-    background:none;
-    border:none;
-    color:var(--texte-mention);
-    cursor:pointer;
-    padding:3px 5px;
-    font-size:12px;
-    border-radius:3px;
-    line-height:1;
-  }
-  .btn-edit-sous-action:hover{background:var(--bordure);color:var(--bleu-france)}
-  .btn-delete-sous-action:hover{background:#f5e6e6;color:#CE0500}
-
-  .sous-action-empty{
-    padding:16px 8px;
-    color:var(--texte-mention);
-    font-size:12px;
-    text-align:center;
-  }
-
-  .sous-action-input-create{
-    width:100%;
-    padding:9px 10px;
-    border:1px solid var(--bleu-france);
-    border-radius:4px;
-    font-size:13px;
-    font-family:inherit;
-  }
-  .sous-action-input-create:focus{
-    outline:none;
-    box-shadow:0 0 0 3px rgba(0,0,145,0.12);
-  }
-
-  .btn-add-sous-action{
-    width:100%;
-    padding:10px;
-    background:var(--fond);
-    border:1px dashed var(--bordure);
-    color:var(--texte-mention);
-    border-radius:4px;
-    cursor:pointer;
-    font-size:12px;
-    font-weight:600;
-    transition:all 0.15s;
-  }
-  .btn-add-sous-action:hover{
-    border-color:var(--bleu-france);
-    color:var(--bleu-france);
-    background:var(--bleu-975);
-  }
-
-  #modal-sous-action .modal{max-width:440px}
 </style>
 </head>
 <body>
 <div class="app">
   <div class="topbar">
-    <h1>Kanban par Porteur</h1>
+    <h1>Rétroplanning</h1>
     <div style="display:flex;gap:20px;align-items:center;flex:1;">
       <div class="legende" id="legende"></div>
       <div class="meta" id="meta">Chargement…</div>
@@ -367,72 +381,113 @@
   </div>
 
   <div class="toolbar">
-    <button class="btn" id="btn-add-tache">+ Tâche</button>
-    <label>Projet :</label>
-    <select id="filtre-projet"><option value="">Tous</option></select>
+    <button class="btn" id="btn-add-projet">+ Projet</button>
     <span style="margin-left:auto;font-size:12px;color:var(--texte-mention)" id="status"></span>
   </div>
 
   <div class="scroll" id="scroll">
-    <div class="matrix" id="matrix"></div>
+    <div class="grid-wrapper">
+      <div class="labels-col" id="labels-col">
+        <div class="corner">Projet / Tâche</div>
+        <div id="labels"></div>
+      </div>
+      <div class="timeline-scroll" style="flex:1;position:relative;">
+        <div id="kanban" class="grid"></div>
+      </div>
+    </div>
   </div>
 </div>
 
-<!-- MODALE TACHE (création + édition) — Layout 2 colonnes -->
-<div class="modal-overlay" id="modal-tache">
+<!-- MODALE PROJET -->
+<div class="modal-overlay" id="modal-projet">
   <div class="modal">
-    <h2 id="modal-tache-title">Nouvelle Tâche</h2>
+    <h2 id="modal-projet-title">Nouveau Projet</h2>
+    <input type="hidden" id="field-projet-id">
+    <div class="form-group"><label>Nom *</label><input type="text" id="field-projet-nom" placeholder="ex: Avancement de grade 2025"></div>
+    <div class="form-group"><label>Équipe *</label><select id="field-projet-equipe"></select></div>
+    <div class="form-group"><label>Type Projet *</label><select id="field-projet-type"></select></div>
+    <div class="form-group"><label>Description</label><textarea id="field-projet-desc" placeholder="Description optionnelle"></textarea></div>
+    <div class="form-actions" id="modal-projet-actions">
+      <button class="btn btn-danger" id="btn-delete-projet" style="display:none" onclick="deleteProjet()">Supprimer</button>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-cancel" onclick="closeModal('modal-projet')">Annuler</button>
+        <button class="btn" id="btn-save-projet" onclick="saveProjet()">Créer</button>
+      </div>
+    </div>
+  </div>
+</div>
 
-    <input type="hidden" id="field-tache-id">
+<!-- MODALE JALON -->
+<div class="modal-overlay" id="modal-jalon">
+  <div class="modal">
+    <h2 id="modal-jalon-title">Nouveau Jalon</h2>
+    <input type="hidden" id="field-jalon-id">
+    <input type="hidden" id="field-jalon-projet">
+    <div class="form-group"><label>Nom du jalon *</label><input type="text" id="field-jalon-nom" placeholder="ex: Lancement"></div>
+    <div class="form-group"><label>Date *</label><input type="date" id="field-jalon-date"></div>
+    <div class="form-group"><label>Type</label>
+      <select id="field-jalon-type"><option>Jalon majeur</option><option>Livrable</option><option>Pour information</option></select>
+    </div>
+    <div class="form-group" id="group-jalon-taches-requises" style="display:none;">
+      <label>Tâches requises (livrable atteint une fois ces tâches terminées)</label>
+      <div class="multi-select" id="field-jalon-taches-requises"></div>
+    </div>
+    <div class="form-actions" id="modal-jalon-actions">
+      <button class="btn btn-danger" id="btn-delete-jalon" style="display:none" onclick="deleteJalon()">Supprimer</button>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-cancel" onclick="closeModal('modal-jalon')">Annuler</button>
+        <button class="btn" id="btn-save-jalon" onclick="saveJalon()">Créer</button>
+      </div>
+    </div>
+  </div>
+</div>
 
-    <div class="modal-tache-body">
+<!-- MODALE TACHE -->
+<div class="modal-overlay" id="modal-tache">
+  <div class="modal modal-2col">
 
-      <!-- ============ COLONNE GAUCHE : Champs de la tâche ============ -->
-      <div class="modal-left-column">
+    <!-- COLONNE GAUCHE: Champs -->
+    <div class="modal-left-column">
+      <h2 id="modal-tache-title">Nouvelle Tâche</h2>
+      <input type="hidden" id="field-tache-id">
+      <input type="hidden" id="field-tache-projet">
 
-        <div id="info-preds" class="info-box" style="display:none;"></div>
-        <div id="info-blocked" class="info-box warning" style="display:none;"></div>
+      <div id="info-dependances" class="info-box" style="display:none;"></div>
 
-        <div class="form-group"><label>Tâche *</label><input type="text" id="field-tache-nom" placeholder="ex: Publication liste"></div>
-        <div class="form-group"><label>Projet *</label><select id="field-tache-projet"></select></div>
-        <div class="form-group"><label>Date début *</label><input type="date" id="field-tache-debut"></div>
-        <div class="form-group"><label>Date fin *</label><input type="date" id="field-tache-fin"></div>
-        <div class="form-group"><label>Durée (jours ouvrés)</label><input type="number" id="field-tache-duree" readonly placeholder="calculée automatiquement"></div>
-        <div class="form-group"><label>Porteur</label><select id="field-tache-porteur"></select></div>
-        <div class="form-group"><label>Statut</label><select id="field-tache-statut"></select></div>
+      <div class="form-group"><label>Tâche *</label><input type="text" id="field-tache-nom" placeholder="ex: Publication liste"></div>
+      <div class="form-group"><label>Date début *</label><input type="date" id="field-tache-debut"></div>
+      <div class="form-group"><label>Date fin *</label><input type="date" id="field-tache-fin"></div>
+      <div class="form-group"><label>Durée (jours ouvrés)</label><input type="number" id="field-tache-duree" readonly placeholder="calculée automatiquement"></div>
+      <div class="form-group"><label>Porteur</label><select id="field-tache-porteur"></select></div>
+      <div class="form-group"><label>Statut</label><select id="field-tache-statut"></select></div>
 
-        <div class="form-group">
-          <label>Prédécesseurs (tâches dont dépend celle-ci)</label>
-          <div class="multi-select" id="field-tache-predecesseurs"></div>
-        </div>
-
-        <div class="form-group">
-          <label>Livrable(s) déclencheur(s) (jalons dont dépend cette tâche)</label>
-          <div class="multi-select" id="field-tache-jalons-declencheurs"></div>
-        </div>
-
-        <div class="form-group"><label>Commentaires</label><textarea id="field-tache-comments" placeholder="Notes optionnelles"></textarea></div>
-
+      <div class="form-group">
+        <label>Prédécesseurs (tâches dont dépend celle-ci)</label>
+        <div class="multi-select" id="field-tache-predecesseurs"></div>
       </div>
 
-      <!-- ============ COLONNE DROITE : Sous-actions ============ -->
-      <div class="modal-right-column">
-        <h3>Sous-Actions</h3>
-
-        <div class="sous-actions-list-wrapper" id="sous-actions-list"></div>
-
-        <div id="sous-action-create-area">
-          <button type="button" class="btn-add-sous-action" id="btn-add-sous-action">
-            + Ajouter une sous-action
-          </button>
-        </div>
+      <div class="form-group">
+        <label>Livrable(s) déclencheur(s) (jalons dont dépend cette tâche)</label>
+        <div class="multi-select" id="field-tache-jalons-declencheurs"></div>
       </div>
 
+      <div class="form-group"><label>Commentaires</label><textarea id="field-tache-comments" placeholder="Notes optionnelles"></textarea></div>
     </div>
 
-    <div class="form-actions">
+    <!-- COLONNE DROITE: Sous-Actions -->
+    <div class="modal-right-column">
+      <h3>Sous-Actions</h3>
+      <div class="sous-actions-list-wrapper" id="sous-actions-list"></div>
+      <div id="sous-action-create-area">
+        <button type="button" class="btn-add-action" id="btn-add-action">
+          + Ajouter une sous-action
+        </button>
+      </div>
+    </div>
+
+    <div class="form-actions" id="modal-tache-actions">
       <button class="btn btn-danger" id="btn-delete-tache" style="display:none" onclick="deleteTache()">Supprimer</button>
-      <div class="right">
+      <div style="display:flex;gap:8px;">
         <button class="btn btn-cancel" onclick="closeModal('modal-tache')">Annuler</button>
         <button class="btn" id="btn-save-tache" onclick="saveTache()">Créer</button>
       </div>
@@ -440,45 +495,53 @@
   </div>
 </div>
 
-<!-- MODALE SOUS-ACTION (édition / suppression) -->
-<div class="modal-overlay" id="modal-sous-action">
-  <div class="modal">
-    <h2 id="modal-sous-action-title">Modifier une sous-action</h2>
+<!-- MODALE ACTION (édition sous-action) -->
+<div class="modal-overlay" id="modal-action-overlay">
+  <div class="modal" style="max-width:500px;">
+    <div class="modal-sous-action">
+      <h3 id="modal-action-title">Modifier une sous-action</h3>
 
-    <input type="hidden" id="field-sous-action-id">
-    <input type="hidden" id="field-sous-action-tache">
+      <input type="hidden" id="field-action-id">
+      <input type="hidden" id="field-action-tache">
 
-    <div class="form-group">
-      <label>Nom *</label>
-      <input type="text" id="field-sous-action-nom" maxlength="100" placeholder="ex: Validation RH">
-    </div>
+      <div class="sous-action-form-group">
+        <label>Nom *</label>
+        <input type="text" id="field-action-nom" maxlength="100">
+      </div>
 
-    <div class="form-group">
-      <label>Statut</label>
-      <select id="field-sous-action-statut">
-        <option>À faire</option>
-        <option>En cours</option>
-        <option>Terminé</option>
-      </select>
-    </div>
+      <div class="sous-action-form-group">
+        <label>Statut</label>
+        <select id="field-action-statut">
+          <option>À faire</option>
+          <option>En cours</option>
+          <option>Terminé</option>
+        </select>
+      </div>
 
-    <div class="form-group">
-      <label>Porteur</label>
-      <select id="field-sous-action-porteur">
-        <option value="">-- Aucun --</option>
-      </select>
-    </div>
+      <div class="sous-action-form-group">
+        <label>Porteur (optionnel)</label>
+        <select id="field-action-porteur">
+          <option value="">-- Aucun --</option>
+        </select>
+      </div>
 
-    <div class="form-group">
-      <label>Commentaires</label>
-      <textarea id="field-sous-action-commentaires" placeholder="Notes spécifiques..."></textarea>
-    </div>
+      <div class="sous-action-form-group">
+        <label>Commentaires</label>
+        <textarea id="field-action-commentaires" placeholder="Notes spécifiques..."></textarea>
+      </div>
 
-    <div class="form-actions">
-      <button class="btn btn-danger" id="btn-delete-sous-action" style="display:none" onclick="deleteSousAction()">Supprimer</button>
-      <div class="right">
-        <button class="btn btn-cancel" onclick="closeModal('modal-sous-action')">Annuler</button>
-        <button class="btn" id="btn-save-sous-action" onclick="saveSousAction()">Enregistrer</button>
+      <div class="sous-action-form-actions">
+        <button type="button" class="btn btn-danger" id="btn-delete-action" style="display:none" onclick="deleteAction()">
+          Supprimer
+        </button>
+        <div style="display:flex;gap:8px;margin-left:auto;">
+          <button type="button" class="btn btn-cancel" onclick="closeActionModal()">
+            Annuler
+          </button>
+          <button type="button" class="btn" id="btn-save-action" onclick="saveAction()">
+            Créer
+          </button>
+        </div>
       </div>
     </div>
   </div>
@@ -490,18 +553,26 @@ const STATUTS = [
   {nom:"En cours",  cls:"st-encours",  couleur:"var(--st-encours)"},
   {nom:"Terminé",   cls:"st-termine",  couleur:"var(--st-termine)"},
 ];
-let NON_ATTRIBUE_ID = null;
-let PERT_DATA = {};
+
+const JALON_COULEURS = {
+  "jalon majeur": "var(--jalon-majeur)",
+  "livrable":     "var(--jalon-livrable)",
+  "pour information": "var(--jalon-info)",
+};
+function jalonCouleur(type){
+  return JALON_COULEURS[norm(type)] || "var(--jalon-info)";
+}
 
 function norm(s){
   return String(s||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").trim();
 }
 function statutInfo(s){
-  return STATUTS.find(x=>norm(x.nom)===norm(s)) || STATUTS[0];
+  return STATUTS.find(x=>norm(x.nom)===norm(s)) || {nom:s||"—",cls:"st-faire",couleur:"var(--st-faire)"};
 }
 function cssVarValue(v){
   return getComputedStyle(document.documentElement).getPropertyValue(v.replace("var(","").replace(")","").trim())||v;
 }
+
 function parseDate(v){
   if(v===null||v===undefined||v==="") return null;
   if(typeof v==="number") return new Date(v*1000);
@@ -522,10 +593,13 @@ function resolveRef(table, id, col){
   const ligne=table.find(row=>row.id===rid);
   return ligne?ligne[col]:null;
 }
-function fmtJJMM(v){
+function fmtJourComplet(v){
   const d=parseDate(v);
   if(!d) return "";
-  return String(d.getUTCDate()).padStart(2,"0")+"/"+String(d.getUTCMonth()+1).padStart(2,"0");
+  const jours=['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi'];
+  const jj=String(d.getUTCDate()).padStart(2,"0");
+  const mm=String(d.getUTCMonth()+1).padStart(2,"0");
+  return `${jours[d.getUTCDay()]} ${jj}/${mm}`;
 }
 function toDateInput(v){
   const d=parseDate(v);
@@ -534,107 +608,12 @@ function toDateInput(v){
   const mm=String(d.getUTCMonth()+1).padStart(2,"0");
   return `${d.getUTCFullYear()}-${mm}-${jj}`;
 }
-// ✅ Jours fériés français (fixes + mobiles calculés automatiquement, valable toute année)
-function datePaques(annee){
-  // Algorithme de Meeus/Jones/Butcher
-  const a = annee % 19;
-  const b = Math.floor(annee / 100);
-  const c = annee % 100;
-  const d = Math.floor(b / 4);
-  const e = b % 4;
-  const f = Math.floor((b + 8) / 25);
-  const g = Math.floor((b - f + 1) / 3);
-  const h = (19 * a + b - d - g + 15) % 30;
-  const i = Math.floor(c / 4);
-  const k = c % 4;
-  const l = (32 + 2 * e + 2 * i - h - k) % 7;
-  const m = Math.floor((a + 11 * h + 22 * l) / 451);
-  const mois = Math.floor((h + l - 7 * m + 114) / 31);
-  const jour = ((h + l - 7 * m + 114) % 31) + 1;
-  return new Date(annee, mois - 1, jour);
-}
-
-function joursFeriesAnnee(annee){
-  const paques = datePaques(annee);
-  const addJours = (date, n) => { const d = new Date(date); d.setDate(d.getDate() + n); return d; };
-  const cles = (d) => `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
-
-  const feries = [
-    new Date(annee, 0, 1),    // Jour de l'an
-    addJours(paques, 1),      // Lundi de Pâques
-    new Date(annee, 4, 1),    // Fête du travail
-    new Date(annee, 4, 8),    // Victoire 1945
-    addJours(paques, 39),     // Ascension
-    addJours(paques, 50),     // Lundi de Pentecôte
-    new Date(annee, 6, 14),   // Fête nationale
-    new Date(annee, 7, 15),   // Assomption
-    new Date(annee, 10, 1),   // Toussaint
-    new Date(annee, 10, 11),  // Armistice 1918
-    new Date(annee, 11, 25),  // Noël
-  ];
-  return new Set(feries.map(cles));
-}
-
-const CACHE_FERIES = {};
-function estFerie(date){
-  const annee = date.getFullYear();
-  if(!CACHE_FERIES[annee]) CACHE_FERIES[annee] = joursFeriesAnnee(annee);
-  const cle = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
-  return CACHE_FERIES[annee].has(cle);
-}
-
-function joursOuvres(d1, d2){
-  let n=0;
-  const cur=new Date(d1);
-  while(cur<=d2){
-    const j=cur.getDay();
-    if(j!==0 && j!==6 && !estFerie(cur)) n++;
-    cur.setDate(cur.getDate()+1);
-  }
-  return n;
-}
-
-// Utilitaires jours ouvrés pour la propagation PERT (chemin critique)
-function estJourOuvre(date){
-  const j=date.getDay();
-  return j!==0 && j!==6 && !estFerie(date);
-}
-function jourOuvreSuivant(date){
-  const d=new Date(date);
-  d.setDate(d.getDate()+1);
-  while(!estJourOuvre(d)) d.setDate(d.getDate()+1);
-  return d;
-}
-function jourOuvrePrecedent(date){
-  const d=new Date(date);
-  d.setDate(d.getDate()-1);
-  while(!estJourOuvre(d)) d.setDate(d.getDate()-1);
-  return d;
-}
-// Renvoie la date de fin après n jours ouvrés en comptant "date" comme jour 1 (cohérent avec Duree_jours)
-function ajouterJoursOuvres(date, n){
-  const d=new Date(date);
-  let restant=Math.max(1,n)-1;
-  while(restant>0){
-    d.setDate(d.getDate()+1);
-    if(estJourOuvre(d)) restant--;
-  }
-  return d;
-}
-// Opération inverse : retrouve la date de début connaissant la fin et la durée en jours ouvrés
-function soustraireJoursOuvres(date, n){
-  const d=new Date(date);
-  let restant=Math.max(1,n)-1;
-  while(restant>0){
-    d.setDate(d.getDate()-1);
-    if(estJourOuvre(d)) restant--;
-  }
-  return d;
-}
 
 let DB={};
-let draggedTaskId=null;
-let filtreProjet="";
+let NON_ATTRIBUE_ID = null;
+let allData={};
+let PERT_DATA={};
+let COLLAPSED_PROJETS = new Set();
 
 grist.ready({requiredAccess:"full"});
 
@@ -654,28 +633,18 @@ function columnarToRows(data){
   return rows;
 }
 
-// ========== DÉPENDANCES / PERT ==========
-
 function getPredecessorTasks(task){
   const raw = task.Predecesseurs;
   if(!raw) return [];
   if(!Array.isArray(raw)) return [];
-
-  // Format Grist pour une liste de références : ['L', id1, id2, ...]
   if(raw[0] === 'L'){
-    return raw.slice(1)
-      .map(id => DB.taches.find(t => t.id === id))
-      .filter(Boolean);
+    return raw.slice(1).map(id => DB.taches.find(t => t.id === id)).filter(Boolean);
   }
-  // Cellule corrompue (ex: ancienne sauvegarde erronée) → on ignore
   if(raw[0] === 'E'){
-    console.warn("⚠️ Cellule Predecesseurs corrompue pour la tâche", task.id, "- réenregistrez la tâche pour corriger.");
+    console.warn("⚠️ Cellule Predecesseurs corrompue pour la tâche", task.id);
     return [];
   }
-  // Fallback : tableau déjà composé d'IDs bruts
-  return raw
-    .map(id => (typeof id === 'object' ? id : DB.taches.find(t => t.id === id)))
-    .filter(Boolean);
+  return raw.map(id => (typeof id === 'object' ? id : DB.taches.find(t => t.id === id))).filter(Boolean);
 }
 
 function getPredecessorsBlocked(task){
@@ -713,6 +682,14 @@ function getJalonTypeTexte(jalon){
 function getTacheJalonsDeclencheurs(task){
   return parseListeReference(task.Jalon_declencheur, DB.jalons);
 }
+function getJalonTachesRequisesNonTerminees(jalon){
+  return getJalonTachesRequises(jalon).filter(t=>{
+    const statutTexte = resolveRef(DB.parametres, t.Statut, "Statut");
+    return norm(statutTexte) !== norm("Terminé");
+  });
+}
+// Un jalon-livrable est "atteint" si toutes ses tâches requises sont Terminé
+// (à défaut de tâche requise liée, on se base sur sa date)
 function getJalonAtteint(jalon){
   const requises = getJalonTachesRequises(jalon);
   if(requises.length > 0){
@@ -727,6 +704,7 @@ function getJalonsConditionnesParTache(task){
 }
 
 // Détection de cycle unifiée sur le graphe mixte Tâches + Jalons (liens Livrable)
+// nodeKey format : "T:<id>" pour une tâche, "J:<id>" pour un jalon
 function getSuccessorsUnifies(nodeKey){
   const [type, idStr] = nodeKey.split(':');
   const id = parseInt(idStr);
@@ -750,8 +728,6 @@ function isDescendantUnifie(startKey, candidateKey, visited){
   return false;
 }
 
-// Vérifie si candidateId est déjà un "successeur" (direct ou indirect) de taskId.
-// Si oui, ajouter candidateId comme prédécesseur de taskId créerait un cycle.
 function isDescendant(taskId, candidateId, visited){
   visited = visited || new Set();
   if(taskId === candidateId) return true;
@@ -904,7 +880,6 @@ async function calculatePERT(){
   syncPertIntoDB();
 }
 
-// Reporte les résultats PERT (calculés en mémoire) dans DB.taches pour un affichage immédiat
 function syncPertIntoDB(){
   DB.taches.forEach(t=>{
     const d = PERT_DATA[t.id];
@@ -914,30 +889,21 @@ function syncPertIntoDB(){
   });
 }
 
-// ========== SOUS-ACTIONS (Table ACTIONS) ==========
-
-function getSousActionsTache(tacheId){
-  return DB.actions
-    .filter(sa => refId(sa.Tache) === tacheId)
-    .sort((a, b) => (a.Ordre || 0) - (b.Ordre || 0));
-}
-
 async function init(){
   try{
     document.getElementById("status").textContent="Chargement...";
     DB.projets      = columnarToRows(await grist.docApi.fetchTable("Projets"));
-    DB.taches       = columnarToRows(await grist.docApi.fetchTable("Taches"));
     DB.jalons       = columnarToRows(await grist.docApi.fetchTable("Jalons"));
+    DB.taches       = columnarToRows(await grist.docApi.fetchTable("Taches"));
     DB.porteurs     = columnarToRows(await grist.docApi.fetchTable("Porteurs"));
     DB.parametres   = columnarToRows(await grist.docApi.fetchTable("PARAMETRES"));
+    // Table ACTIONS (sous-actions) : chargée pour disponibilité future,
+    // non affichée dans le Rétroplanning (Phase 1).
     DB.actions      = columnarToRows(await grist.docApi.fetchTable("ACTIONS"));
 
-    // ✅ FIX: S'assurer qu'un porteur réel "Non attribué" existe (plus robuste que null)
     let nonAttribue = DB.porteurs.find(r => norm(r.Nom) === norm("Non attribué"));
     if(!nonAttribue){
-      const result = await grist.docApi.applyUserActions([
-        ["AddRecord","Porteurs",null,{Nom:"Non attribué"}]
-      ]);
+      await grist.docApi.applyUserActions([["AddRecord","Porteurs",null,{Nom:"Non attribué"}]]);
       DB.porteurs = columnarToRows(await grist.docApi.fetchTable("Porteurs"));
       nonAttribue = DB.porteurs.find(r => norm(r.Nom) === norm("Non attribué"));
     }
@@ -954,37 +920,132 @@ async function init(){
 
 function fillSelect(id, values, placeholder){
   const sel=document.getElementById(id);
-  const prev=sel.value;
   sel.innerHTML=`<option value="">${placeholder}</option>`;
   values.forEach(v=>{
     const opt=document.createElement("option");
-    opt.value=v.value; opt.textContent=v.label;
+    opt.value=v; opt.textContent=v;
     sel.appendChild(opt);
   });
-  if(prev) sel.value=prev;
 }
 function uniq(arr){ return arr.filter((v,i,a)=>a.indexOf(v)===i); }
 
 function populateSelects(){
-  fillSelect("field-tache-projet", DB.projets.map(c=>({value:c.id, label:c.Projet})), "-- Sélectionner --");
-  fillSelect("field-tache-statut", STATUTS.map(s=>({value:s.nom, label:s.nom})), "-- Sélectionner --");
-  fillSelect("field-tache-porteur", DB.porteurs.map(r=>({value:r.Nom, label:r.Nom})), "-- Aucun --");
-  fillSelect("field-sous-action-porteur", DB.porteurs.map(r=>({value:r.Nom, label:r.Nom})), "-- Aucun --");
-
-  const filtreSel=document.getElementById("filtre-projet");
-  const prev=filtreSel.value;
-  filtreSel.innerHTML='<option value="">Tous</option>';
-  DB.projets.forEach(c=>{
-    const opt=document.createElement("option");
-    opt.value=c.id; opt.textContent=c.Projet;
-    filtreSel.appendChild(opt);
-  });
-  filtreSel.value=prev;
+  fillSelect("field-projet-equipe", uniq(DB.parametres.filter(p=>p.Equipe).map(p=>p.Equipe)), "-- Sélectionner --");
+  fillSelect("field-projet-type",    uniq(DB.parametres.filter(p=>p.Type_Projet).map(p=>p.Type_Projet)), "-- Sélectionner --");
+  fillSelect("field-tache-statut",     uniq(DB.parametres.filter(p=>p.Statut).map(p=>p.Statut)), "-- Sélectionner --");
+  fillSelect("field-tache-porteur",       DB.porteurs.map(r=>r.Nom), "-- Aucun --");
+  fillSelect("field-action-porteur",      DB.porteurs.map(r=>r.Nom), "-- Aucun --");
 }
 
 function openModal(id){ document.getElementById(id).classList.add("active"); }
 function closeModal(id){ document.getElementById(id).classList.remove("active"); }
 
+function toggleProjetCollapse(projId){
+  if(COLLAPSED_PROJETS.has(projId)){
+    COLLAPSED_PROJETS.delete(projId);
+  } else {
+    COLLAPSED_PROJETS.add(projId);
+  }
+  construire();
+  
+  // Masquer/afficher les labels des tâches de ce projet
+  const labelsDiv = document.getElementById("labels");
+  const tacheLabels = labelsDiv.querySelectorAll(`.label.tache[data-projet="${projId}"]`);
+  tacheLabels.forEach(label => {
+    if(COLLAPSED_PROJETS.has(projId)){
+      label.classList.add("hidden");
+    } else {
+      label.classList.remove("hidden");
+    }
+  });
+}
+
+function datePaques(annee){
+  const a = annee % 19;
+  const b = Math.floor(annee / 100);
+  const c = annee % 100;
+  const d = Math.floor(b / 4);
+  const e = b % 4;
+  const f = Math.floor((b + 8) / 25);
+  const g = Math.floor((b - f + 1) / 3);
+  const h = (19 * a + b - d - g + 15) % 30;
+  const i = Math.floor(c / 4);
+  const k = c % 4;
+  const l = (32 + 2 * e + 2 * i - h - k) % 7;
+  const m = Math.floor((a + 11 * h + 22 * l) / 451);
+  const mois = Math.floor((h + l - 7 * m + 114) / 31);
+  const jour = ((h + l - 7 * m + 114) % 31) + 1;
+  return new Date(annee, mois - 1, jour);
+}
+
+function joursFeriesAnnee(annee){
+  const paques = datePaques(annee);
+  const addJours = (date, n) => { const d = new Date(date); d.setDate(d.getDate() + n); return d; };
+  const cles = (d) => `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+  const feries = [
+    new Date(annee, 0, 1), addJours(paques, 1), new Date(annee, 4, 1), new Date(annee, 4, 8),
+    addJours(paques, 39), addJours(paques, 50), new Date(annee, 6, 14), new Date(annee, 7, 15),
+    new Date(annee, 10, 1), new Date(annee, 10, 11), new Date(annee, 11, 25),
+  ];
+  return new Set(feries.map(cles));
+}
+
+const CACHE_FERIES = {};
+function estFerie(date){
+  const annee = date.getFullYear();
+  if(!CACHE_FERIES[annee]) CACHE_FERIES[annee] = joursFeriesAnnee(annee);
+  const cle = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+  return CACHE_FERIES[annee].has(cle);
+}
+
+function joursOuvres(d1, d2){
+  let n=0;
+  const cur=new Date(d1);
+  while(cur<=d2){
+    const j=cur.getDay();
+    if(j!==0 && j!==6 && !estFerie(cur)) n++;
+    cur.setDate(cur.getDate()+1);
+  }
+  return n;
+}
+
+// Utilitaires jours ouvrés pour la propagation PERT (chemin critique)
+function estJourOuvre(date){
+  const j=date.getDay();
+  return j!==0 && j!==6 && !estFerie(date);
+}
+function jourOuvreSuivant(date){
+  const d=new Date(date);
+  d.setDate(d.getDate()+1);
+  while(!estJourOuvre(d)) d.setDate(d.getDate()+1);
+  return d;
+}
+function jourOuvrePrecedent(date){
+  const d=new Date(date);
+  d.setDate(d.getDate()-1);
+  while(!estJourOuvre(d)) d.setDate(d.getDate()-1);
+  return d;
+}
+// Renvoie la date de fin après n jours ouvrés en comptant "date" comme jour 1 (cohérent avec Duree_jours)
+function ajouterJoursOuvres(date, n){
+  const d=new Date(date);
+  let restant=Math.max(1,n)-1;
+  while(restant>0){
+    d.setDate(d.getDate()+1);
+    if(estJourOuvre(d)) restant--;
+  }
+  return d;
+}
+// Opération inverse : retrouve la date de début connaissant la fin et la durée en jours ouvrés
+function soustraireJoursOuvres(date, n){
+  const d=new Date(date);
+  let restant=Math.max(1,n)-1;
+  while(restant>0){
+    d.setDate(d.getDate()-1);
+    if(estJourOuvre(d)) restant--;
+  }
+  return d;
+}
 function majDuree(){
   const debut=document.getElementById("field-tache-debut").value;
   const fin=document.getElementById("field-tache-fin").value;
@@ -1003,35 +1064,417 @@ function findPorteurId(nom){
   return r?r.id:null;
 }
 
-function openTacheCreate(statutNom, porteurNom){
+function openProjetCreate(){
+  document.getElementById("field-projet-id").value="";
+  document.getElementById("field-projet-nom").value="";
+  document.getElementById("field-projet-equipe").value="";
+  document.getElementById("field-projet-type").value="";
+  document.getElementById("field-projet-desc").value="";
+  document.getElementById("modal-projet-title").textContent="Nouveau Projet";
+  document.getElementById("btn-save-projet").textContent="Créer";
+  document.getElementById("btn-delete-projet").style.display="none";
+  openModal("modal-projet");
+}
+
+function openProjetEdit(proj){
+  document.getElementById("field-projet-id").value=proj.id;
+  document.getElementById("field-projet-nom").value=proj.Projet||"";
+  document.getElementById("field-projet-equipe").value=resolveRef(DB.parametres, proj.Equipe, "Equipe")||"";
+  document.getElementById("field-projet-type").value=resolveRef(DB.parametres, proj.Type_Projet, "Type_Projet")||proj.Type_Projet||"";
+  document.getElementById("field-projet-desc").value=proj.Description||"";
+  document.getElementById("modal-projet-title").textContent="Modifier le projet";
+  document.getElementById("btn-save-projet").textContent="Enregistrer";
+  document.getElementById("btn-delete-projet").style.display="inline-block";
+  openModal("modal-projet");
+}
+
+async function saveProjet(){
+  const id=document.getElementById("field-projet-id").value;
+  const nom=document.getElementById("field-projet-nom").value.trim();
+  const equipe=document.getElementById("field-projet-equipe").value;
+  const type=document.getElementById("field-projet-type").value;
+  const desc=document.getElementById("field-projet-desc").value.trim();
+  if(!nom || !equipe || !type){ alert("Champs obligatoires"); return; }
+  try{
+    const equipeId = DB.parametres.find(p => p.Equipe === equipe)?.id;
+    const typeId = DB.parametres.find(p => p.Type_Projet === type)?.id;
+    if(!equipeId || !typeId){ alert("Équipe ou Type invalide"); return; }
+    if(id){
+      await grist.docApi.applyUserActions([["UpdateRecord","Projets",parseInt(id),{Projet:nom, Equipe:equipeId, Type_Projet:typeId, Description:desc}]]);
+    }else{
+      await grist.docApi.applyUserActions([["AddRecord","Projets",null,{Projet:nom, Equipe:equipeId, Type_Projet:typeId, Description:desc}]]);
+    }
+    closeModal("modal-projet");
+    init();
+  }catch(e){ alert("Erreur: "+e.message); console.error(e); }
+}
+
+async function deleteProjet(){
+  const id=parseInt(document.getElementById("field-projet-id").value);
+  if(!id) return;
+  const tachesLiees=DB.taches.filter(t=>refId(t.Projet)===id);
+  const jalonsLies=DB.jalons.filter(j=>refId(j.Projet)===id);
+  const msg=`Ce projet contient ${tachesLiees.length} tâche(s) et ${jalonsLies.length} jalon(s). Tout supprimer ?`;
+  if(!confirm(msg)) return;
+  try{
+    const actions=[];
+    tachesLiees.forEach(t=>actions.push(["RemoveRecord","Taches",t.id]));
+    jalonsLies.forEach(j=>actions.push(["RemoveRecord","Jalons",j.id]));
+    actions.push(["RemoveRecord","Projets",id]);
+    await grist.docApi.applyUserActions(actions);
+    closeModal("modal-projet");
+    init();
+  }catch(e){ alert("Erreur: "+e.message); console.error(e); }
+}
+
+function toggleJalonTachesRequisesVisibilite(){
+  const type = document.getElementById("field-jalon-type").value;
+  document.getElementById("group-jalon-taches-requises").style.display = (norm(type)===norm("Livrable")) ? "block" : "none";
+}
+
+function populateJalonTachesSelect(projetId, selectedTaches){
+  selectedTaches = selectedTaches || [];
+  const container = document.getElementById("field-jalon-taches-requises");
+  container.innerHTML = "";
+  if(!projetId){
+    container.innerHTML = "<div style='padding:8px;color:#999;font-size:11px;'>Aucun projet sélectionné</div>";
+    return;
+  }
+  const projetTasks = DB.taches.filter(t => refId(t.Projet) === projetId);
+  if(projetTasks.length === 0){
+    container.innerHTML = "<div style='padding:8px;color:#999;font-size:11px;'>Aucune tâche dans ce projet</div>";
+    return;
+  }
+  projetTasks.forEach(task=>{
+    const isSelected = selectedTaches.some(t => t.id === task.id);
+    const label = document.createElement("label");
+    label.className = "multi-select-item";
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.value = task.id;
+    checkbox.checked = isSelected;
+    label.appendChild(checkbox);
+    label.appendChild(document.createTextNode(task.Tache));
+    container.appendChild(label);
+  });
+}
+
+function openJalonCreate(projetId){
+  document.getElementById("field-jalon-id").value="";
+  document.getElementById("field-jalon-projet").value=projetId;
+  document.getElementById("field-jalon-nom").value="";
+  document.getElementById("field-jalon-date").value="";
+  document.getElementById("field-jalon-type").value="";
+  document.getElementById("modal-jalon-title").textContent="Nouveau Jalon";
+  document.getElementById("btn-save-jalon").textContent="Créer";
+  document.getElementById("btn-delete-jalon").style.display="none";
+  populateJalonTachesSelect(projetId, []);
+  toggleJalonTachesRequisesVisibilite();
+  openModal("modal-jalon");
+}
+
+function openJalonEdit(jalon){
+  document.getElementById("field-jalon-id").value=jalon.id;
+  document.getElementById("field-jalon-projet").value=refId(jalon.Projet);
+  document.getElementById("field-jalon-nom").value=jalon.Nom||"";
+  document.getElementById("field-jalon-date").value=toDateInput(jalon.Date);
+  document.getElementById("field-jalon-type").value=getJalonTypeTexte(jalon)||"";
+  document.getElementById("modal-jalon-title").textContent="Modifier le jalon";
+  document.getElementById("btn-save-jalon").textContent="Enregistrer";
+  document.getElementById("btn-delete-jalon").style.display="inline-block";
+  populateJalonTachesSelect(refId(jalon.Projet), getJalonTachesRequises(jalon));
+  toggleJalonTachesRequisesVisibilite();
+  openModal("modal-jalon");
+}
+
+async function saveJalon(){
+  const id=document.getElementById("field-jalon-id").value;
+  const projet_id=parseInt(document.getElementById("field-jalon-projet").value);
+  const nom=document.getElementById("field-jalon-nom").value.trim();
+  const date=document.getElementById("field-jalon-date").value;
+  const type=document.getElementById("field-jalon-type").value;
+  if(!nom || !date){ alert("Champs obligatoires"); return; }
+  try{
+    const checkboxes = document.querySelectorAll("#field-jalon-taches-requises input[type='checkbox']:checked");
+    const tachesRequisesIds = Array.from(checkboxes).map(cb => parseInt(cb.value));
+
+    // Anti-cycle : si une des tâches requises mène déjà (directement ou indirectement) à ce jalon, on refuse
+    if(id){
+      const jalonKey = 'J:'+id;
+      for(const taskId of tachesRequisesIds){
+        if(isDescendantUnifie(jalonKey, 'T:'+taskId)){
+          alert("❌ Cycle détecté : cette tâche requise créerait une boucle avec ce jalon. Sélection annulée.");
+          return;
+        }
+      }
+    }
+
+    const values={
+      Projet:projet_id, Nom:nom, Date:Math.floor(new Date(date).getTime()/1000),
+      Type: type ? ['L', type] : null,
+      Taches_requises: ['L', ...tachesRequisesIds]
+    };
+    if(id){
+      await grist.docApi.applyUserActions([["UpdateRecord","Jalons",parseInt(id),values]]);
+    }else{
+      await grist.docApi.applyUserActions([["AddRecord","Jalons",null,values]]);
+    }
+    closeModal("modal-jalon");
+    init();
+  }catch(e){ alert("Erreur: "+e.message); console.error(e); }
+}
+
+async function deleteJalon(){
+  const id=parseInt(document.getElementById("field-jalon-id").value);
+  if(!id) return;
+  if(!confirm("Supprimer ce jalon ?")) return;
+  try{
+    await grist.docApi.applyUserActions([["RemoveRecord","Jalons",id]]);
+    closeModal("modal-jalon");
+    init();
+  }catch(e){ alert("Erreur: "+e.message); console.error(e); }
+}
+
+// ========== ACTIONS (SOUS-TÂCHES) ==========
+
+function getActionsTache(tacheId){
+  return DB.actions
+    .filter(a => refId(a.Tache) === tacheId)
+    .sort((a, b) => (a.Ordre || 0) - (b.Ordre || 0));
+}
+
+function displayActionsInModal(tacheId){
+  const container = document.getElementById("sous-actions-list");
+  container.innerHTML = "";
+
+  if(!tacheId){
+    container.innerHTML = '<div style="padding:12px;color:var(--texte-mention);font-size:12px;text-align:center;">Aucune sous-action</div>';
+    return;
+  }
+
+  const actions = getActionsTache(tacheId);
+
+  if(actions.length === 0){
+    container.innerHTML = '<div style="padding:12px;color:var(--texte-mention);font-size:12px;text-align:center;">Aucune sous-action</div>';
+  } else {
+    actions.forEach(action => {
+      const item = document.createElement("div");
+      item.className = "action-item";
+
+      const statutTexte = resolveRef(DB.parametres, action.Statut, "Statut");
+      const porteurTexte = resolveRef(DB.porteurs, action.Porteur, "Nom") || "Non attribué";
+
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.checked = norm(statutTexte) === norm("Terminé");
+      checkbox.onchange = async (e) => {
+        const newStatut = e.target.checked ? "Terminé" : "À faire";
+        const newStatutId = findParamId("Statut", newStatut);
+        await grist.docApi.applyUserActions([
+          ["UpdateRecord", "ACTIONS", action.id, {Statut: newStatutId}]
+        ]);
+        init();
+      };
+      item.appendChild(checkbox);
+
+      const nomSpan = document.createElement("span");
+      nomSpan.className = "action-nom";
+      nomSpan.textContent = action.Nom;
+      item.appendChild(nomSpan);
+
+      const porteurSpan = document.createElement("span");
+      porteurSpan.className = "action-porteur";
+      porteurSpan.textContent = porteurTexte;
+      item.appendChild(porteurSpan);
+
+      const actionsDiv = document.createElement("div");
+      actionsDiv.className = "action-actions";
+
+      const btnEdit = document.createElement("button");
+      btnEdit.type = "button";
+      btnEdit.className = "btn-edit-action";
+      btnEdit.textContent = "✏";
+      btnEdit.onclick = (e) => { e.stopPropagation(); openActionModal(tacheId, action.id); };
+      actionsDiv.appendChild(btnEdit);
+
+      const btnDelete = document.createElement("button");
+      btnDelete.type = "button";
+      btnDelete.className = "btn-delete-action";
+      btnDelete.textContent = "🗑";
+      btnDelete.onclick = async (e) => {
+        e.stopPropagation();
+        if(confirm("Supprimer cette sous-action?")){
+          await grist.docApi.applyUserActions([
+            ["RemoveRecord", "ACTIONS", action.id]
+          ]);
+          init();
+        }
+      };
+      actionsDiv.appendChild(btnDelete);
+
+      item.appendChild(actionsDiv);
+      container.appendChild(item);
+    });
+  }
+}
+
+function activateCreateInput(tacheId){
+  const area = document.getElementById("sous-action-create-area");
+  area.innerHTML = '';
+
+  const input = document.createElement("input");
+  input.type = "text";
+  input.className = "action-input-create";
+  input.placeholder = "Taper le nom de la sous-action...";
+  input.maxLength = 100;
+
+  input.onkeydown = async (e) => {
+    if(e.key === "Enter"){
+      e.preventDefault();
+      const nom = input.value.trim();
+      if(!nom) return;
+
+      try {
+        const existantes = getActionsTache(tacheId);
+        const ordre = existantes.length + 1;
+        const statutId = findParamId("Statut", "À faire");
+
+        await grist.docApi.applyUserActions([
+          ["AddRecord", "ACTIONS", null, {
+            Tache: tacheId,
+            Nom: nom,
+            Ordre: ordre,
+            Statut: statutId
+          }]
+        ]);
+
+        await init();
+        displayActionsInModal(tacheId);
+        activateCreateInput(tacheId);
+      } catch(e){
+        alert("Erreur: " + e.message);
+      }
+    } else if(e.key === "Escape"){
+      input.value = "";
+    }
+  };
+
+  area.appendChild(input);
+  input.focus();
+}
+
+function openActionModal(tacheId, actionId = null){
+  const overlay = document.getElementById("modal-action-overlay");
+
+  if(actionId){
+    const action = DB.actions.find(x => x.id === actionId);
+    document.getElementById("modal-action-title").textContent = "Modifier une sous-action";
+    document.getElementById("field-action-id").value = action.id;
+    document.getElementById("field-action-nom").value = action.Nom || "";
+    document.getElementById("field-action-statut").value =
+      resolveRef(DB.parametres, action.Statut, "Statut") || "À faire";
+    document.getElementById("field-action-porteur").value =
+      resolveRef(DB.porteurs, action.Porteur, "Nom") || "";
+    document.getElementById("field-action-commentaires").value = action.Commentaires || "";
+    document.getElementById("btn-delete-action").style.display = "inline-block";
+    document.getElementById("btn-save-action").textContent = "Enregistrer";
+  } else {
+    document.getElementById("modal-action-title").textContent = "Ajouter une sous-action";
+    document.getElementById("field-action-id").value = "";
+    document.getElementById("field-action-nom").value = "";
+    document.getElementById("field-action-statut").value = "À faire";
+    document.getElementById("field-action-porteur").value = "";
+    document.getElementById("field-action-commentaires").value = "";
+    document.getElementById("btn-delete-action").style.display = "none";
+    document.getElementById("btn-save-action").textContent = "Créer";
+  }
+
+  document.getElementById("field-action-tache").value = tacheId;
+  overlay.classList.add("active");
+}
+
+function closeActionModal(){
+  document.getElementById("modal-action-overlay").classList.remove("active");
+}
+
+async function saveAction(){
+  const id = document.getElementById("field-action-id").value;
+  const nom = document.getElementById("field-action-nom").value.trim();
+  const statut = document.getElementById("field-action-statut").value;
+  const porteur = document.getElementById("field-action-porteur").value;
+  const commentaires = document.getElementById("field-action-commentaires").value.trim();
+
+  if(!nom){ alert("Le nom est obligatoire"); return; }
+
+  try {
+    const statutId = findParamId("Statut", statut);
+    const porteurId = porteur ? findPorteurId(porteur) : null;
+
+    const values = {
+      Nom: nom,
+      Statut: statutId,
+      Porteur: porteurId,
+      Commentaires: commentaires
+    };
+
+    if(id){
+      await grist.docApi.applyUserActions([
+        ["UpdateRecord", "ACTIONS", parseInt(id), values]
+      ]);
+    } else {
+      const tacheId = parseInt(document.getElementById("field-action-tache").value);
+      values.Tache = tacheId;
+      values.Ordre = getActionsTache(tacheId).length + 1;
+      await grist.docApi.applyUserActions([
+        ["AddRecord", "ACTIONS", null, values]
+      ]);
+    }
+
+    closeActionModal();
+    init();
+  } catch(e){
+    alert("Erreur: " + e.message);
+  }
+}
+
+async function deleteAction(){
+  const id = parseInt(document.getElementById("field-action-id").value);
+  if(!id) return;
+  if(!confirm("Supprimer cette sous-action?")) return;
+
+  try {
+    await grist.docApi.applyUserActions([
+      ["RemoveRecord", "ACTIONS", id]
+    ]);
+    closeActionModal();
+    init();
+  } catch(e){
+    alert("Erreur: " + e.message);
+  }
+}
+
+function openTacheCreate(projetId){
   document.getElementById("field-tache-id").value="";
+  document.getElementById("field-tache-projet").value=projetId;
   document.getElementById("field-tache-nom").value="";
-  document.getElementById("field-tache-projet").value="";
   document.getElementById("field-tache-debut").value="";
   document.getElementById("field-tache-fin").value="";
   document.getElementById("field-tache-duree").value="";
-  document.getElementById("field-tache-porteur").value=porteurNom||"";
-  document.getElementById("field-tache-statut").value=statutNom||"À faire";
+  document.getElementById("field-tache-porteur").value="";
+  document.getElementById("field-tache-statut").value="";
   document.getElementById("field-tache-comments").value="";
   document.getElementById("modal-tache-title").textContent="Nouvelle Tâche";
   document.getElementById("btn-save-tache").textContent="Créer";
   document.getElementById("btn-delete-tache").style.display="none";
-  document.getElementById("info-preds").style.display="none";
-  document.getElementById("info-blocked").style.display="none";
-  populatePredecessorsSelect(null, []);
-  populateJalonsDeclencheursSelect(null, []);
-  // Sous-actions : indisponibles tant que la tâche n'est pas créée
-  document.getElementById("sous-actions-list").innerHTML =
-    '<div class="sous-action-empty">Enregistrez la tâche pour ajouter des sous-actions</div>';
-  resetCreateSousActionArea();
+  document.getElementById("info-dependances").style.display="none";
+  populatePredecessorsSelect(projetId, []);
+  populateJalonsDeclencheursSelect(projetId, []);
+  displayActionsInModal(null);
   openModal("modal-tache");
 }
 
 function openTacheEdit(t){
   const duree=t.Duree_jours||1;
-
-  // ✅ FIX: On lit Date_fin directement si présente (nouvelles tâches).
-  // Fallback: reconstruction pour les tâches créées avant ce correctif.
   let finValue = t.Date_fin;
   if(!finValue){
     const debutDate=parseDate(t.Date_debut);
@@ -1046,10 +1489,9 @@ function openTacheEdit(t){
     }
     finValue = finDate ? Math.floor(finDate.getTime()/1000) : null;
   }
-
   document.getElementById("field-tache-id").value=t.id;
+  document.getElementById("field-tache-projet").value=refId(t.Projet);
   document.getElementById("field-tache-nom").value=t.Tache||"";
-  document.getElementById("field-tache-projet").value=refId(t.Projet)||"";
   document.getElementById("field-tache-debut").value=toDateInput(t.Date_debut);
   document.getElementById("field-tache-fin").value=finValue?toDateInput(finValue):"";
   document.getElementById("field-tache-duree").value=duree;
@@ -1059,40 +1501,44 @@ function openTacheEdit(t){
   document.getElementById("modal-tache-title").textContent="Modifier la tâche";
   document.getElementById("btn-save-tache").textContent="Enregistrer";
   document.getElementById("btn-delete-tache").style.display="inline-block";
-
   const preds = getPredecessorTasks(t);
-  if(preds.length > 0){
-    const predNames = preds.map(p => p.Tache || p).join(", ");
-    document.getElementById("info-preds").innerHTML = `📌 Dépend de : <strong>${predNames}</strong>`;
-    document.getElementById("info-preds").style.display="block";
-  } else {
-    document.getElementById("info-preds").style.display="none";
-  }
-
   const blocked = getPredecessorsBlocked(t);
   const jalonsDecl = getTacheJalonsDeclencheurs(t);
   const jalonsNonAtteints = jalonsDecl.filter(j => !getJalonAtteint(j));
-  const messagesBlocage = [];
+  const statutTache = resolveRef(DB.parametres, t.Statut, "Statut");
+  const jalonsConditionnesNonAtteints = norm(statutTache) !== norm("Terminé")
+    ? getJalonsConditionnesParTache(t).filter(j => !getJalonAtteint(j))
+    : [];
+
+  const infoDiv = document.getElementById("info-dependances");
+  infoDiv.innerHTML = "";
+  let auMoinsUneLigne = false;
+  function ajouterLigneDep(puce, texte){
+    const ligne = document.createElement("div");
+    ligne.className = "dep-line";
+    const p = document.createElement("span"); p.className="puce"; p.textContent=puce;
+    ligne.appendChild(p);
+    ligne.appendChild(document.createTextNode(texte));
+    infoDiv.appendChild(ligne);
+    auMoinsUneLigne = true;
+  }
   if(blocked.length > 0){
-    messagesBlocage.push(`en attente de : ${blocked.map(p => p.Tache || p).join(", ")}`);
+    ajouterLigneDep("🔴", `Bloqué par : ${blocked.map(p => p.Tache || p).join(", ")}`);
   }
   if(jalonsNonAtteints.length > 0){
-    messagesBlocage.push(`livrable(s) non atteint(s) : ${jalonsNonAtteints.map(j => j.Nom).join(", ")}`);
+    ajouterLigneDep("🔶", `En attente de : ${jalonsNonAtteints.map(j => j.Nom).join(", ")}`);
   }
-  if(messagesBlocage.length > 0){
-    document.getElementById("info-blocked").innerHTML = `⚠️ <strong>BLOQUÉE :</strong> ${messagesBlocage.join(" · ")}`;
-    document.getElementById("info-blocked").style.display="block";
-  } else {
-    document.getElementById("info-blocked").style.display="none";
+  if(jalonsConditionnesNonAtteints.length > 0){
+    ajouterLigneDep("🔶", `Conditionne : ${jalonsConditionnesNonAtteints.map(j => j.Nom).join(", ")}`);
   }
+  if(preds.length > 0){
+    ajouterLigneDep("🟡", `Dépend de : ${preds.map(p => p.Tache || p).join(", ")}`);
+  }
+  infoDiv.style.display = auMoinsUneLigne ? "block" : "none";
 
   populatePredecessorsSelect(refId(t.Projet), preds);
   populateJalonsDeclencheursSelect(refId(t.Projet), jalonsDecl);
-
-  // Sous-actions
-  displaySousActionsInModal(t.id);
-  resetCreateSousActionArea();
-
+  displayActionsInModal(t.id);
   openModal("modal-tache");
 }
 
@@ -1100,20 +1546,16 @@ function populatePredecessorsSelect(projetId, selectedPreds){
   selectedPreds = selectedPreds || [];
   const container = document.getElementById("field-tache-predecesseurs");
   container.innerHTML = "";
-
   if(!projetId){
-    container.innerHTML = "<div style='padding:8px;color:#999;font-size:11px;'>Sélectionner un projet d'abord</div>";
+    container.innerHTML = "<div style='padding:8px;color:#999;font-size:11px;'>Aucun projet sélectionné</div>";
     return;
   }
-
   const currentTaskId = parseInt(document.getElementById("field-tache-id").value);
   const projetTasks = DB.taches.filter(t => refId(t.Projet) === projetId && t.id !== currentTaskId);
-
   if(projetTasks.length === 0){
     container.innerHTML = "<div style='padding:8px;color:#999;font-size:11px;'>Aucune autre tâche dans ce projet</div>";
     return;
   }
-
   projetTasks.forEach(task=>{
     const isSelected = selectedPreds.some(p => refId(p.id||p) === task.id);
     const label = document.createElement("label");
@@ -1133,7 +1575,7 @@ function populateJalonsDeclencheursSelect(projetId, selectedJalons){
   const container = document.getElementById("field-tache-jalons-declencheurs");
   container.innerHTML = "";
   if(!projetId){
-    container.innerHTML = "<div style='padding:8px;color:#999;font-size:11px;'>Sélectionner un projet d'abord</div>";
+    container.innerHTML = "<div style='padding:8px;color:#999;font-size:11px;'>Aucun projet sélectionné</div>";
     return;
   }
   const projetJalons = DB.jalons.filter(j => refId(j.Projet) === projetId && norm(getJalonTypeTexte(j))===norm("Livrable"));
@@ -1157,33 +1599,24 @@ function populateJalonsDeclencheursSelect(projetId, selectedJalons){
 
 async function saveTache(){
   const id=document.getElementById("field-tache-id").value;
-  const nom=document.getElementById("field-tache-nom").value.trim();
   const projet_id=parseInt(document.getElementById("field-tache-projet").value);
+  const nom=document.getElementById("field-tache-nom").value.trim();
   const debut=document.getElementById("field-tache-debut").value;
   const fin=document.getElementById("field-tache-fin").value;
   const porteur=document.getElementById("field-tache-porteur").value;
   const statut=document.getElementById("field-tache-statut").value;
   const comments=document.getElementById("field-tache-comments").value.trim();
-  if(!nom || !projet_id || !debut || !fin){ alert("Champs obligatoires : Tâche, Projet, dates"); return; }
-
+  if(!nom || !debut || !fin){ alert("Champs obligatoires"); return; }
   const duree=joursOuvres(new Date(debut), new Date(fin));
-
   try{
     const proj=DB.projets.find(c=>c.id===projet_id);
     if(!proj){ alert("Projet non trouvé"); return; }
-
     const statutId=findParamId("Statut", statut);
-    // ✅ Par défaut "Non attribué" si aucun porteur n'est choisi
     const porteurId=findPorteurId(porteur) || NON_ATTRIBUE_ID;
-
-    // ✅ CORRECTION: Chercher le Équipe ID correctement
     const equipeId = refId(proj.Equipe);
     if(!equipeId){ alert("Équipe invalide"); return; }
-
-    // Prédécesseurs sélectionnés + vérification anti-cycle
     const checkboxes = document.querySelectorAll("#field-tache-predecesseurs input[type='checkbox']:checked");
     const predecessorIds = Array.from(checkboxes).map(cb => parseInt(cb.value));
-
     if(id){
       const currentTaskId = parseInt(id);
       for(const predId of predecessorIds){
@@ -1193,11 +1626,8 @@ async function saveTache(){
         }
       }
     }
-
-    // ✅ FIX: Grist attend un tableau encodé ['L', id1, id2, ...] pour une Référence multiple
     const predecessorTasks = ['L', ...predecessorIds];
 
-    // Livrables déclencheurs sélectionnés + vérification anti-cycle
     const checkboxesJalons = document.querySelectorAll("#field-tache-jalons-declencheurs input[type='checkbox']:checked");
     const jalonDeclencheurIds = Array.from(checkboxesJalons).map(cb => parseInt(cb.value));
     if(id){
@@ -1212,26 +1642,17 @@ async function saveTache(){
     const jalonDeclencheur = ['L', ...jalonDeclencheurIds];
 
     const values={
-      Equipe: equipeId,
-      Projet: projet_id,
-      Tache: nom,
-      Date_debut: Math.floor(new Date(debut).getTime()/1000),
+      Equipe:equipeId, Projet:projet_id, Tache:nom,
+      Date_debut:Math.floor(new Date(debut).getTime()/1000),
       Date_fin: Math.floor(new Date(fin).getTime()/1000),
-      Duree_jours: duree,
-      Statut: statutId,
-      Porteur: porteurId,
-      Commentaires: comments,
-      Predecesseurs: predecessorTasks,
+      Duree_jours:duree, Statut:statutId, Porteur:porteurId,
+      Commentaires:comments, Predecesseurs: predecessorTasks,
       Jalon_declencheur: jalonDeclencheur
     };
-
-    let tacheId;
     if(id){
-      tacheId = parseInt(id);
-      await grist.docApi.applyUserActions([["UpdateRecord","Taches",tacheId,values]]);
+      await grist.docApi.applyUserActions([["UpdateRecord","Taches",parseInt(id),values]]);
     }else{
-      const result = await grist.docApi.applyUserActions([["AddRecord","Taches",null,values]]);
-      tacheId = result.retValues[0];
+      await grist.docApi.applyUserActions([["AddRecord","Taches",null,values]]);
     }
     closeModal("modal-tache");
     await init();
@@ -1245,11 +1666,7 @@ async function deleteTache(){
   if(!id) return;
   if(!confirm("Supprimer cette tâche ?")) return;
   try{
-    // Supprime aussi les sous-actions liées
-    const sousActionsLiees = getSousActionsTache(id);
-    const actions = sousActionsLiees.map(sa => ["RemoveRecord","ACTIONS",sa.id]);
-    actions.push(["RemoveRecord","Taches",id]);
-    await grist.docApi.applyUserActions(actions);
+    await grist.docApi.applyUserActions([["RemoveRecord","Taches",id]]);
     closeModal("modal-tache");
     await init();
     await calculatePERT();
@@ -1257,421 +1674,355 @@ async function deleteTache(){
   }catch(e){ alert("Erreur: "+e.message); console.error(e); }
 }
 
-async function deplacerTache(taskId, statutNom, porteurId){
-  try{
-    const statutId=findParamId("Statut", statutNom);
-    await grist.docApi.applyUserActions([
-      ["UpdateRecord","Taches",taskId,{Statut:statutId, Porteur:porteurId}]
-    ]);
-    init();
-  }catch(e){ alert("Erreur: "+e.message); console.error(e); }
+// Mesure précise de la largeur d'un texte avec la police réelle du widget
+let _canvasCtx = null;
+function mesurerLargeurTexte(texte){
+  if(!_canvasCtx){
+    const canvas = document.createElement("canvas");
+    _canvasCtx = canvas.getContext("2d");
+    _canvasCtx.font = '700 10px "Marianne", -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif';
+  }
+  return _canvasCtx.measureText(texte).width;
 }
 
-/* ---------- Sous-actions : affichage + CRUD ---------- */
+// Calcule le niveau vertical de chaque jalon pour éviter les chevauchements de texte
+const JALON_TOP_BASE = 10;
+const JALON_NIVEAU_ESPACEMENT = 18;
+const JALON_TEXTE_OFFSET = 22;  // doit correspondre au "left" CSS de .jalon-name
+const JALON_MARGE = 10;
 
-function displaySousActionsInModal(tacheId){
-  const sousActions = getSousActionsTache(tacheId);
-  const container = document.getElementById("sous-actions-list");
-  container.innerHTML = "";
-
-  if(sousActions.length === 0){
-    container.innerHTML = '<div class="sous-action-empty">Aucune sous-action</div>';
-    return;
-  }
-
-  sousActions.forEach(sa=>{
-    const statutTexte = resolveRef(DB.parametres, sa.Statut, "Statut");
-    const porteurTexte = resolveRef(DB.porteurs, sa.Porteur, "Nom") || "Non attribué";
-
-    const item = document.createElement("div");
-    item.className = "sous-action-item";
-
-    // Checkbox : coché = Terminé
-    const checkbox = document.createElement("input");
-    checkbox.type = "checkbox";
-    checkbox.checked = norm(statutTexte) === norm("Terminé");
-    checkbox.onchange = async (e) => {
-      const newStatut = e.target.checked ? "Terminé" : "À faire";
-      const newStatutId = findParamId("Statut", newStatut);
-      try{
-        await grist.docApi.applyUserActions([
-          ["UpdateRecord","ACTIONS", sa.id, {Statut:newStatutId}]
-        ]);
-        await init();
-        displaySousActionsInModal(tacheId);
-      }catch(err){ alert("Erreur: "+err.message); }
-    };
-    item.appendChild(checkbox);
-
-    // Nom (occupe l'espace disponible)
-    const nomSpan = document.createElement("span");
-    nomSpan.className = "sous-action-nom";
-    nomSpan.textContent = sa.Nom;
-    nomSpan.title = sa.Nom;
-    item.appendChild(nomSpan);
-
-    // Porteur ("Non attribué" si vide)
-    const porteurSpan = document.createElement("span");
-    porteurSpan.className = "sous-action-porteur";
-    porteurSpan.textContent = porteurTexte;
-    porteurSpan.title = porteurTexte;
-    item.appendChild(porteurSpan);
-
-    // Boutons édition / suppression
-    const actionsDiv = document.createElement("div");
-    actionsDiv.className = "sous-action-actions";
-
-    const btnEdit = document.createElement("button");
-    btnEdit.type = "button";
-    btnEdit.className = "btn-edit-sous-action";
-    btnEdit.textContent = "✏";
-    btnEdit.title = "Modifier";
-    btnEdit.onclick = () => openSousActionModal(tacheId, sa.id);
-    actionsDiv.appendChild(btnEdit);
-
-    const btnDelete = document.createElement("button");
-    btnDelete.type = "button";
-    btnDelete.className = "btn-delete-sous-action";
-    btnDelete.textContent = "🗑";
-    btnDelete.title = "Supprimer";
-    btnDelete.onclick = async () => {
-      if(confirm("Supprimer cette sous-action ?")){
-        try{
-          await grist.docApi.applyUserActions([["RemoveRecord","ACTIONS", sa.id]]);
-          await init();
-          displaySousActionsInModal(tacheId);
-        }catch(err){ alert("Erreur: "+err.message); }
-      }
-    };
-    actionsDiv.appendChild(btnDelete);
-
-    item.appendChild(actionsDiv);
-    container.appendChild(item);
+function calculerNiveauxJalons(jalonsProj, minI){
+  const finOccupeeParNiveau = [];
+  jalonsProj.forEach(item=>{
+    const xDiamant = (item.dIdx - minI + 1) * 16;
+    const xDebutTexte = xDiamant - 6;  // le diamant déborde à gauche
+    const xFinTexte = xDiamant + JALON_TEXTE_OFFSET + mesurerLargeurTexte(item.jalon.Nom);
+    let niveau = 0;
+    while(finOccupeeParNiveau[niveau] !== undefined && xDebutTexte < finOccupeeParNiveau[niveau] + JALON_MARGE){
+      niveau++;
+    }
+    finOccupeeParNiveau[niveau] = xFinTexte;
+    item.niveau = niveau;
   });
+  const nbNiveaux = finOccupeeParNiveau.length || 1;
+  return nbNiveaux;
 }
-
-// Remet la zone de création dans son état initial (bouton "+ Ajouter")
-function resetCreateSousActionArea(){
-  const area = document.getElementById("sous-action-create-area");
-  area.innerHTML = "";
-  const btn = document.createElement("button");
-  btn.type = "button";
-  btn.className = "btn-add-sous-action";
-  btn.id = "btn-add-sous-action";
-  btn.textContent = "+ Ajouter une sous-action";
-  btn.onclick = () => {
-    const tacheId = parseInt(document.getElementById("field-tache-id").value);
-    if(!tacheId){
-      alert("Enregistrez la tâche d'abord");
-      return;
-    }
-    activateCreateInput(tacheId);
-  };
-  area.appendChild(btn);
-}
-
-// Bascule la zone en input texte inline (Entrée = créer, Échap = annuler)
-function activateCreateInput(tacheId){
-  const area = document.getElementById("sous-action-create-area");
-  area.innerHTML = "";
-
-  const input = document.createElement("input");
-  input.type = "text";
-  input.className = "sous-action-input-create";
-  input.placeholder = "Taper le nom de la sous-action…";
-  input.maxLength = 100;
-
-  input.onkeydown = async (e) => {
-    if(e.key === "Enter"){
-      e.preventDefault();
-      const nom = input.value.trim();
-      if(!nom) return;
-
-      try{
-        const existantes = getSousActionsTache(tacheId);
-        const ordre = existantes.length + 1;
-        const statutId = findParamId("Statut", "À faire");
-
-        await grist.docApi.applyUserActions([
-          ["AddRecord","ACTIONS", null, {
-            Tache: tacheId,
-            Nom: nom,
-            Ordre: ordre,
-            Statut: statutId
-          }]
-        ]);
-
-        await init();
-        displaySousActionsInModal(tacheId);
-        // Réactive un input vierge, focus conservé pour enchaîner les ajouts
-        activateCreateInput(tacheId);
-      }catch(err){
-        alert("Erreur: "+err.message);
-      }
-    } else if(e.key === "Escape"){
-      e.preventDefault();
-      resetCreateSousActionArea();
-    }
-    // Tab : comportement natif du navigateur (sort du champ normalement)
-  };
-
-  area.appendChild(input);
-  input.focus();
-}
-
-/* ---------- Modale d'édition d'une sous-action ---------- */
-
-function openSousActionModal(tacheId, sousActionId){
-  const sa = DB.actions.find(x => x.id === sousActionId);
-  if(!sa) return;
-
-  document.getElementById("modal-sous-action-title").textContent = "Modifier une sous-action";
-  document.getElementById("field-sous-action-id").value = sa.id;
-  document.getElementById("field-sous-action-tache").value = tacheId;
-  document.getElementById("field-sous-action-nom").value = sa.Nom || "";
-  document.getElementById("field-sous-action-statut").value =
-    resolveRef(DB.parametres, sa.Statut, "Statut") || "À faire";
-  document.getElementById("field-sous-action-porteur").value =
-    resolveRef(DB.porteurs, sa.Porteur, "Nom") || "";
-  document.getElementById("field-sous-action-commentaires").value = sa.Commentaires || "";
-  document.getElementById("btn-delete-sous-action").style.display = "inline-block";
-  document.getElementById("btn-save-sous-action").textContent = "Enregistrer";
-
-  openModal("modal-sous-action");
-}
-
-async function saveSousAction(){
-  const id = document.getElementById("field-sous-action-id").value;
-  const tacheId = parseInt(document.getElementById("field-sous-action-tache").value);
-  const nom = document.getElementById("field-sous-action-nom").value.trim();
-  const statut = document.getElementById("field-sous-action-statut").value;
-  const porteur = document.getElementById("field-sous-action-porteur").value;
-  const commentaires = document.getElementById("field-sous-action-commentaires").value.trim();
-
-  if(!nom){ alert("Le nom de la sous-action est obligatoire"); return; }
-
-  try{
-    const statutId = findParamId("Statut", statut);
-    const porteurId = porteur ? findPorteurId(porteur) : null;
-
-    const values = {
-      Nom: nom,
-      Statut: statutId,
-      Porteur: porteurId,
-      Commentaires: commentaires
-    };
-
-    if(id){
-      await grist.docApi.applyUserActions([["UpdateRecord","ACTIONS", parseInt(id), values]]);
-    }else{
-      values.Tache = tacheId;
-      values.Ordre = getSousActionsTache(tacheId).length + 1;
-      await grist.docApi.applyUserActions([["AddRecord","ACTIONS", null, values]]);
-    }
-
-    closeModal("modal-sous-action");
-    await init();
-    displaySousActionsInModal(tacheId);
-  }catch(e){
-    alert("Erreur: "+e.message);
-  }
-}
-
-async function deleteSousAction(){
-  const id = parseInt(document.getElementById("field-sous-action-id").value);
-  const tacheId = parseInt(document.getElementById("field-sous-action-tache").value);
-  if(!id) return;
-  if(!confirm("Supprimer cette sous-action ?")) return;
-
-  try{
-    await grist.docApi.applyUserActions([["RemoveRecord","ACTIONS", id]]);
-    closeModal("modal-sous-action");
-    await init();
-    displaySousActionsInModal(tacheId);
-  }catch(e){
-    alert("Erreur: "+e.message);
-  }
-}
-
-/* ---------- Construction du Kanban matriciel ---------- */
 
 function construire(){
-  filtreProjet = document.getElementById("filtre-projet").value;
-
-  // ✅ FIX: "Non attribué" est maintenant un vrai porteur dans DB.porteurs
-  // On le place en dernier dans la liste pour l'affichage
-  const lignes = [...DB.porteurs].sort((a,b)=>{
-    const aNA = norm(a.Nom)===norm("Non attribué");
-    const bNA = norm(b.Nom)===norm("Non attribué");
-    if(aNA && !bNA) return 1;
-    if(!aNA && bNA) return -1;
-    return 0;
+  const allDates = [];
+  DB.taches.forEach(t => {
+    const dIdx = dayIndex(t.Date_debut);
+    if(dIdx !== null) {
+      allDates.push(dIdx);
+      const finIdx = dayIndex(t.Date_fin);
+      allDates.push(finIdx !== null ? finIdx : dIdx + (t.Duree_jours || 1) - 1);
+    }
   });
-
-  const matrix = document.getElementById("matrix");
-  matrix.innerHTML = "";
-  matrix.style.setProperty("--n-cols", STATUTS.length);
-
-  // Coin haut-gauche
-  matrix.appendChild(el("div", "corner", "Porteur"));
-
-  // En-têtes de colonnes (statuts)
-  STATUTS.forEach(s=>{
-    const header = el("div", "col-header");
-    header.style.borderTop = `3px solid ${cssVarValue(s.couleur)}`;
-    const nomEl = el("span", "nom", s.nom);
-    header.appendChild(nomEl);
-    matrix.appendChild(header);
+  DB.jalons.forEach(j => {
+    const dIdx = dayIndex(j.Date);
+    if(dIdx !== null) allDates.push(dIdx);
   });
+  let minI, maxI;
+  if(allDates.length > 0){
+    minI = Math.min(...allDates);
+    maxI = Math.max(...allDates);
+  } else {
+    const today = Math.floor(Date.now()/86400000);
+    minI = today - 14;
+    maxI = today + 21;
+  }
+  const jourSemaineMinI = new Date(minI*86400000).getUTCDay();
+  const decalageLundi = (jourSemaineMinI + 6) % 7;
+  const minILundi = minI - decalageLundi;
+  minI = minILundi;
+  const totalJours=maxI-minI+1;
+  const tlW=totalJours*16;
+  const todayI=Math.floor(Date.now()/86400000);
+  const todayOffset=todayI-minI;
+  allData={minI, maxI, todayI, todayOffset, totalJours, tlW};
+  const labelsDiv=document.getElementById("labels");
+  const grid=document.createElement("div");
+  grid.className="grid";
+  grid.style.setProperty("--tl-w", tlW+"px");
+  grid.style.setProperty("--today", todayOffset);
+  labelsDiv.innerHTML="";
+  const NOMS_JOURS=['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi'];
+  const head=el("div","head-track");
+  const headInner=el("div","head-inner");
+  for(let i=minILundi;i<=maxI;i+=7){
+    const wn=getWeekNumber(new Date(i*86400000));
+    const label=el("div","week-label");
+    label.style.left=((i-minI)*16)+"px";
+    const start=fmtJJMM(i), end=fmtJJMM(i+4);
+    const jourDebut=NOMS_JOURS[new Date(i*86400000).getUTCDay()];
+    const jourFin=NOMS_JOURS[new Date((i+4)*86400000).getUTCDay()];
+    label.innerHTML=`<div class="week-num">S${wn}</div><div class="week-date">${start}<br>${end}</div>`;
+    label.setAttribute("data-tooltip",`du ${jourDebut.charAt(0).toUpperCase()+jourDebut.slice(1)} ${start} au ${jourFin.charAt(0).toUpperCase()+jourFin.slice(1)} ${end}\\n(5 j. ouvrés)`);
+    headInner.appendChild(label);
+  }
+  head.appendChild(headInner);
+  grid.appendChild(head);
+  DB.projets.forEach(proj=>{
+    // 1. Calcul des jalons et de leurs niveaux AVANT de créer le bandeau
+    const jalonsProj = DB.jalons
+      .filter(j=>refId(j.Projet)===proj.id)
+      .map(j=>({ jalon:j, dIdx:dayIndex(j.Date) }))
+      .filter(x=>x.dIdx!==null && x.dIdx>=minI && x.dIdx<=maxI)
+      .sort((a,b)=>a.dIdx-b.dIdx);
+    const nbNiveaux = calculerNiveauxJalons(jalonsProj, minI);
 
-  let tachesVisibles = 0;
+    // 2. Hauteur dynamique du bandeau projet
+    const PROJ_H = Math.max(46, JALON_TOP_BASE + (nbNiveaux - 1) * JALON_NIVEAU_ESPACEMENT + 26);
 
-  lignes.forEach(porteur=>{
-    const isNonAssigne = norm(porteur.Nom) === norm("Non attribué");
-
-    // Tâches de cette ligne, filtrées par projet si besoin
-    // ✅ FIX: Comparaison directe par ID réel (plus de cas null à gérer)
-    const tachesLigne = DB.taches.filter(t=>{
-      const rid = refId(t.Porteur);
-      const matchPorteur = (rid === porteur.id) || (isNonAssigne && (rid===null || rid===undefined || rid===""));
-      const matchProjet = !filtreProjet || refId(t.Projet)===parseInt(filtreProjet);
-      return matchPorteur && matchProjet;
+    const projGroup=el("div","proj-group");
+    if(COLLAPSED_PROJETS.has(proj.id)) projGroup.classList.add("collapsed");
+    const labProj=el("div","label projet");
+    labProj.style.height = PROJ_H + "px";
+    const btnCollapse=el("button","btn-collapse");
+    btnCollapse.textContent="▼";
+    btnCollapse.onclick=(e)=>{ e.stopPropagation(); toggleProjetCollapse(proj.id); };
+    labProj.appendChild(btnCollapse);
+    const nomSpan=el("span","nom-projet",proj.Projet);
+    nomSpan.onclick=(e)=>{ e.stopPropagation(); openProjetEdit(proj); };
+    labProj.appendChild(nomSpan);
+    const actions=el("div","label-actions");
+    const btnJalon=el("button","btn-tiny add"); btnJalon.textContent="🚩";
+    btnJalon.onclick=()=>{ openJalonCreate(proj.id); };
+    const btnTache=el("button","btn-tiny add"); btnTache.textContent="+";
+    btnTache.onclick=()=>{ openTacheCreate(proj.id); };
+    actions.appendChild(btnJalon); actions.appendChild(btnTache);
+    labProj.appendChild(actions);
+    labelsDiv.appendChild(labProj);
+    const trackProj=el("div","track projet");
+    trackProj.style.height = PROJ_H + "px";
+    projGroup.appendChild(trackProj);
+    const tachesProj = DB.taches.filter(t=>refId(t.Projet)===proj.id).sort((a, b) => {
+      const dateA = dayIndex(a.Date_debut) || Infinity;
+      const dateB = dayIndex(b.Date_debut) || Infinity;
+      return dateA - dateB;
     });
-
-    // Label de ligne
-    const label = el("div", "row-label"+(isNonAssigne?" non-assigne":""));
-    label.appendChild(el("span", "nom", porteur.Nom));
-    label.appendChild(el("span", "count", `${tachesLigne.length} tâche${tachesLigne.length>1?"s":""}`));
-    matrix.appendChild(label);
-
-    // Une cellule par statut
-    STATUTS.forEach(s=>{
-      const cell = el("div", "cell");
-      cell.dataset.statut = s.nom;
-      cell.dataset.porteurId = porteur.id;
-
-      const tachesCell = tachesLigne.filter(t=>{
-        const statutTexte = resolveRef(DB.parametres, t.Statut, "Statut");
-        return norm(statutInfo(statutTexte).nom) === norm(s.nom);
-      });
-
-      tachesCell.forEach(t=>{
-        tachesVisibles++;
-        const proj = DB.projets.find(c=>c.id===refId(t.Projet));
-        const card = el("div", "card "+s.cls);
-        card.draggable = true;
-
-        const titre = el("div", "titre", t.Tache);
-        card.appendChild(titre);
-
-        if(proj) card.appendChild(el("span", "badge-proj", proj.Projet));
-
-        // ✅ Dépendances : bloqué par (rouge) puis dépend de (jaune)
-        const preds = getPredecessorTasks(t);
-        const blocked = getPredecessorsBlocked(t);
-        const jalonsDecl = getTacheJalonsDeclencheurs(t);
-        const jalonsNonAtteints = jalonsDecl.filter(j => !getJalonAtteint(j));
-        const statutTache = resolveRef(DB.parametres, t.Statut, "Statut");
-        const jalonsConditionnesNonAtteints = norm(statutTache) !== norm("Terminé")
-          ? getJalonsConditionnesParTache(t).filter(j => !getJalonAtteint(j))
-          : [];
-
-        if(blocked.length > 0){
-          const noms = blocked.map(p => p.Tache || p).join(", ");
-          const ligne = el("div", "dep-line");
-          ligne.appendChild(el("span","puce","🔴"));
-          ligne.appendChild(document.createTextNode(`Bloqué par : ${noms}`));
-          card.appendChild(ligne);
+    const taskPositions = {};
+    tachesProj.forEach((t, idx)=>{
+      const statutTexte=resolveRef(DB.parametres, t.Statut, "Statut");
+      const porteurTexte=resolveRef(DB.porteurs, t.Porteur, "Nom");
+      const labTask=el("div","label tache");
+      labTask.setAttribute("data-projet", proj.id);
+      if(COLLAPSED_PROJETS.has(proj.id)) labTask.classList.add("hidden");
+      labTask.appendChild(el("span","nom",t.Tache));
+      if(porteurTexte) labTask.appendChild(el("span","porteur",porteurTexte));
+      labelsDiv.appendChild(labTask);
+      const track=el("div","track tache");
+      const dIdx=dayIndex(t.Date_debut);
+      if(dIdx!==null){
+        if(dIdx<=maxI){
+          const info=statutInfo(statutTexte);
+          const barre=el("div","barre "+info.cls);
+          if(t.Est_critique === true) barre.classList.add("critique");
+          barre.style.left=((dIdx-minI)*16)+"px";
+          const finIdx = dayIndex(t.Date_fin);
+          const duree = t.Duree_jours || 1;
+          const finIdxReel = finIdx !== null ? finIdx : (dIdx + duree - 1);
+          const etalementJours = finIdxReel - dIdx + 1;
+          barre.style.width=(Math.max(16,etalementJours*16))+"px";
+          barre.style.background=cssVarValue(info.couleur);
+          barre.textContent=t.Tache;
+          if(t.Commentaires) barre.title=t.Commentaires;
+          barre.onclick=(e)=>{ e.stopPropagation(); openTacheEdit(t); };
+          track.appendChild(barre);
+          const debutLabel = el("div","date-label", fmtJJMM(dIdx));
+          debutLabel.style.left = ((dIdx-minI)*16 + 8) + "px";
+          track.appendChild(debutLabel);
+          if(finIdxReel !== dIdx && duree > 2){
+            const finLabel = el("div","date-label", fmtJJMM(finIdxReel));
+            finLabel.style.left = ((finIdxReel-minI)*16 + 8) + "px";
+            track.appendChild(finLabel);
+          }
+          taskPositions[t.id] = {dIdx: dIdx, finIdxReel: finIdxReel, rowIndex: idx};
         }
-        if(jalonsNonAtteints.length > 0){
-          const noms = jalonsNonAtteints.map(j => j.Nom).join(", ");
-          const ligne = el("div", "dep-line");
-          ligne.appendChild(el("span","puce","🔶"));
-          ligne.appendChild(document.createTextNode(`En attente de : ${noms}`));
-          card.appendChild(ligne);
-        }
-        if(jalonsConditionnesNonAtteints.length > 0){
-          const noms = jalonsConditionnesNonAtteints.map(j => j.Nom).join(", ");
-          const ligne = el("div", "dep-line");
-          ligne.appendChild(el("span","puce","🔶"));
-          ligne.appendChild(document.createTextNode(`Conditionne : ${noms}`));
-          card.appendChild(ligne);
-        }
-        if(preds.length > 0){
-          const noms = preds.map(p => p.Tache || p).join(", ");
-          const ligne = el("div", "dep-line");
-          ligne.appendChild(el("span","puce","🟡"));
-          ligne.appendChild(document.createTextNode(`Dépend de : ${noms}`));
-          card.appendChild(ligne);
-        }
-
-        // ✅ Commentaire (avant la date), tronqué à 2 lignes
-        if(t.Commentaires){
-          card.appendChild(el("div", "commentaire", t.Commentaires));
-        }
-
-        const dIdx = dayIndex(t.Date_debut);
-        if(dIdx!==null){
-          const duree = t.Duree_jours||1;
-          const dates = el("div", "dates", `${fmtJJMM(t.Date_debut)} · ${duree} j`);
-          card.appendChild(dates);
-        }
-
-        card.onclick = () => openTacheEdit(t);
-
-        card.addEventListener("dragstart", (e)=>{
-          draggedTaskId = t.id;
-          card.classList.add("dragging");
-          e.dataTransfer.effectAllowed = "move";
-        });
-        card.addEventListener("dragend", ()=>{
-          card.classList.remove("dragging");
-          draggedTaskId = null;
-        });
-
-        cell.appendChild(card);
-      });
-
-      const btnAdd = el("button", "btn-add-cell", "+ Ajouter");
-      btnAdd.onclick = () => openTacheCreate(s.nom, isNonAssigne ? "" : porteur.Nom);
-      cell.appendChild(btnAdd);
-
-      cell.addEventListener("dragover", (e)=>{
-        e.preventDefault();
-        e.dataTransfer.dropEffect = "move";
-        cell.classList.add("drag-over");
-      });
-      cell.addEventListener("dragleave", ()=>{
-        cell.classList.remove("drag-over");
-      });
-      cell.addEventListener("drop", (e)=>{
-        e.preventDefault();
-        cell.classList.remove("drag-over");
-        if(draggedTaskId===null) return;
-        const porteurId = parseInt(cell.dataset.porteurId);
-        deplacerTache(draggedTaskId, cell.dataset.statut, porteurId);
-      });
-
-      matrix.appendChild(cell);
+      }else{
+        const pill=el("div","pill-plan","à planifier");
+        pill.style.cursor="pointer";
+        pill.onclick=(e)=>{ e.stopPropagation(); openTacheEdit(t); };
+        track.appendChild(pill);
+      }
+      projGroup.appendChild(track);
     });
-  });
+    const ROW_H = 44;
+    const BARRE_TOP = 20, BARRE_H = 22;
+    function ancrageBarre(pos, cote){
+      const gauche = (pos.dIdx - minI) * 16;
+      const droite = (pos.finIdxReel - minI + 1) * 16;
+      const centreX = (gauche + droite) / 2;
+      const yHautBarre = PROJ_H + pos.rowIndex * ROW_H + BARRE_TOP;
+      const yBasBarre = yHautBarre + BARRE_H;
+      const yCentreBarre = yHautBarre + BARRE_H / 2;
+      switch(cote){
+        case "est":   return { x: droite,  y: yCentreBarre };
+        case "ouest": return { x: gauche,  y: yCentreBarre };
+        case "nord":  return { x: centreX, y: yHautBarre };
+        case "sud":   return { x: centreX, y: yBasBarre };
+      }
+    }
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("class", "dependencies-svg");
+    svg.setAttribute("width", tlW);
+    svg.setAttribute("height", PROJ_H + tachesProj.length * ROW_H);
+    tachesProj.forEach(t=>{
+      const taskPos = taskPositions[t.id];
+      if(!taskPos) return;
+      getPredecessorTasks(t).forEach(pred=>{
+        const predId = refId(pred.id||pred);
+        const predPos = taskPositions[predId];
+        if(!predPos) return;
+        const ecart = taskPos.dIdx - predPos.finIdxReel;
+        let p1, p2, arriveeCote, path;
+        if(ecart > 2){
+          p1 = ancrageBarre(predPos, "est");
+          p2 = ancrageBarre(taskPos, "ouest");
+          arriveeCote = "ouest";
+          const midX = (p1.x + p2.x) / 2;
+          path = `M ${p1.x} ${p1.y} L ${midX} ${p1.y} L ${midX} ${p2.y} L ${p2.x} ${p2.y}`;
+        } else if(ecart >= -1){
+          p1 = ancrageBarre(predPos, "sud");
+          p2 = ancrageBarre(taskPos, "ouest");
+          arriveeCote = "ouest";
+          path = `M ${p1.x} ${p1.y} L ${p1.x} ${p2.y} L ${p2.x} ${p2.y}`;
+        } else {
+          p1 = ancrageBarre(predPos, "sud");
+          p2 = ancrageBarre(taskPos, "nord");
+          arriveeCote = "nord";
+          const midY = (p1.y + p2.y) / 2;
+          path = `M ${p1.x} ${p1.y} L ${p1.x} ${midY} L ${p2.x} ${midY} L ${p2.x} ${p2.y}`;
+        }
+        const statutCible = resolveRef(DB.parametres, t.Statut, "Statut");
+        const strokeColor = cssVarValue(statutInfo(statutCible).couleur);
+        const pathEl = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        pathEl.setAttribute("d", path);
+        pathEl.setAttribute("stroke", strokeColor);
+        pathEl.setAttribute("stroke-width", "1.5");
+        pathEl.setAttribute("fill", "none");
+        svg.appendChild(pathEl);
+        const angleParCote = { ouest: 0, nord: Math.PI/2, sud: -Math.PI/2 };
+        const angle = angleParCote[arriveeCote];
+        const arrowSize = 3.5;
+        const tipX = p2.x, tipY = p2.y;
+        const baseX = tipX - arrowSize * 2 * Math.cos(angle);
+        const baseY = tipY - arrowSize * 2 * Math.sin(angle);
+        const polygon = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+        polygon.setAttribute("points", `${tipX},${tipY} ${baseX - arrowSize*Math.sin(angle)},${baseY + arrowSize*Math.cos(angle)} ${baseX + arrowSize*Math.sin(angle)},${baseY - arrowSize*Math.cos(angle)}`);
+        polygon.setAttribute("fill", strokeColor);
+        svg.appendChild(polygon);
+      });
+    });
+    projGroup.appendChild(svg);
 
-  document.getElementById("meta").textContent = `${tachesVisibles} tâche(s) affichée(s) · ${DB.porteurs.length} porteur(s)`;
+    jalonsProj.forEach(({jalon, dIdx, niveau})=>{
+        const xDiamant=(dIdx-minI+1)*16;
+        const leftPx=xDiamant+"px";
+        const topNum=JALON_TOP_BASE + niveau * JALON_NIVEAU_ESPACEMENT;
+        const topPx=topNum+"px";
+        const typeTexte = getJalonTypeTexte(jalon);
+        const couleur=cssVarValue(jalonCouleur(typeTexte));
+        const jalonLine=el("div","jalon-line");
+        jalonLine.style.left=leftPx;
+        jalonLine.style.top=PROJ_H+"px";
+        jalonLine.style.background=couleur;
+        projGroup.appendChild(jalonLine);
+        const nameEl=el("div","jalon-name",jalon.Nom);
+        nameEl.style.left=(xDiamant + JALON_TEXTE_OFFSET)+"px";
+        nameEl.style.top=topPx;
+        nameEl.style.color=couleur;
+        nameEl.onclick=(e)=>{ e.stopPropagation(); openJalonEdit(jalon); };
+        projGroup.appendChild(nameEl);
+        const markerWrap=el("div","jalon-marker-wrap");
+        markerWrap.style.left=leftPx;
+        markerWrap.style.top=topPx;
+        markerWrap.setAttribute("data-tooltip", `${jalon.Nom}${typeTexte?` (${typeTexte})`:""}\\n${fmtJourComplet(jalon.Date)}`);
+        markerWrap.onclick=(e)=>{ e.stopPropagation(); openJalonEdit(jalon); };
+        const diamond=el("div","jalon-marker-diamond");
+        diamond.style.background=couleur;
+        markerWrap.appendChild(diamond);
+        projGroup.appendChild(markerWrap);
+
+        // Flèches de dépendance Livrable : tâches requises → jalon, et jalon → tâches déclenchées
+        if(norm(typeTexte)===norm("Livrable")){
+          const pointJalon = {x: xDiamant, y: topNum};
+          getJalonTachesRequises(jalon).forEach(reqTask=>{
+            const pos = taskPositions[reqTask.id];
+            if(!pos) return;
+            const p1 = ancrageBarre(pos, "est");
+            const path = `M ${p1.x} ${p1.y} L ${pointJalon.x} ${p1.y} L ${pointJalon.x} ${pointJalon.y}`;
+            const pathEl = document.createElementNS("http://www.w3.org/2000/svg", "path");
+            pathEl.setAttribute("d", path);
+            pathEl.setAttribute("stroke", couleur);
+            pathEl.setAttribute("stroke-width", "1.5");
+            pathEl.setAttribute("stroke-dasharray", "3,2");
+            pathEl.setAttribute("fill", "none");
+            svg.appendChild(pathEl);
+          });
+          tachesProj.filter(t=>getTacheJalonsDeclencheurs(t).some(j=>j.id===jalon.id)).forEach(declTask=>{
+            const pos = taskPositions[declTask.id];
+            if(!pos) return;
+            const p2 = ancrageBarre(pos, "ouest");
+            const path = `M ${pointJalon.x} ${pointJalon.y} L ${pointJalon.x} ${p2.y} L ${p2.x} ${p2.y}`;
+            const pathEl = document.createElementNS("http://www.w3.org/2000/svg", "path");
+            pathEl.setAttribute("d", path);
+            pathEl.setAttribute("stroke", couleur);
+            pathEl.setAttribute("stroke-width", "1.5");
+            pathEl.setAttribute("stroke-dasharray", "3,2");
+            pathEl.setAttribute("fill", "none");
+            svg.appendChild(pathEl);
+            const arrowSize = 3.5;
+            const polygon = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+            polygon.setAttribute("points", `${p2.x},${p2.y} ${p2.x-arrowSize*2},${p2.y-arrowSize} ${p2.x-arrowSize*2},${p2.y+arrowSize}`);
+            polygon.setAttribute("fill", couleur);
+            svg.appendChild(polygon);
+          });
+        }
+    });
+    grid.appendChild(projGroup);
+  });
+  document.getElementById("kanban").innerHTML="";
+  document.getElementById("kanban").appendChild(grid);
+  document.getElementById("meta").textContent=`${DB.projets.length} projet(s) · ${DB.taches.length} tâche(s)`;
   rendreLegende();
+  setTimeout(()=>document.getElementById("scroll").scrollLeft=Math.max(0,allData.todayOffset*16-300), 300);
 }
 
+function getWeekNumber(d){
+  const date=new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate()));
+  const dayNum=date.getUTCDay()||7;
+  date.setUTCDate(date.getUTCDate()+4-dayNum);
+  const yearStart=new Date(Date.UTC(date.getUTCFullYear(),0,1));
+  return Math.ceil((((date-yearStart)/86400000)+1)/7);
+}
+function fmtJJMM(idx){
+  const d=new Date(idx*86400000);
+  return String(d.getUTCDate()).padStart(2,"0")+"/"+String(d.getUTCMonth()+1).padStart(2,"0");
+}
 function rendreLegende(){
   const l=document.getElementById("legende");
   l.innerHTML="";
   STATUTS.forEach(s=>{
     const item=el("div","item");
-    const puce=el("span","puce"); puce.style.background=cssVarValue(s.couleur);
+    const puce=el("span","puce"); puce.style.background=s.couleur;
     item.appendChild(puce);
     item.appendChild(document.createTextNode(s.nom));
     l.appendChild(item);
   });
+  [["Jalon majeur","var(--jalon-majeur)"],["Livrable","var(--jalon-livrable)"],["Pour information","var(--jalon-info)"]].forEach(([label,couleur])=>{
+    const item=el("div","item");
+    const puce=el("span","puce jalon-puce"); puce.style.background=couleur;
+    item.appendChild(puce);
+    item.appendChild(document.createTextNode(label));
+    l.appendChild(item);
+  });
+  const itemCrit=el("div","item");
+  const puceCrit=el("span","puce critique-puce");
+  itemCrit.appendChild(puceCrit);
+  itemCrit.appendChild(document.createTextNode("Tâche critique"));
+  l.appendChild(itemCrit);
 }
-
 function el(tag,cls,txt){
   const e=document.createElement(cls?"div":tag);
   if(cls)e.className=cls;
@@ -1679,13 +2030,18 @@ function el(tag,cls,txt){
   return e;
 }
 
-document.getElementById("btn-add-tache").onclick = () => openTacheCreate();
-document.getElementById("filtre-projet").addEventListener("change", construire);
+document.getElementById("btn-add-projet").onclick=()=>openProjetCreate();
+document.getElementById("field-jalon-type").addEventListener("change", toggleJalonTachesRequisesVisibilite);
 document.getElementById("field-tache-debut").addEventListener("change", majDuree);
 document.getElementById("field-tache-fin").addEventListener("change", majDuree);
-document.getElementById("field-tache-projet").addEventListener("change", (e)=>{
-  populatePredecessorsSelect(parseInt(e.target.value)||null, []);
-  populateJalonsDeclencheursSelect(parseInt(e.target.value)||null, []);
+document.getElementById("btn-add-action").addEventListener("click", (e) => {
+  e.preventDefault();
+  const tacheId = parseInt(document.getElementById("field-tache-id").value);
+  if(!tacheId){
+    alert("Enregistrez la tâche d'abord");
+    return;
+  }
+  activateCreateInput(tacheId);
 });
 grist.onRecords(()=>init());
 init();
