@@ -678,14 +678,22 @@ let COLLAPSED_PROJETS = new Set();
 // ========== ZOOM ==========
 let JOUR_PX = 16;
 const ZOOM_DEFAUT = 16;
-const ZOOM_MIN = 2;
+// Limite de conception : un projet peut s'étaler jusqu'à 2*365 = 730 jours.
+// ZOOM_MIN doit être assez bas pour que "Vue d'ensemble" puisse faire tenir
+// 730 jours même sur une fenêtre de widget relativement étroite (~800px).
+const LIMITE_PROJET_JOURS = 730;
+const ZOOM_MIN = 0.5;
 const ZOOM_MAX = 32;
 const ZOOM_STEP = 4;
 const LABEL_W = 300; // doit correspondre à --label-w
 let ZOOM_CENTER_DAY = null; // jour absolu à recentrer après un zoom (null = comportement par défaut)
 
 function setJourPx(px){
-  JOUR_PX = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, Math.round(px)));
+  // Pas d'arrondi ici : un arrondi vers le haut (ex: 1.9 -> 2) peut suffire
+  // à faire dépasser la largeur disponible et laisser une barre de scroll
+  // résiduelle après un calcul "Vue d'ensemble". Le CSS gère très bien les
+  // valeurs fractionnaires de pixels.
+  JOUR_PX = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, px));
   document.documentElement.style.setProperty("--jour", JOUR_PX + "px");
   const label = document.getElementById("zoom-level-label");
   if(label) label.textContent = Math.round((JOUR_PX / ZOOM_DEFAUT) * 100) + "%";
@@ -718,7 +726,10 @@ function zoomVueEnsemble(){
   const scrollDiv = document.getElementById("scroll");
   if(!scrollDiv || !allData || !allData.totalJours) return;
   const largeurDispo = Math.max(100, scrollDiv.clientWidth - LABEL_W - 24);
-  const pxParJour = largeurDispo / allData.totalJours;
+  // Petite marge de sécurité (3%) pour absorber les arrondis de rendu
+  // (bordures, paddings) et éviter qu'une barre de scroll résiduelle
+  // n'apparaisse malgré un calcul "pile poil".
+  const pxParJour = (largeurDispo / allData.totalJours) * 0.97;
   ZOOM_CENTER_DAY = null; // on veut voir depuis le début, pas centré
   setJourPx(pxParJour);
   construire();
@@ -1958,7 +1969,7 @@ function construire(){
           const duree = t.Duree_jours || 1;
           const finIdxReel = finIdx !== null ? finIdx : (dIdx + duree - 1);
           const etalementJours = finIdxReel - dIdx + 1;
-          barre.style.width=(Math.max(JOUR_PX,etalementJours*JOUR_PX))+"px";
+          barre.style.width=(Math.max(1,etalementJours*JOUR_PX))+"px";
           barre.style.background=cssVarValue(info.couleur);
           barre.textContent=t.Tache;
           if(t.Commentaires) barre.title=t.Commentaires;
