@@ -934,7 +934,12 @@ function getSousActionsTache(tacheId){
     .sort((a, b) => (a.Ordre || 0) - (b.Ordre || 0));
 }
 
+let INIT_EN_COURS = false;
+let NON_ATTRIBUE_VERIFIE = false;
+
 async function init(){
+  if(INIT_EN_COURS) return; // évite les appels concurrents (ex: cascade déclenchée par onRecords)
+  INIT_EN_COURS = true;
   try{
     document.getElementById("status").textContent="Chargement...";
     DB.projets      = columnarToRows(await grist.docApi.fetchTable("Projets"));
@@ -944,16 +949,23 @@ async function init(){
     DB.parametres   = columnarToRows(await grist.docApi.fetchTable("PARAMETRES"));
     DB.actions      = columnarToRows(await grist.docApi.fetchTable("ACTIONS"));
 
-    // ✅ FIX: S'assurer qu'un porteur réel "Non attribué" existe (plus robuste que null)
-    let nonAttribue = DB.porteurs.find(r => norm(r.Nom) === norm("Non attribué"));
-    if(!nonAttribue){
-      const result = await grist.docApi.applyUserActions([
-        ["AddRecord","Porteurs",null,{Nom:"Non attribué"}]
-      ]);
-      DB.porteurs = columnarToRows(await grist.docApi.fetchTable("Porteurs"));
-      nonAttribue = DB.porteurs.find(r => norm(r.Nom) === norm("Non attribué"));
+    // ✅ S'assurer qu'un porteur réel "Non attribué" existe — vérifié une seule fois
+    // par session pour éviter la création de doublons via la cascade grist.onRecords.
+    if(!NON_ATTRIBUE_VERIFIE){
+      let nonAttribue = DB.porteurs.find(r => norm(r.Nom) === norm("Non attribué"));
+      if(!nonAttribue){
+        await grist.docApi.applyUserActions([
+          ["AddRecord","Porteurs",null,{Nom:"Non attribué"}]
+        ]);
+        DB.porteurs = columnarToRows(await grist.docApi.fetchTable("Porteurs"));
+        nonAttribue = DB.porteurs.find(r => norm(r.Nom) === norm("Non attribué"));
+      }
+      NON_ATTRIBUE_ID = nonAttribue ? nonAttribue.id : null;
+      NON_ATTRIBUE_VERIFIE = true;
+    } else {
+      const nonAttribue = DB.porteurs.find(r => norm(r.Nom) === norm("Non attribué"));
+      NON_ATTRIBUE_ID = nonAttribue ? nonAttribue.id : NON_ATTRIBUE_ID;
     }
-    NON_ATTRIBUE_ID = nonAttribue ? nonAttribue.id : null;
 
     populateSelects();
     construire();
@@ -961,6 +973,8 @@ async function init(){
   }catch(e){
     console.error("❌", e);
     document.getElementById("status").textContent="❌ "+e.message;
+  }finally{
+    INIT_EN_COURS = false;
   }
 }
 
