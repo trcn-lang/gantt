@@ -160,7 +160,12 @@
   }
   .label.projet .btn-collapse.collapsed{transform:rotate(-90deg)}
   .label.tache{padding-left:12px;font-size:13px;gap:8px}
-  .label.tache .nom{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+  .label.tache .nom{
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;
+    cursor:pointer;border-radius:3px;padding:2px 4px;margin:-2px -4px;
+    transition:background 0.15s;
+  }
+  .label.tache .nom:hover{background:var(--bleu-975);color:var(--bleu-france)}
   .label.tache .porteur{font-size:11px;color:var(--texte-mention);flex:0 0 auto}
 
   .label-actions{position:absolute;right:8px;display:none;gap:4px;background:var(--fond);padding-left:6px}
@@ -1816,6 +1821,7 @@ function calculerNiveauxJalons(jalonsProj, minI){
 function construire(){
   const allDates = [];
   DB.taches.forEach(t => {
+    if(COLLAPSED_PROJETS.has(refId(t.Projet))) return; // projet masqué : ne compte pas dans la plage visible
     const dIdx = dayIndex(t.Date_debut);
     if(dIdx !== null) {
       allDates.push(dIdx);
@@ -1824,6 +1830,7 @@ function construire(){
     }
   });
   DB.jalons.forEach(j => {
+    if(COLLAPSED_PROJETS.has(refId(j.Projet))) return; // projet masqué : ne compte pas dans la plage visible
     const dIdx = dayIndex(j.Date);
     if(dIdx !== null) allDates.push(dIdx);
   });
@@ -1919,7 +1926,9 @@ function construire(){
       const labTask=el("div","label tache");
       labTask.setAttribute("data-projet", proj.id);
       if(COLLAPSED_PROJETS.has(proj.id)) labTask.classList.add("hidden");
-      labTask.appendChild(el("span","nom",t.Tache));
+      const nomSpanTache = el("span","nom",t.Tache);
+      nomSpanTache.onclick=(e)=>{ e.stopPropagation(); openTacheEdit(t); };
+      labTask.appendChild(nomSpanTache);
       if(porteurTexte) labTask.appendChild(el("span","porteur",porteurTexte));
       labelsDiv.appendChild(labTask);
       const track=el("div","track tache");
