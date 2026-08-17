@@ -3,201 +3,360 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Rétroplanning — Vue synthétique</title>
+<title>Récap — Vue synthétique A4</title>
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
 <style>
-  :root{
-    --bleu-france:#000091;
-    --bleu-975:#ECECFE;
-    --texte:#161616;
-    --texte-mention:#666666;
-    --bordure:#DDDDDD;
-    --fond:#FFFFFF;
-    --fond-alt:#F6F6F6;
-    --st-faire:#929292;
-    --st-encours:#0063CB;
-    --st-termine:#18753C;
-    --jalon-majeur:#C41E3A;
-    --jalon-livrable:#FF6B35;
-    --jalon-etape:#6B6B6B;
+  :root {
+    --bleu-france: #000091;
+    --bleu-975: #ECECFE;
+    --texte: #161616;
+    --texte-mention: #666666;
+    --bordure: #DDDDDD;
+    --fond: #FFFFFF;
+    --fond-alt: #F6F6F6;
+    --jalon-majeur: #C41E3A;
+    --jalon-livrable: #FF6B35;
+    --jalon-info: #6B6B6B;
+    --critique: #CE0500;
   }
 
-  *{box-sizing:border-box;margin:0;padding:0}
-  html,body{height:100%}
-  body{
-    font-family:"Marianne",-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;
-    color:var(--texte);
-    background:var(--fond-alt);
-    font-size:14px;
-    line-height:1.5;
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  
+  body {
+    font-family: "Marianne", -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+    color: var(--texte);
+    background: var(--fond);
+    font-size: 13px;
   }
 
-  .app{max-width:900px;margin:0 auto;padding:24px 24px 64px}
+  .app { display: flex; flex-direction: column; height: 100vh; }
 
-  .topbar{
-    display:flex;align-items:flex-start;justify-content:space-between;
-    gap:16px;margin-bottom:24px;flex-wrap:wrap;
+  /* ========== TOPBAR & TOOLBAR ========== */
+  .topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--bordure);
+    flex-wrap: wrap;
   }
-  .topbar h1{font-size:22px;font-weight:700;color:var(--bleu-france);margin-bottom:4px}
-  .topbar .sous-titre{font-size:13px;color:var(--texte-mention)}
-  .topbar .actions{display:flex;gap:8px;align-items:center}
+  .topbar h1 { font-size: 18px; font-weight: 700; color: var(--bleu-france); }
+  .meta { font-size: 11px; color: var(--texte-mention); }
 
-  .btn{
-    padding:8px 16px;background:var(--bleu-france);color:#fff;border:none;
-    border-radius:4px;cursor:pointer;font-size:13px;font-weight:600;transition:background 0.2s;
-  }
-  .btn:hover{background:#0056b3}
-  .btn-outline{background:#fff;color:var(--bleu-france);border:1px solid var(--bleu-france)}
-  .btn-outline:hover{background:var(--bleu-975)}
-
-  .toolbar{
-    display:flex;gap:8px;align-items:center;margin-bottom:24px;flex-wrap:wrap;
-  }
-  .toolbar label{font-size:12px;color:var(--texte-mention);font-weight:600}
-  .toolbar select{
-    padding:6px 10px;border:1px solid var(--bordure);border-radius:4px;font-size:13px;background:#fff;
+  .toolbar {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--bordure);
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    align-items: center;
   }
 
-  .status{font-size:12px;color:var(--texte-mention);margin-bottom:16px}
-
-  .campagne-bloc{
-    background:#fff;border:1px solid var(--bordure);border-radius:6px;overflow:hidden;
-    margin-bottom:20px;break-inside:avoid;
-  }
-  .campagne-entete{
-    background:var(--bleu-975);color:var(--bleu-france);font-weight:700;font-size:15px;
-    padding:12px 16px;border-bottom:1px solid var(--bordure);
-    display:flex;justify-content:space-between;align-items:baseline;gap:12px;
-  }
-  .campagne-entete .meta-camp{font-size:11px;font-weight:400;color:var(--texte-mention)}
-
-  .frise{padding:4px 0}
-  .ligne{
-    display:flex;align-items:flex-start;gap:12px;
-    padding:10px 16px;border-bottom:1px solid var(--fond-alt);
-  }
-  .ligne:last-child{border-bottom:none}
-
-  .repere{
-    flex:0 0 auto;width:14px;display:flex;justify-content:center;padding-top:3px;
-  }
-  .repere .diamant{
-    width:9px;height:9px;transform:rotate(45deg);border:1.5px solid #fff;box-shadow:0 0 0 1px var(--bordure);
-  }
-  .repere .trait{
-    width:9px;height:9px;border-radius:2px;
+  .toolbar label { font-size: 12px; font-weight: 600; color: var(--texte-mention); }
+  .toolbar select {
+    padding: 6px 10px;
+    border: 1px solid var(--bordure);
+    border-radius: 4px;
+    font-size: 12px;
+    background: #fff;
   }
 
-  .date-col{
-    flex:0 0 92px;font-weight:600;font-size:13px;color:var(--texte);white-space:nowrap;
+  .btn {
+    padding: 8px 16px;
+    background: var(--bleu-france);
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    transition: background 0.2s;
+  }
+  .btn:hover { background: #0056b3; }
+
+  /* ========== SCROLL CONTAINER ========== */
+  .scroll { flex: 1; overflow: auto; padding: 20px; }
+
+  /* ========== RÉCAP CONTENT (pour écran) ========== */
+  .recap-container {
+    background: var(--fond);
+    padding: 20px;
+    border-radius: 6px;
   }
 
-  .contenu{flex:1;min-width:0}
-  .contenu .nom{font-size:13px;font-weight:600;color:var(--texte)}
-  .contenu .nom.jalon{color:var(--jalon-livrable)}
-  .contenu .details{font-size:11px;color:var(--texte-mention);margin-top:2px;display:flex;gap:10px;flex-wrap:wrap}
-
-  .badge{
-    display:inline-block;font-size:10px;font-weight:600;border-radius:10px;padding:1px 8px;
-    border:1px solid currentColor;
+  .recap-header {
+    margin-bottom: 24px;
+    border-bottom: 2px solid var(--bleu-france);
+    padding-bottom: 12px;
   }
-  .badge.st-faire{color:var(--st-faire)}
-  .badge.st-encours{color:var(--st-encours)}
-  .badge.st-termine{color:var(--st-termine)}
+  .recap-header h2 { font-size: 20px; font-weight: 700; color: var(--bleu-france); margin-bottom: 4px; }
+  .recap-header .date-gen { font-size: 11px; color: var(--texte-mention); }
 
-  .type-jalon{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.02em}
+  /* Ligne projet */
+  .project-row {
+    margin-bottom: 20px;
+    padding: 12px;
+    background: var(--fond-alt);
+    border-left: 4px solid var(--bleu-france);
+    border-radius: 4px;
+  }
+  .project-name { font-size: 14px; font-weight: 700; color: var(--bleu-france); margin-bottom: 8px; }
+  .project-dates { font-size: 11px; color: var(--texte-mention); margin-bottom: 8px; }
 
-  .empty-state{
-    text-align:center;padding:48px 16px;color:var(--texte-mention);font-size:13px;
+  /* Timeline par mois */
+  .timeline-wrapper {
+    position: relative;
+    height: 70px;
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      transparent calc(100% - 1px),
+      var(--bordure) calc(100% - 1px)
+    );
+    margin-bottom: 12px;
+    margin-top: 4px;
   }
 
-  .legende-print{
-    display:none;
+  .month-cell {
+    position: absolute;
+    top: 0;
+    height: 100%;
+    border-right: 1px solid var(--bordure);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-end;
+    padding: 4px 2px;
+    font-size: 9px;
+    color: var(--texte-mention);
+    min-width: 60px;
+  }
+  .month-label { 
+    margin-top: auto; 
+    margin-bottom: 4px;
+    font-weight: 500;
+  }
+  .month-bar {
+    width: 100%;
+    height: 8px;
+    background: #e0e0e0;
+    margin-bottom: 4px;
   }
 
-  @media print{
-    body{background:#fff}
-    .app{max-width:100%;padding:0}
-    .toolbar, .topbar .actions{display:none}
-    .topbar{margin-bottom:16px}
-    .campagne-bloc{
-      border:1px solid #999;box-shadow:none;margin-bottom:14px;
-      break-inside:avoid;page-break-inside:avoid;
-    }
-    .campagne-entete{background:#ECECFE !important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-    .status{display:none}
-    @page{margin:16mm 14mm}
+  /* Barre projet (durée) */
+  .project-bar {
+    position: absolute;
+    height: 10px;
+    background: var(--bleu-france);
+    border-radius: 2px;
+    top: 28px;
   }
+
+  /* Jalons (losanges) */
+  .jalon-marker {
+    position: absolute;
+    width: 14px;
+    height: 14px;
+    margin-left: -7px;
+    transform: rotate(45deg);
+    border: 2px solid #fff;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.25);
+    cursor: pointer;
+    top: 22px;
+  }
+  .jalon-marker:hover { filter: brightness(0.9); transform: rotate(45deg) scale(1.15); transition: transform 0.15s; }
+  .jalon-marker.majeur { background: var(--jalon-majeur); }
+  .jalon-marker.livrable { background: var(--jalon-livrable); }
+  .jalon-marker.info { background: var(--jalon-info); }
+  .jalon-marker.critique { 
+    border: 2px solid #fff;
+    box-shadow: 0 0 0 1.5px var(--critique);
+  }
+
+  /* Légende */
+  .legend {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin-top: 20px;
+    padding-top: 12px;
+    border-top: 1px solid var(--bordure);
+    font-size: 11px;
+  }
+  .legend-item { display: flex; align-items: center; gap: 6px; }
+  .legend-puce { width: 12px; height: 12px; border-radius: 1px; }
+  .legend-puce.majeur { background: var(--jalon-majeur); }
+  .legend-puce.livrable { background: var(--jalon-livrable); }
+  .legend-puce.info { background: var(--jalon-info); }
+  .legend-puce.critique { background: var(--bleu-france); border: 1px solid var(--critique); }
+  .legend-puce.bar { background: var(--bleu-france); }
+
+  /* Tableau échéances */
+  .upcoming-section {
+    margin-top: 32px;
+    padding-top: 20px;
+    border-top: 2px solid var(--bleu-france);
+  }
+  .upcoming-section h3 { font-size: 14px; font-weight: 700; color: var(--bleu-france); margin-bottom: 12px; }
+
+  .upcoming-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+  }
+  .upcoming-table th {
+    background: var(--bleu-975);
+    padding: 10px 8px;
+    text-align: center;
+    font-weight: 600;
+    color: var(--bleu-france);
+    border-bottom: 1px solid var(--bordure);
+    vertical-align: middle;
+  }
+  .upcoming-table th:first-child {
+    text-align: center;
+  }
+  .upcoming-table th:nth-child(2) {
+    text-align: center;
+  }
+  .upcoming-table th:nth-child(3) {
+    text-align: center;
+  }
+  .upcoming-table th:nth-child(4) {
+    text-align: center;
+  }
+  .upcoming-table th:nth-child(5) {
+    text-align: center;
+  }
+  .upcoming-table td {
+    padding: 10px 8px;
+    border-bottom: 1px solid var(--bordure);
+    text-align: center;
+    vertical-align: middle;
+  }
+  .upcoming-table td:nth-child(2) {
+    text-align: left;
+  }
+  .upcoming-table td:nth-child(3) {
+    text-align: left;
+  }
+  .upcoming-table tr:nth-child(even) { background: var(--fond-alt); }
+  .upcoming-table .majeur { color: var(--jalon-majeur); font-weight: 600; }
+  .upcoming-table .livrable { color: var(--jalon-livrable); font-weight: 600; }
+  .upcoming-table .critique { color: var(--critique); font-weight: 600; }
+
+  /* ========== IMPRESSION A4 ========== */
+  @page {
+    size: A4 landscape;
+    margin: 10mm;
+  }
+
+  @media print {
+    .toolbar, .topbar { display: none !important; }
+    .scroll { padding: 0 !important; overflow: visible !important; height: auto; }
+    .recap-container { box-shadow: none !important; padding: 0; }
+    body { background: transparent; }
+  }
+
+  .empty-state { padding: 40px; text-align: center; color: var(--texte-mention); }
+
+  #status { margin-left: auto; font-size: 11px; color: var(--texte-mention); }
 </style>
 </head>
 <body>
 <div class="app">
+
   <div class="topbar">
-    <div>
-      <h1>Rétroplanning — Vue synthétique</h1>
-      <div class="sous-titre" id="date-edition"></div>
-    </div>
-    <div class="actions">
-      <button class="btn-outline btn" onclick="window.print()">🖨️ Imprimer</button>
-    </div>
+    <h1>📊 Récap — Vue synthétique A4</h1>
+    <div class="meta" id="meta">Chargement…</div>
   </div>
 
   <div class="toolbar">
-    <label>Campagne :</label>
-    <select id="filtre-campagne"><option value="">Toutes</option></select>
+    <button class="btn" id="btn-print">🖨️ Imprimer</button>
+    
+    <label>Projet :</label>
+    <select id="filtre-projet"><option value="">Tous</option></select>
+
+    <label>Plage :</label>
+    <select id="filtre-plage">
+      <option value="all">Tous les jalons</option>
+      <option value="12w">Prochaines 12 semaines</option>
+      <option value="26w">Prochaines 26 semaines</option>
+      <option value="52w">Prochaine année</option>
+    </select>
+
+    <label style="margin-left: 12px;">
+      <input type="checkbox" id="show-critical" checked>
+      Mettre en avant tâches critiques
+    </label>
+
+    <span id="status"></span>
   </div>
 
-  <div class="status" id="status">Chargement…</div>
+  <div class="scroll">
+    <div id="content" class="empty-state">Chargement…</div>
+  </div>
 
-  <div id="contenu"></div>
 </div>
 
 <script>
-const STATUTS = [
-  {nom:"À faire",   cls:"st-faire"},
-  {nom:"En cours",  cls:"st-encours"},
-  {nom:"Terminé",   cls:"st-termine"},
-];
-const JALON_COULEURS = {
-  "jalon majeur": "var(--jalon-majeur)",
-  "livrable":     "var(--jalon-livrable)",
-  "etape":        "var(--jalon-etape)",
-};
+const norm = (s) => String(s||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").trim();
 
-function norm(s){
-  return String(s||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").trim();
-}
-function statutInfo(s){
-  return STATUTS.find(x=>norm(x.nom)===norm(s)) || {nom:s||"—",cls:"st-faire"};
-}
-function jalonCouleur(type){
-  return JALON_COULEURS[norm(type)] || "var(--jalon-livrable)";
-}
 function parseDate(v){
   if(v===null||v===undefined||v==="") return null;
   if(typeof v==="number") return new Date(v*1000);
   const d=new Date(String(v).trim());
   return isNaN(d.getTime())?null:d;
 }
+
 function refId(v){
   if(Array.isArray(v)) return v[1];
   return v;
 }
+
 function resolveRef(table, id, col){
   const rid=refId(id);
   if(rid===null||rid===undefined) return null;
   const ligne=table.find(row=>row.id===rid);
   return ligne?ligne[col]:null;
 }
-function fmtDateFR(v){
+
+function fmtDate(v){
   const d=parseDate(v);
   if(!d) return "";
-  const jj=String(d.getUTCDate()).padStart(2,"0");
-  const mm=String(d.getUTCMonth()+1).padStart(2,"0");
-  return `${jj}/${mm}/${d.getUTCFullYear()}`;
+  return String(d.getUTCDate()).padStart(2,"0")+"/"+String(d.getUTCMonth()+1).padStart(2,"0")+"/"+d.getUTCFullYear();
 }
 
-let DB={};
+function getJalonTypeTexte(jalon){
+  const raw = jalon.Type;
+  if(!raw) return "";
+  if(Array.isArray(raw)){
+    if(raw[0]==='L') return raw[1] || "";
+    if(raw[0]==='E') return "";
+  }
+  return raw;
+}
+
+function getJalonTachesRequises(jalon){
+  const raw = jalon.Taches_requises;
+  if(!raw || !Array.isArray(raw)) return [];
+  if(raw[0]==='L') return raw.slice(1).map(id => DB.taches.find(t => t.id === id)).filter(Boolean);
+  if(raw[0]==='E') return [];
+  return raw.map(id => (typeof id === 'object' ? id : DB.taches.find(t => t.id === id))).filter(Boolean);
+}
+
+function getJalonAtteint(jalon){
+  const requises = getJalonTachesRequises(jalon);
+  if(requises.length > 0){
+    return requises.every(t => norm(resolveRef(DB.parametres, t.Statut, "Statut")) === norm("Terminé"));
+  }
+  const d = parseDate(jalon.Date);
+  return d ? (Date.now() >= d.getTime()) : false;
+}
+
+let DB = {};
 
 grist.ready({requiredAccess:"full"});
 
@@ -218,152 +377,273 @@ function columnarToRows(data){
 }
 
 async function init(){
-  try{
-    document.getElementById("status").textContent="Chargement...";
-    DB.campagnes    = columnarToRows(await grist.docApi.fetchTable("Campagnes"));
-    DB.jalons       = columnarToRows(await grist.docApi.fetchTable("Jalons"));
-    DB.taches       = columnarToRows(await grist.docApi.fetchTable("Taches"));
-    DB.responsables = columnarToRows(await grist.docApi.fetchTable("Responsables"));
-    DB.parametres   = columnarToRows(await grist.docApi.fetchTable("PARAMETRES"));
-    populateFiltre();
-    majDateEdition();
+  try {
+    document.getElementById("status").textContent = "Chargement…";
+    
+    DB.projets = columnarToRows(await grist.docApi.fetchTable("Projets"));
+    DB.jalons = columnarToRows(await grist.docApi.fetchTable("Jalons"));
+    DB.taches = columnarToRows(await grist.docApi.fetchTable("Taches"));
+    DB.parametres = columnarToRows(await grist.docApi.fetchTable("PARAMETRES"));
+    DB.porteurs = columnarToRows(await grist.docApi.fetchTable("Porteurs"));
+
+    const jalonSelectEl = document.getElementById("filtre-projet");
+    jalonSelectEl.innerHTML = '<option value="">Tous</option>';
+    DB.projets.forEach(p => {
+      const opt = document.createElement("option");
+      opt.value = p.id;
+      opt.textContent = p.Projet;
+      jalonSelectEl.appendChild(opt);
+    });
+
+    document.getElementById("meta").textContent = `${DB.projets.length} projet(s) · ${DB.jalons.length} jalon(s) · ${DB.taches.length} tâche(s)`;
+    document.getElementById("status").textContent = "✓ Chargé";
+
     construire();
-    document.getElementById("status").textContent="✓ Données chargées";
-  }catch(e){
+  } catch(e) {
     console.error("❌", e);
-    document.getElementById("status").textContent="❌ "+e.message;
+    document.getElementById("status").textContent = "❌ " + e.message;
   }
 }
 
-function majDateEdition(){
-  const now=new Date();
-  const jj=String(now.getDate()).padStart(2,"0");
-  const mm=String(now.getMonth()+1).padStart(2,"0");
-  document.getElementById("date-edition").textContent=`Édité le ${jj}/${mm}/${now.getFullYear()}`;
-}
-
-function populateFiltre(){
-  const sel=document.getElementById("filtre-campagne");
-  const prev=sel.value;
-  sel.innerHTML='<option value="">Toutes</option>';
-  DB.campagnes.forEach(c=>{
-    const opt=document.createElement("option");
-    opt.value=c.id; opt.textContent=c.Campagne;
-    sel.appendChild(opt);
-  });
-  sel.value=prev;
-}
-
-function el(tag,cls,txt){
-  const e=document.createElement(cls?"div":tag);
-  if(cls)e.className=cls;
-  if(txt!==undefined&&txt!==null)e.textContent=txt;
-  return e;
+function getMonthsBetween(d1, d2){
+  const result = [];
+  const start = new Date(d1);
+  start.setUTCDate(1);
+  
+  const end = new Date(d2);
+  end.setUTCDate(1);
+  end.setUTCMonth(end.getUTCMonth() + 1);
+  
+  let current = new Date(start);
+  let index = 0;
+  
+  while(current < end){
+    result.push({
+      year: current.getUTCFullYear(),
+      month: current.getUTCMonth() + 1,
+      index: index,
+      date: new Date(current)
+    });
+    current.setUTCMonth(current.getUTCMonth() + 1);
+    index++;
+  }
+  
+  return result;
 }
 
 function construire(){
-  const filtreCampagne=document.getElementById("filtre-campagne").value;
-  const contenu=document.getElementById("contenu");
-  contenu.innerHTML="";
+  const filtreProjet = document.getElementById("filtre-projet").value;
+  const filtrePlage = document.getElementById("filtre-plage").value;
+  const showCritical = document.getElementById("show-critical").checked;
 
-  const campagnes = filtreCampagne
-    ? DB.campagnes.filter(c=>c.id===parseInt(filtreCampagne))
-    : DB.campagnes;
-
-  if(campagnes.length===0){
-    contenu.appendChild(el("div","empty-state","Aucune campagne à afficher."));
-    return;
+  let projets = DB.projets;
+  if(filtreProjet){
+    projets = projets.filter(p => p.id === parseInt(filtreProjet));
   }
 
-  let totalEvenements=0;
+  let today = new Date();
+  let plageEnd = new Date();
+  
+  switch(filtrePlage){
+    case "12w": plageEnd.setDate(plageEnd.getDate() + 7*12); break;
+    case "26w": plageEnd.setDate(plageEnd.getDate() + 7*26); break;
+    case "52w": plageEnd.setDate(plageEnd.getDate() + 7*52); break;
+    default: plageEnd = new Date(today.getFullYear() + 2, 11, 31);
+  }
 
-  campagnes.forEach(camp=>{
-    const taches = DB.taches.filter(t=>refId(t.Campagne)===camp.id).map(t=>({
-      type:"tache",
-      date: t.Date_debut,
-      dateFin: t.Date_fin,
-      nom: t.Tache,
-      statut: resolveRef(DB.parametres, t.Statut, "Statut"),
-      responsable: resolveRef(DB.responsables, t.Responsable, "Nom"),
-      raw: t
-    }));
-    const jalons = DB.jalons.filter(j=>refId(j.Campagne)===camp.id).map(j=>({
-      type:"jalon",
-      date: j.Date,
-      nom: j.Nom,
-      typeJalon: j.Type,
-      raw: j
-    }));
-
-    const evenements = [...taches, ...jalons]
-      .filter(e=>parseDate(e.date)!==null)
-      .sort((a,b)=>parseDate(a.date)-parseDate(b.date));
-
-    if(evenements.length===0) return;
-    totalEvenements += evenements.length;
-
-    const bloc=el("div","campagne-bloc");
-    const entete=el("div","campagne-entete");
-    entete.appendChild(el("span",null,camp.Campagne));
-    entete.appendChild(el("span","meta-camp",`${evenements.length} événement${evenements.length>1?"s":""}`));
-    bloc.appendChild(entete);
-
-    const frise=el("div","frise");
-    evenements.forEach(ev=>{
-      const ligne=el("div","ligne");
-
-      const repere=el("div","repere");
-      if(ev.type==="jalon"){
-        const diamant=el("div","diamant");
-        diamant.style.background=jalonCouleur(ev.typeJalon);
-        repere.appendChild(diamant);
-      }else{
-        const info=statutInfo(ev.statut);
-        const trait=el("div","trait");
-        trait.style.background=`var(--${info.cls})`;
-        repere.appendChild(trait);
-      }
-      ligne.appendChild(repere);
-
-      ligne.appendChild(el("div","date-col",fmtDateFR(ev.date)));
-
-      const contenuLigne=el("div","contenu");
-      const nomEl=el("div", ev.type==="jalon" ? "nom jalon" : "nom", ev.nom);
-      contenuLigne.appendChild(nomEl);
-
-      const details=el("div","details");
-      if(ev.type==="jalon"){
-        if(ev.typeJalon){
-          const t=el("span","type-jalon",ev.typeJalon);
-          t.style.color=jalonCouleur(ev.typeJalon);
-          details.appendChild(t);
-        }
-      }else{
-        const info=statutInfo(ev.statut);
-        const badge=el("span","badge "+info.cls,info.nom);
-        details.appendChild(badge);
-        if(ev.responsable) details.appendChild(el("span",null,ev.responsable));
-        if(ev.dateFin && fmtDateFR(ev.dateFin)!==fmtDateFR(ev.date)){
-          details.appendChild(el("span",null,`→ ${fmtDateFR(ev.dateFin)}`));
-        }
-      }
-      if(details.children.length>0) contenuLigne.appendChild(details);
-
-      ligne.appendChild(contenuLigne);
-      frise.appendChild(ligne);
-    });
-
-    bloc.appendChild(frise);
-    contenu.appendChild(bloc);
+  const jalonsVisibles = DB.jalons.filter(j => {
+    if(!projets.some(p => p.id === refId(j.Projet))) return false;
+    const d = parseDate(j.Date);
+    if(!d) return false;
+    if(filtrePlage !== "all" && d > plageEnd) return false;
+    return true;
   });
 
-  if(totalEvenements===0){
-    contenu.appendChild(el("div","empty-state","Aucune tâche ni jalon daté à afficher."));
+  let minDate = today, maxDate = new Date(today.getTime() + 7*52*24*60*60*1000);
+  
+  projets.forEach(p => {
+    const pJalons = jalonsVisibles.filter(j => refId(j.Projet) === p.id);
+    if(pJalons.length > 0){
+      pJalons.forEach(j => {
+        const d = parseDate(j.Date);
+        if(d < minDate) minDate = d;
+        if(d > maxDate) maxDate = d;
+      });
+    }
+    const pTaches = DB.taches.filter(t => refId(t.Projet) === p.id);
+    pTaches.forEach(t => {
+      const d1 = parseDate(t.Date_debut);
+      const d2 = parseDate(t.Date_fin);
+      if(d1 && d1 < minDate) minDate = d1;
+      if(d2 && d2 > maxDate) maxDate = d2;
+    });
+  });
+
+  const months = getMonthsBetween(minDate, maxDate);
+
+  let html = `<div class="recap-container">`;
+  
+  html += `<div class="recap-header">
+    <h2>Récap des échéances</h2>
+    <div class="date-gen">Généré le ${new Date().toLocaleDateString('fr-FR')}</div>
+  </div>`;
+
+  if(projets.length === 0){
+    html += `<div class="empty-state">Aucun projet à afficher</div>`;
+  } else {
+    projets.forEach(proj => {
+      const pJalons = jalonsVisibles.filter(j => refId(j.Projet) === proj.id);
+      const pTaches = DB.taches.filter(t => refId(t.Projet) === proj.id);
+      
+      let projMinDate = null, projMaxDate = null;
+      
+      if(pTaches.length > 0){
+        pTaches.forEach(t => {
+          const d1 = parseDate(t.Date_debut);
+          const d2 = parseDate(t.Date_fin);
+          if(d1 && !projMinDate) projMinDate = new Date(d1);
+          if(d1 && d1 < projMinDate) projMinDate = new Date(d1);
+          if(d2 && !projMaxDate) projMaxDate = new Date(d2);
+          if(d2 && d2 > projMaxDate) projMaxDate = new Date(d2);
+        });
+      }
+      
+      if(pJalons.length > 0){
+        pJalons.forEach(j => {
+          const d = parseDate(j.Date);
+          if(d && !projMinDate) projMinDate = new Date(d);
+          if(d && d < projMinDate) projMinDate = new Date(d);
+          if(d && !projMaxDate) projMaxDate = new Date(d);
+          if(d && d > projMaxDate) projMaxDate = new Date(d);
+        });
+      }
+
+      if(!projMinDate || !projMaxDate) return;
+
+      html += `<div class="project-row">
+        <div class="project-name">${proj.Projet}</div>
+        <div class="project-dates">${fmtDate(projMinDate)} → ${fmtDate(projMaxDate)}</div>
+        <div class="timeline-wrapper" style="width:100%;">`;
+
+      const projDurationMs = projMaxDate - projMinDate;
+      const totalDurationMs = maxDate - minDate;
+      const projStart = ((projMinDate - minDate) / totalDurationMs) * 100;
+      const projWidth = (projDurationMs / totalDurationMs) * 100;
+
+      html += `<div class="project-bar" style="left:${projStart}%; width:${projWidth}%;"></div>`;
+
+      months.forEach(m => {
+        const mStart = new Date(m.year, m.month - 1, 1);
+        const mEnd = new Date(m.year, m.month, 1);
+        const mStartOffset = Math.max(0, (mStart - minDate) / totalDurationMs * 100);
+        const mWidth = ((mEnd - mStart) / totalDurationMs) * 100;
+
+        html += `<div class="month-cell" style="left:${mStartOffset}%; width:${mWidth}%;">
+          <div class="month-bar"></div>
+          <div class="month-label">${['J','F','M','A','M','J','J','A','S','O','N','D'][m.month-1]} ${m.year % 100}</div>
+        </div>`;
+      });
+
+      pJalons.forEach(j => {
+        const jDate = parseDate(j.Date);
+        if(!jDate) return;
+        const jOffset = ((jDate - minDate) / totalDurationMs) * 100;
+        const typeTexte = getJalonTypeTexte(j);
+        const jalonType = norm(typeTexte) === norm("Jalon majeur") ? "majeur" : 
+                          norm(typeTexte) === norm("Livrable") ? "livrable" : "info";
+        
+        const title = `${j.Nom} (${typeTexte}) — ${fmtDate(jDate)}`;
+        html += `<div class="jalon-marker ${jalonType}" style="left:${jOffset}%;" title="${title}"></div>`;
+      });
+
+      if(showCritical){
+        pTaches.filter(t => t.Est_critique === true).forEach(t => {
+          const tDate = parseDate(t.Date_debut);
+          if(!tDate) return;
+          const tOffset = ((tDate - minDate) / totalDurationMs) * 100;
+          const title = `[CRITIQUE] ${t.Tache}`;
+          html += `<div class="jalon-marker critique" style="left:${tOffset}%; top: 40px;" title="${title}"></div>`;
+        });
+      }
+
+      html += `</div></div>`;
+    });
   }
+
+  html += `<div class="legend">
+    <div class="legend-item">
+      <div class="legend-puce majeur"></div>
+      <span>Jalon majeur</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-puce livrable"></div>
+      <span>Livrable</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-puce info"></div>
+      <span>Pour information</span>
+    </div>
+    ${showCritical ? `<div class="legend-item">
+      <div class="legend-puce critique"></div>
+      <span>Tâche critique</span>
+    </div>` : ""}
+    <div class="legend-item">
+      <div class="legend-puce bar"></div>
+      <span>Durée projet</span>
+    </div>
+  </div>`;
+
+  const allUpcoming = jalonsVisibles.sort((a, b) => {
+    const dA = parseDate(a.Date);
+    const dB = parseDate(b.Date);
+    return dA - dB;
+  });
+
+  if(allUpcoming.length > 0){
+    html += `<div class="upcoming-section">
+      <h3>Prochaines échéances</h3>
+      <table class="upcoming-table">
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Jalon</th>
+            <th>Projet</th>
+            <th>Type</th>
+            <th>Statut</th>
+          </tr>
+        </thead>
+        <tbody>`;
+
+    allUpcoming.forEach(j => {
+      const typeTexte = getJalonTypeTexte(j);
+      const typeClass = norm(typeTexte) === norm("Jalon majeur") ? "majeur" : 
+                        norm(typeTexte) === norm("Livrable") ? "livrable" : "";
+      const atteint = getJalonAtteint(j);
+      const proj = DB.projets.find(p => p.id === refId(j.Projet));
+
+      html += `<tr>
+        <td>${fmtDate(j.Date)}</td>
+        <td>${j.Nom}</td>
+        <td>${proj ? proj.Projet : "—"}</td>
+        <td class="${typeClass}">${typeTexte || "—"}</td>
+        <td>${atteint ? "✓ Atteint" : "○ En cours"}</td>
+      </tr>`;
+    });
+
+    html += `</tbody></table></div>`;
+  }
+
+  html += `</div>`;
+
+  document.getElementById("content").innerHTML = html;
 }
 
-document.getElementById("filtre-campagne").addEventListener("change", construire);
-grist.onRecords(()=>init());
+document.getElementById("btn-print").addEventListener("click", () => window.print());
+document.getElementById("filtre-projet").addEventListener("change", construire);
+document.getElementById("filtre-plage").addEventListener("change", construire);
+document.getElementById("show-critical").addEventListener("change", construire);
+
+grist.onRecords(() => init());
 init();
 </script>
 </body>
