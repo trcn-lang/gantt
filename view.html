@@ -16,8 +16,10 @@
     --fond-alt: #F6F6F6;
     --jalon-majeur: #C41E3A;
     --jalon-livrable: #FF6B35;
-    --jalon-info: #6B6B6B;
     --critique: #CE0500;
+    --statut-a-faire: #929292;
+    --statut-en-cours: #0063CB;
+    --statut-termine: #18753C;
   }
 
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -107,22 +109,17 @@
 
   /* Timeline par mois */
   .timeline-wrapper {
+    display: flex;
+    gap: 0;
+    align-items: flex-end;
+    height: 60px;
     position: relative;
-    height: 70px;
-    background: linear-gradient(
-      90deg,
-      transparent 0%,
-      transparent calc(100% - 1px),
-      var(--bordure) calc(100% - 1px)
-    );
-    margin-bottom: 12px;
-    margin-top: 4px;
+    margin-bottom: 8px;
+    width: 100%;
   }
 
   .month-cell {
-    position: absolute;
-    top: 0;
-    height: 100%;
+    flex: 1;
     border-right: 1px solid var(--bordure);
     display: flex;
     flex-direction: column;
@@ -131,48 +128,54 @@
     padding: 4px 2px;
     font-size: 9px;
     color: var(--texte-mention);
-    min-width: 60px;
+    min-width: 30px;
+    position: relative;
   }
-  .month-label { 
-    margin-top: auto; 
-    margin-bottom: 4px;
-    font-weight: 500;
-  }
+  .month-label { margin-top: auto; order: 2; }
   .month-bar {
     width: 100%;
     height: 8px;
     background: #e0e0e0;
     margin-bottom: 4px;
+    order: 1;
   }
 
   /* Barre projet (durée) */
   .project-bar {
     position: absolute;
-    height: 10px;
+    height: 12px;
     background: var(--bleu-france);
     border-radius: 2px;
-    top: 28px;
+    top: 20px;
   }
 
   /* Jalons (losanges) */
   .jalon-marker {
     position: absolute;
-    width: 14px;
-    height: 14px;
-    margin-left: -7px;
+    width: 12px;
+    height: 12px;
+    margin-left: -6px;
     transform: rotate(45deg);
     border: 2px solid #fff;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.25);
+    box-shadow: 0 1px 2px rgba(0,0,0,0.2);
     cursor: pointer;
-    top: 22px;
+    top: 18px;
   }
-  .jalon-marker:hover { filter: brightness(0.9); transform: rotate(45deg) scale(1.15); transition: transform 0.15s; }
+  .jalon-marker:hover { filter: brightness(0.9); }
   .jalon-marker.majeur { background: var(--jalon-majeur); }
   .jalon-marker.livrable { background: var(--jalon-livrable); }
-  .jalon-marker.info { background: var(--jalon-info); }
   .jalon-marker.critique { 
     border: 2px solid #fff;
-    box-shadow: 0 0 0 1.5px var(--critique);
+    box-shadow: 0 0 0 1px var(--critique);
+  }
+
+  /* Segment label */
+  .segment-label {
+    font-size: 10px;
+    color: var(--texte-mention);
+    margin-bottom: 4px;
+    margin-top: 8px;
+    font-weight: 600;
   }
 
   /* Légende */
@@ -189,7 +192,6 @@
   .legend-puce { width: 12px; height: 12px; border-radius: 1px; }
   .legend-puce.majeur { background: var(--jalon-majeur); }
   .legend-puce.livrable { background: var(--jalon-livrable); }
-  .legend-puce.info { background: var(--jalon-info); }
   .legend-puce.critique { background: var(--bleu-france); border: 1px solid var(--critique); }
   .legend-puce.bar { background: var(--bleu-france); }
 
@@ -208,44 +210,20 @@
   }
   .upcoming-table th {
     background: var(--bleu-975);
-    padding: 10px 8px;
+    padding: 8px;
     text-align: center;
     font-weight: 600;
     color: var(--bleu-france);
     border-bottom: 1px solid var(--bordure);
-    vertical-align: middle;
-  }
-  .upcoming-table th:first-child {
-    text-align: center;
-  }
-  .upcoming-table th:nth-child(2) {
-    text-align: center;
-  }
-  .upcoming-table th:nth-child(3) {
-    text-align: center;
-  }
-  .upcoming-table th:nth-child(4) {
-    text-align: center;
-  }
-  .upcoming-table th:nth-child(5) {
-    text-align: center;
   }
   .upcoming-table td {
-    padding: 10px 8px;
+    padding: 8px;
     border-bottom: 1px solid var(--bordure);
     text-align: center;
-    vertical-align: middle;
-  }
-  .upcoming-table td:nth-child(2) {
-    text-align: left;
-  }
-  .upcoming-table td:nth-child(3) {
-    text-align: left;
   }
   .upcoming-table tr:nth-child(even) { background: var(--fond-alt); }
   .upcoming-table .majeur { color: var(--jalon-majeur); font-weight: 600; }
   .upcoming-table .livrable { color: var(--jalon-livrable); font-weight: 600; }
-  .upcoming-table .critique { color: var(--critique); font-weight: 600; }
 
   /* ========== IMPRESSION A4 ========== */
   @page {
@@ -302,6 +280,12 @@
 </div>
 
 <script>
+const STATUTS = {
+  "À faire": "#929292",
+  "En cours": "#0063CB",
+  "Terminé": "#18753C"
+};
+
 const norm = (s) => String(s||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").trim();
 
 function parseDate(v){
@@ -347,13 +331,29 @@ function getJalonTachesRequises(jalon){
   return raw.map(id => (typeof id === 'object' ? id : DB.taches.find(t => t.id === id))).filter(Boolean);
 }
 
-function getJalonAtteint(jalon){
+function getJalonStatut(jalon){
   const requises = getJalonTachesRequises(jalon);
+  
   if(requises.length > 0){
-    return requises.every(t => norm(resolveRef(DB.parametres, t.Statut, "Statut")) === norm("Terminé"));
+    const tachesTerminees = requises.filter(t => 
+      norm(resolveRef(DB.parametres, t.Statut, "Statut")) === norm("Terminé")
+    );
+    
+    if(tachesTerminees.length === requises.length){
+      return "Terminé";
+    } else if(tachesTerminees.length > 0){
+      return "En cours";
+    } else {
+      return "À faire";
+    }
   }
+  
   const d = parseDate(jalon.Date);
-  return d ? (Date.now() >= d.getTime()) : false;
+  if(d && Date.now() >= d.getTime()){
+    return "Terminé";
+  }
+  
+  return "À faire";
 }
 
 let DB = {};
@@ -431,6 +431,36 @@ function getMonthsBetween(d1, d2){
   return result;
 }
 
+function getProjectSegments(projMinDate, projMaxDate){
+  const segments = [];
+  const durationMs = projMaxDate - projMinDate;
+  const durationMonths = durationMs / (30.44 * 24 * 60 * 60 * 1000);
+  const numSegments = Math.ceil(durationMonths / 6);
+  
+  for(let i = 0; i < numSegments; i++){
+    const segStart = new Date(projMinDate);
+    segStart.setUTCMonth(segStart.getUTCMonth() + (i * 6));
+    
+    const segEnd = new Date(projMinDate);
+    segEnd.setUTCMonth(segEnd.getUTCMonth() + ((i + 1) * 6));
+    
+    if(segEnd > projMaxDate) segEnd.setTime(projMaxDate.getTime());
+    
+    const monthNames = ['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc'];
+    const segLabel = `${monthNames[segStart.getUTCMonth()]} ${segStart.getUTCFullYear()} - ${monthNames[segEnd.getUTCMonth()]} ${segEnd.getUTCFullYear()}`;
+    
+    segments.push({
+      index: i,
+      start: new Date(segStart),
+      end: new Date(segEnd),
+      label: segLabel,
+      months: getMonthsBetween(segStart, segEnd)
+    });
+  }
+  
+  return segments;
+}
+
 function construire(){
   const filtreProjet = document.getElementById("filtre-projet").value;
   const filtrePlage = document.getElementById("filtre-plage").value;
@@ -456,30 +486,13 @@ function construire(){
     const d = parseDate(j.Date);
     if(!d) return false;
     if(filtrePlage !== "all" && d > plageEnd) return false;
-    return true;
+    
+    // FILTRE : garder UNIQUEMENT Jalon majeur + Livrable
+    const typeTexte = getJalonTypeTexte(j);
+    const isValid = norm(typeTexte) === norm("Jalon majeur") || 
+                    norm(typeTexte) === norm("Livrable");
+    return isValid;
   });
-
-  let minDate = today, maxDate = new Date(today.getTime() + 7*52*24*60*60*1000);
-  
-  projets.forEach(p => {
-    const pJalons = jalonsVisibles.filter(j => refId(j.Projet) === p.id);
-    if(pJalons.length > 0){
-      pJalons.forEach(j => {
-        const d = parseDate(j.Date);
-        if(d < minDate) minDate = d;
-        if(d > maxDate) maxDate = d;
-      });
-    }
-    const pTaches = DB.taches.filter(t => refId(t.Projet) === p.id);
-    pTaches.forEach(t => {
-      const d1 = parseDate(t.Date_debut);
-      const d2 = parseDate(t.Date_fin);
-      if(d1 && d1 < minDate) minDate = d1;
-      if(d2 && d2 > maxDate) maxDate = d2;
-    });
-  });
-
-  const months = getMonthsBetween(minDate, maxDate);
 
   let html = `<div class="recap-container">`;
   
@@ -522,51 +535,55 @@ function construire(){
 
       html += `<div class="project-row">
         <div class="project-name">${proj.Projet}</div>
-        <div class="project-dates">${fmtDate(projMinDate)} → ${fmtDate(projMaxDate)}</div>
-        <div class="timeline-wrapper" style="width:100%;">`;
+        <div class="project-dates">${fmtDate(projMinDate)} → ${fmtDate(projMaxDate)}</div>`;
 
-      const projDurationMs = projMaxDate - projMinDate;
-      const totalDurationMs = maxDate - minDate;
-      const projStart = ((projMinDate - minDate) / totalDurationMs) * 100;
-      const projWidth = (projDurationMs / totalDurationMs) * 100;
+      const segments = getProjectSegments(projMinDate, projMaxDate);
 
-      html += `<div class="project-bar" style="left:${projStart}%; width:${projWidth}%;"></div>`;
+      segments.forEach(seg => {
+        const segDurationMs = seg.end - seg.start;
 
-      months.forEach(m => {
-        const mStart = new Date(m.year, m.month - 1, 1);
-        const mEnd = new Date(m.year, m.month, 1);
-        const mStartOffset = Math.max(0, (mStart - minDate) / totalDurationMs * 100);
-        const mWidth = ((mEnd - mStart) / totalDurationMs) * 100;
+        html += `<div class="segment-label">${seg.label}</div>`;
+        html += `<div class="timeline-wrapper" style="width:100%;">`;
 
-        html += `<div class="month-cell" style="left:${mStartOffset}%; width:${mWidth}%;">
-          <div class="month-bar"></div>
-          <div class="month-label">${['J','F','M','A','M','J','J','A','S','O','N','D'][m.month-1]} ${m.year % 100}</div>
-        </div>`;
-      });
+        html += `<div class="project-bar" style="left:0%; width:100%;"></div>`;
 
-      pJalons.forEach(j => {
-        const jDate = parseDate(j.Date);
-        if(!jDate) return;
-        const jOffset = ((jDate - minDate) / totalDurationMs) * 100;
-        const typeTexte = getJalonTypeTexte(j);
-        const jalonType = norm(typeTexte) === norm("Jalon majeur") ? "majeur" : 
-                          norm(typeTexte) === norm("Livrable") ? "livrable" : "info";
-        
-        const title = `${j.Nom} (${typeTexte}) — ${fmtDate(jDate)}`;
-        html += `<div class="jalon-marker ${jalonType}" style="left:${jOffset}%;" title="${title}"></div>`;
-      });
+        seg.months.forEach(m => {
+          const mStart = new Date(m.year, m.month - 1, 1);
+          const mEnd = new Date(m.year, m.month, 1);
+          const mWidth = ((mEnd - mStart) / segDurationMs) * 100;
 
-      if(showCritical){
-        pTaches.filter(t => t.Est_critique === true).forEach(t => {
-          const tDate = parseDate(t.Date_debut);
-          if(!tDate) return;
-          const tOffset = ((tDate - minDate) / totalDurationMs) * 100;
-          const title = `[CRITIQUE] ${t.Tache}`;
-          html += `<div class="jalon-marker critique" style="left:${tOffset}%; top: 40px;" title="${title}"></div>`;
+          html += `<div class="month-cell" style="width:${mWidth}%;">
+            <div class="month-bar"></div>
+            <div class="month-label">${['J','F','M','A','M','J','J','A','S','O','N','D'][m.month-1]} ${m.year % 100}</div>
+          </div>`;
         });
-      }
 
-      html += `</div></div>`;
+        pJalons.forEach(j => {
+          const jDate = parseDate(j.Date);
+          if(!jDate || jDate < seg.start || jDate > seg.end) return;
+          
+          const jOffset = ((jDate - seg.start) / segDurationMs) * 100;
+          const typeTexte = getJalonTypeTexte(j);
+          const jalonType = norm(typeTexte) === norm("Jalon majeur") ? "majeur" : "livrable";
+          
+          const title = `${j.Nom} (${typeTexte}) — ${fmtDate(jDate)}`;
+          html += `<div class="jalon-marker ${jalonType}" style="left:${jOffset}%;" title="${title}"></div>`;
+        });
+
+        if(showCritical){
+          pTaches.filter(t => t.Est_critique === true).forEach(t => {
+            const tDate = parseDate(t.Date_debut);
+            if(!tDate || tDate < seg.start || tDate > seg.end) return;
+            const tOffset = ((tDate - seg.start) / segDurationMs) * 100;
+            const title = `[CRITIQUE] ${t.Tache}`;
+            html += `<div class="jalon-marker critique" style="left:${tOffset}%; top: 42px;" title="${title}"></div>`;
+          });
+        }
+
+        html += `</div>`;
+      });
+
+      html += `</div>`;
     });
   }
 
@@ -578,10 +595,6 @@ function construire(){
     <div class="legend-item">
       <div class="legend-puce livrable"></div>
       <span>Livrable</span>
-    </div>
-    <div class="legend-item">
-      <div class="legend-puce info"></div>
-      <span>Pour information</span>
     </div>
     ${showCritical ? `<div class="legend-item">
       <div class="legend-puce critique"></div>
@@ -616,9 +629,9 @@ function construire(){
 
     allUpcoming.forEach(j => {
       const typeTexte = getJalonTypeTexte(j);
-      const typeClass = norm(typeTexte) === norm("Jalon majeur") ? "majeur" : 
-                        norm(typeTexte) === norm("Livrable") ? "livrable" : "";
-      const atteint = getJalonAtteint(j);
+      const typeClass = norm(typeTexte) === norm("Jalon majeur") ? "majeur" : "livrable";
+      const statut = getJalonStatut(j);
+      const couleur = STATUTS[statut];
       const proj = DB.projets.find(p => p.id === refId(j.Projet));
 
       html += `<tr>
@@ -626,7 +639,7 @@ function construire(){
         <td>${j.Nom}</td>
         <td>${proj ? proj.Projet : "—"}</td>
         <td class="${typeClass}">${typeTexte || "—"}</td>
-        <td>${atteint ? "✓ Atteint" : "○ En cours"}</td>
+        <td style="color: ${couleur}; font-weight: 600;">● ${statut}</td>
       </tr>`;
     });
 
