@@ -107,16 +107,22 @@
 
   /* Timeline par mois */
   .timeline-wrapper {
-    display: flex;
-    gap: 0;
-    align-items: flex-end;
-    height: 60px;
     position: relative;
-    margin-bottom: 8px;
+    height: 70px;
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      transparent calc(100% - 1px),
+      var(--bordure) calc(100% - 1px)
+    );
+    margin-bottom: 12px;
+    margin-top: 4px;
   }
 
   .month-cell {
-    flex: 1;
+    position: absolute;
+    top: 0;
+    height: 100%;
     border-right: 1px solid var(--bordure);
     display: flex;
     flex-direction: column;
@@ -125,46 +131,48 @@
     padding: 4px 2px;
     font-size: 9px;
     color: var(--texte-mention);
-    min-width: 30px;
-    position: relative;
+    min-width: 60px;
   }
-  .month-label { margin-top: auto; order: 2; }
+  .month-label { 
+    margin-top: auto; 
+    margin-bottom: 4px;
+    font-weight: 500;
+  }
   .month-bar {
     width: 100%;
     height: 8px;
     background: #e0e0e0;
     margin-bottom: 4px;
-    order: 1;
   }
 
   /* Barre projet (durée) */
   .project-bar {
     position: absolute;
-    height: 12px;
+    height: 10px;
     background: var(--bleu-france);
     border-radius: 2px;
-    top: 20px;
+    top: 28px;
   }
 
   /* Jalons (losanges) */
   .jalon-marker {
     position: absolute;
-    width: 12px;
-    height: 12px;
-    margin-left: -6px;
+    width: 14px;
+    height: 14px;
+    margin-left: -7px;
     transform: rotate(45deg);
     border: 2px solid #fff;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.25);
     cursor: pointer;
-    top: 18px;
+    top: 22px;
   }
-  .jalon-marker:hover { filter: brightness(0.9); }
+  .jalon-marker:hover { filter: brightness(0.9); transform: rotate(45deg) scale(1.15); transition: transform 0.15s; }
   .jalon-marker.majeur { background: var(--jalon-majeur); }
   .jalon-marker.livrable { background: var(--jalon-livrable); }
   .jalon-marker.info { background: var(--jalon-info); }
   .jalon-marker.critique { 
     border: 2px solid #fff;
-    box-shadow: 0 0 0 1px var(--critique);
+    box-shadow: 0 0 0 1.5px var(--critique);
   }
 
   /* Légende */
@@ -200,15 +208,39 @@
   }
   .upcoming-table th {
     background: var(--bleu-975);
-    padding: 8px;
-    text-align: left;
+    padding: 10px 8px;
+    text-align: center;
     font-weight: 600;
     color: var(--bleu-france);
     border-bottom: 1px solid var(--bordure);
+    vertical-align: middle;
+  }
+  .upcoming-table th:first-child {
+    text-align: center;
+  }
+  .upcoming-table th:nth-child(2) {
+    text-align: center;
+  }
+  .upcoming-table th:nth-child(3) {
+    text-align: center;
+  }
+  .upcoming-table th:nth-child(4) {
+    text-align: center;
+  }
+  .upcoming-table th:nth-child(5) {
+    text-align: center;
   }
   .upcoming-table td {
-    padding: 8px;
+    padding: 10px 8px;
     border-bottom: 1px solid var(--bordure);
+    text-align: center;
+    vertical-align: middle;
+  }
+  .upcoming-table td:nth-child(2) {
+    text-align: left;
+  }
+  .upcoming-table td:nth-child(3) {
+    text-align: left;
   }
   .upcoming-table tr:nth-child(even) { background: var(--fond-alt); }
   .upcoming-table .majeur { color: var(--jalon-majeur); font-weight: 600; }
@@ -325,7 +357,6 @@ function getJalonAtteint(jalon){
 }
 
 let DB = {};
-let PERT_DATA = {};
 
 grist.ready({requiredAccess:"full"});
 
@@ -355,7 +386,6 @@ async function init(){
     DB.parametres = columnarToRows(await grist.docApi.fetchTable("PARAMETRES"));
     DB.porteurs = columnarToRows(await grist.docApi.fetchTable("Porteurs"));
 
-    // Charger PERT si disponible
     const jalonSelectEl = document.getElementById("filtre-projet");
     jalonSelectEl.innerHTML = '<option value="">Tous</option>';
     DB.projets.forEach(p => {
@@ -376,14 +406,13 @@ async function init(){
 }
 
 function getMonthsBetween(d1, d2){
-  // Retourne un array d'objets {year, month, index} pour chaque mois entre d1 et d2
   const result = [];
   const start = new Date(d1);
-  start.setUTCDate(1); // Début du mois
+  start.setUTCDate(1);
   
   const end = new Date(d2);
-  end.setUTCDate(1); // Début du mois
-  end.setUTCMonth(end.getUTCMonth() + 1); // + 1 mois pour inclure
+  end.setUTCDate(1);
+  end.setUTCMonth(end.getUTCMonth() + 1);
   
   let current = new Date(start);
   let index = 0;
@@ -407,13 +436,11 @@ function construire(){
   const filtrePlage = document.getElementById("filtre-plage").value;
   const showCritical = document.getElementById("show-critical").checked;
 
-  // Filtrer projets
   let projets = DB.projets;
   if(filtreProjet){
     projets = projets.filter(p => p.id === parseInt(filtreProjet));
   }
 
-  // Filtrer jalons par plage
   let today = new Date();
   let plageEnd = new Date();
   
@@ -432,8 +459,7 @@ function construire(){
     return true;
   });
 
-  // Calcul plage dates globale
-  let minDate = today, maxDate = new Date(today.getTime() + 7*52*24*60*60*1000); // 1 an par défaut
+  let minDate = today, maxDate = new Date(today.getTime() + 7*52*24*60*60*1000);
   
   projets.forEach(p => {
     const pJalons = jalonsVisibles.filter(j => refId(j.Projet) === p.id);
@@ -444,7 +470,6 @@ function construire(){
         if(d > maxDate) maxDate = d;
       });
     }
-    // Aussi inclure tâches du projet
     const pTaches = DB.taches.filter(t => refId(t.Projet) === p.id);
     pTaches.forEach(t => {
       const d1 = parseDate(t.Date_debut);
@@ -456,16 +481,13 @@ function construire(){
 
   const months = getMonthsBetween(minDate, maxDate);
 
-  // Construire HTML
   let html = `<div class="recap-container">`;
   
-  // Header
   html += `<div class="recap-header">
     <h2>Récap des échéances</h2>
     <div class="date-gen">Généré le ${new Date().toLocaleDateString('fr-FR')}</div>
   </div>`;
 
-  // Projets
   if(projets.length === 0){
     html += `<div class="empty-state">Aucun projet à afficher</div>`;
   } else {
@@ -496,14 +518,13 @@ function construire(){
         });
       }
 
-      if(!projMinDate || !projMaxDate) return; // Skip si aucune date
+      if(!projMinDate || !projMaxDate) return;
 
       html += `<div class="project-row">
         <div class="project-name">${proj.Projet}</div>
         <div class="project-dates">${fmtDate(projMinDate)} → ${fmtDate(projMaxDate)}</div>
         <div class="timeline-wrapper" style="width:100%;">`;
 
-      // Dessiner barre projet
       const projDurationMs = projMaxDate - projMinDate;
       const totalDurationMs = maxDate - minDate;
       const projStart = ((projMinDate - minDate) / totalDurationMs) * 100;
@@ -511,7 +532,6 @@ function construire(){
 
       html += `<div class="project-bar" style="left:${projStart}%; width:${projWidth}%;"></div>`;
 
-      // Dessiner mois
       months.forEach(m => {
         const mStart = new Date(m.year, m.month - 1, 1);
         const mEnd = new Date(m.year, m.month, 1);
@@ -524,7 +544,6 @@ function construire(){
         </div>`;
       });
 
-      // Jalons du projet
       pJalons.forEach(j => {
         const jDate = parseDate(j.Date);
         if(!jDate) return;
@@ -533,24 +552,17 @@ function construire(){
         const jalonType = norm(typeTexte) === norm("Jalon majeur") ? "majeur" : 
                           norm(typeTexte) === norm("Livrable") ? "livrable" : "info";
         
-        const jalonAtteint = getJalonAtteint(j);
         const title = `${j.Nom} (${typeTexte}) — ${fmtDate(jDate)}`;
-
-        html += `<div class="jalon-marker ${jalonType}" 
-                     style="left:${jOffset}%;" 
-                     title="${title}"></div>`;
+        html += `<div class="jalon-marker ${jalonType}" style="left:${jOffset}%;" title="${title}"></div>`;
       });
 
-      // Tâches critiques (si option activée)
       if(showCritical){
         pTaches.filter(t => t.Est_critique === true).forEach(t => {
           const tDate = parseDate(t.Date_debut);
           if(!tDate) return;
           const tOffset = ((tDate - minDate) / totalDurationMs) * 100;
           const title = `[CRITIQUE] ${t.Tache}`;
-          html += `<div class="jalon-marker critique" 
-                       style="left:${tOffset}%; top: 42px;" 
-                       title="${title}"></div>`;
+          html += `<div class="jalon-marker critique" style="left:${tOffset}%; top: 40px;" title="${title}"></div>`;
         });
       }
 
@@ -558,7 +570,6 @@ function construire(){
     });
   }
 
-  // Légende
   html += `<div class="legend">
     <div class="legend-item">
       <div class="legend-puce majeur"></div>
@@ -582,7 +593,6 @@ function construire(){
     </div>
   </div>`;
 
-  // Tableau échéances
   const allUpcoming = jalonsVisibles.sort((a, b) => {
     const dA = parseDate(a.Date);
     const dB = parseDate(b.Date);
@@ -628,7 +638,6 @@ function construire(){
   document.getElementById("content").innerHTML = html;
 }
 
-// Event listeners
 document.getElementById("btn-print").addEventListener("click", () => window.print());
 document.getElementById("filtre-projet").addEventListener("change", construire);
 document.getElementById("filtre-plage").addEventListener("change", construire);
