@@ -168,6 +168,29 @@
     border: 2px solid #fff;
     box-shadow: 0 0 0 1px var(--critique);
   }
+  .jalon-marker.info { background: #6B6B6B; }
+
+  /* Labels de jalons */
+  .jalon-label {
+    position: absolute;
+    font-size: 9px;
+    font-weight: 600;
+    color: var(--texte);
+    white-space: nowrap;
+    transform: translateX(-50%);
+    pointer-events: none;
+    max-width: 70px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .jalon-label.haut {
+    bottom: 34px;
+  }
+
+  .jalon-label.bas {
+    top: 34px;
+  }
 
   /* Segment label */
   .segment-label {
@@ -431,6 +454,31 @@ function getMonthsBetween(d1, d2){
   return result;
 }
 
+function detectJalonOverlaps(jalons, segDurationMs, containerWidth){
+  if(jalons.length === 0) return [];
+  
+  const positions = jalons.map(j => ({
+    ...j,
+    percentX: ((j.jDate - j.segStart) / segDurationMs) * 100,
+    pixelX: (((j.jDate - j.segStart) / segDurationMs) * 100 / 100) * containerWidth
+  }));
+  
+  const threshold = 70; // pixels min entre deux jalons pour éviter chevauchement
+  
+  positions.forEach((pos, i) => {
+    pos.verticalPos = "haut";
+    
+    if(i > 0){
+      const prev = positions[i-1];
+      if(Math.abs(pos.pixelX - prev.pixelX) < threshold){
+        pos.verticalPos = prev.verticalPos === "haut" ? "bas" : "haut";
+      }
+    }
+  });
+  
+  return positions;
+}
+
 function getProjectSegments(projMinDate, projMaxDate){
   const segments = [];
   const durationMs = projMaxDate - projMinDate;
@@ -486,12 +534,7 @@ function construire(){
     const d = parseDate(j.Date);
     if(!d) return false;
     if(filtrePlage !== "all" && d > plageEnd) return false;
-    
-    // FILTRE : garder UNIQUEMENT Jalon majeur + Livrable
-    const typeTexte = getJalonTypeTexte(j);
-    const isValid = norm(typeTexte) === norm("Jalon majeur") || 
-                    norm(typeTexte) === norm("Livrable");
-    return isValid;
+    return true;
   });
 
   let html = `<div class="recap-container">`;
@@ -558,16 +601,35 @@ function construire(){
           </div>`;
         });
 
+        // Préparer jalons du segment
+        const segJalons = [];
         pJalons.forEach(j => {
           const jDate = parseDate(j.Date);
           if(!jDate || jDate < seg.start || jDate > seg.end) return;
           
-          const jOffset = ((jDate - seg.start) / segDurationMs) * 100;
           const typeTexte = getJalonTypeTexte(j);
-          const jalonType = norm(typeTexte) === norm("Jalon majeur") ? "majeur" : "livrable";
+          const jalonType = norm(typeTexte) === norm("Jalon majeur") ? "majeur" : 
+                            norm(typeTexte) === norm("Livrable") ? "livrable" : "info";
           
-          const title = `${j.Nom} (${typeTexte}) — ${fmtDate(jDate)}`;
-          html += `<div class="jalon-marker ${jalonType}" style="left:${jOffset}%;" title="${title}"></div>`;
+          segJalons.push({
+            jalon: j,
+            jDate: jDate,
+            segStart: seg.start,
+            jalonType: jalonType,
+            typeTexte: typeTexte
+          });
+        });
+
+        // Détecter chevauchements et assigner positions haut/bas
+        const jalonWithPos = detectJalonOverlaps(segJalons, segDurationMs, 600);
+
+        // Afficher losanges + labels
+        jalonWithPos.forEach(jPos => {
+          const jOffset = ((jPos.jDate - seg.start) / segDurationMs) * 100;
+          const title = `${jPos.jalon.Nom} (${jPos.typeTexte}) — ${fmtDate(jPos.jDate)}`;
+          
+          html += `<div class="jalon-marker ${jPos.jalonType}" style="left:${jOffset}%;" title="${title}"></div>`;
+          html += `<div class="jalon-label ${jPos.verticalPos}" style="left:${jOffset}%;">${jPos.jalon.Nom}</div>`;
         });
 
         if(showCritical){
@@ -596,6 +658,10 @@ function construire(){
       <div class="legend-puce livrable"></div>
       <span>Livrable</span>
     </div>
+    <div class="legend-item">
+      <div style="width: 12px; height: 12px; border-radius: 1px; background: #6B6B6B;"></div>
+      <span>Pour information</span>
+    </div>
     ${showCritical ? `<div class="legend-item">
       <div class="legend-puce critique"></div>
       <span>Tâche critique</span>
@@ -606,6 +672,52 @@ function construire(){
     </div>
   </div>`;
 
+  // Tableau des TÂCHES
+  const tachesToDisplay = projets.flatMap(proj => {
+    const projTaches = DB.taches.filter(t => refId(t.Projet) === proj.id);
+    return projTaches.map(t => ({...t, nomProjet: proj.Projet}));
+  }).sort((a, b) => {
+    const dA = parseDate(a.Date_fin);
+    const dB = parseDate(b.Date_fin);
+    if(!dA) return 1;
+    if(!dB) return -1;
+    return dA - dB;
+  });
+
+  if(tachesToDisplay.length > 0){
+    html += `<div class="upcoming-section">
+      <h3>Tâches à suivre</h3>
+      <table class="upcoming-table">
+        <thead>
+          <tr>
+            <th>Fin prévue</th>
+            <th>Tâche</th>
+            <th>Projet</th>
+            <th>Porteur</th>
+            <th>Statut</th>
+          </tr>
+        </thead>
+        <tbody>`;
+
+    tachesToDisplay.forEach(t => {
+      const statut = resolveRef(DB.parametres, t.Statut, "Statut") || "—";
+      const couleur = STATUTS[statut] || "#666666";
+      const porteur = resolveRef(DB.porteurs, t.Porteur, "Nom") || "—";
+      const dateFin = fmtDate(t.Date_fin);
+
+      html += `<tr>
+        <td>${dateFin}</td>
+        <td>${t.Tache || "—"}</td>
+        <td>${t.nomProjet || "—"}</td>
+        <td>${porteur}</td>
+        <td style="color: ${couleur}; font-weight: 600;">● ${statut}</td>
+      </tr>`;
+    });
+
+    html += `</tbody></table></div>`;
+  }
+
+  // Tableau des JALONS
   const allUpcoming = jalonsVisibles.sort((a, b) => {
     const dA = parseDate(a.Date);
     const dB = parseDate(b.Date);
@@ -614,7 +726,7 @@ function construire(){
 
   if(allUpcoming.length > 0){
     html += `<div class="upcoming-section">
-      <h3>Prochaines échéances</h3>
+      <h3>Jalons</h3>
       <table class="upcoming-table">
         <thead>
           <tr>
@@ -629,7 +741,8 @@ function construire(){
 
     allUpcoming.forEach(j => {
       const typeTexte = getJalonTypeTexte(j);
-      const typeClass = norm(typeTexte) === norm("Jalon majeur") ? "majeur" : "livrable";
+      const typeClass = norm(typeTexte) === norm("Jalon majeur") ? "majeur" : 
+                        norm(typeTexte) === norm("Livrable") ? "livrable" : "";
       const statut = getJalonStatut(j);
       const couleur = STATUTS[statut];
       const proj = DB.projets.find(p => p.id === refId(j.Projet));
