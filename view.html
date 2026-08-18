@@ -174,20 +174,29 @@
   }
   .jalon-marker.info { background: #6B6B6B; }
 
-  /* Labels de jalons — empilement multi-niveaux (comme le Gantt) */
+  /* Labels de jalons — empilement multi-niveaux (comme le Gantt), nom + date */
   .jalon-label {
     position: absolute;
-    font-size: 9px;
-    font-weight: 600;
-    color: var(--texte);
-    white-space: nowrap;
+    text-align: center;
     transform: translateX(-50%);
     pointer-events: none;
     background: rgba(255,255,255,0.9);
     padding: 1px 4px;
     border-radius: 2px;
     z-index: 2;
-    line-height: 1.3;
+    white-space: nowrap;
+  }
+  .jalon-label .jalon-label-nom {
+    font-size: 9px;
+    font-weight: 700;
+    color: var(--texte);
+    line-height: 1.2;
+  }
+  .jalon-label .jalon-label-date {
+    font-size: 8px;
+    font-weight: 500;
+    color: var(--texte-mention);
+    line-height: 1.2;
   }
 
   /* Segment label */
@@ -290,6 +299,18 @@
       <input type="checkbox" id="show-critical" checked>
       Mettre en avant tâches critiques
     </label>
+
+    <span style="border-left: 1px solid var(--bordure); padding-left: 12px; margin-left: 4px; display: flex; gap: 10px; align-items: center;">
+      <label style="display:flex; align-items:center; gap:4px;">
+        <input type="checkbox" id="filtre-jalon-majeur" checked> Jalon majeur
+      </label>
+      <label style="display:flex; align-items:center; gap:4px;">
+        <input type="checkbox" id="filtre-jalon-livrable" checked> Livrable
+      </label>
+      <label style="display:flex; align-items:center; gap:4px;">
+        <input type="checkbox" id="filtre-jalon-info" checked> Pour information
+      </label>
+    </span>
 
     <span id="status"></span>
   </div>
@@ -454,27 +475,32 @@ function getMonthsBetween(d1, d2){
 
 // Mesure précise de la largeur d'un texte avec la police réelle du widget
 let _canvasCtx = null;
-function mesurerLargeurTexte(texte){
+function mesurerLargeurTexte(texte, font){
   if(!_canvasCtx){
     const canvas = document.createElement("canvas");
     _canvasCtx = canvas.getContext("2d");
-    _canvasCtx.font = '700 9px "Marianne", -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif';
   }
+  _canvasCtx.font = font || '700 9px "Marianne", -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif';
   return _canvasCtx.measureText(texte).width;
 }
 
+const FONT_JALON_NOM = '700 9px "Marianne", -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif';
+const FONT_JALON_DATE = '500 8px "Marianne", -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif';
+
 const JALON_LABEL_MARGE = 8;   // px marge minimale entre deux labels adjacents
-const JALON_LEVEL_HEIGHT = 14; // px par niveau d'empilement
+const JALON_LEVEL_HEIGHT = 28; // px par niveau d'empilement (nom + date sur 2 lignes)
 const JALON_BASE_GAP = 6;      // px entre la barre projet et le premier niveau
 const MONTHS_AREA_HEIGHT = 30; // px hauteur zone mois
 const BAR_HEIGHT = 12;         // px hauteur barre projet
 
 // Empile les jalons sur autant de niveaux que nécessaire pour éviter tout chevauchement de texte
-// (même logique que le Gantt : calculerNiveauxJalons)
+// (même logique que le Gantt : calculerNiveauxJalons). Prend en compte nom ET date (2 lignes).
 function calculerNiveauxJalons(jalonsAvecPixelX){
   const finOccupeeParNiveau = [];
   jalonsAvecPixelX.forEach(item => {
-    const largeurTexte = mesurerLargeurTexte(item.jalon.Nom);
+    const largeurNom = mesurerLargeurTexte(item.jalon.Nom, FONT_JALON_NOM);
+    const largeurDate = mesurerLargeurTexte(item.dateStr, FONT_JALON_DATE);
+    const largeurTexte = Math.max(largeurNom, largeurDate);
     const demiLargeur = largeurTexte / 2;
     const xDebut = item.pixelX - demiLargeur;
     const xFin = item.pixelX + demiLargeur;
@@ -522,6 +548,9 @@ function construire(){
   const filtreProjet = document.getElementById("filtre-projet").value;
   const filtrePlage = document.getElementById("filtre-plage").value;
   const showCritical = document.getElementById("show-critical").checked;
+  const showMajeur = document.getElementById("filtre-jalon-majeur").checked;
+  const showLivrable = document.getElementById("filtre-jalon-livrable").checked;
+  const showInfo = document.getElementById("filtre-jalon-info").checked;
 
   let projets = DB.projets;
   if(filtreProjet){
@@ -543,6 +572,17 @@ function construire(){
     const d = parseDate(j.Date);
     if(!d) return false;
     if(filtrePlage !== "all" && d > plageEnd) return false;
+
+    // Filtre par type de jalon (checkboxes)
+    const typeTexte = getJalonTypeTexte(j);
+    const isMajeur = norm(typeTexte) === norm("Jalon majeur");
+    const isLivrable = norm(typeTexte) === norm("Livrable");
+    const isInfo = !isMajeur && !isLivrable; // "Pour information" ou type non renseigné
+
+    if(isMajeur && !showMajeur) return false;
+    if(isLivrable && !showLivrable) return false;
+    if(isInfo && !showInfo) return false;
+
     return true;
   });
 
@@ -612,7 +652,8 @@ function construire(){
             jalonType: jalonType,
             typeTexte: typeTexte,
             percentX: percentX,
-            pixelX: (percentX / 100) * estimatedWidth
+            pixelX: (percentX / 100) * estimatedWidth,
+            dateStr: fmtDate(jDate)
           });
         });
 
@@ -642,11 +683,14 @@ function construire(){
 
         // Afficher losanges + labels empilés (TOUS les jalons, aucune perte)
         segJalons.forEach(jPos => {
-          const title = `${jPos.jalon.Nom} (${jPos.typeTexte}) — ${fmtDate(jPos.jDate)}`;
+          const title = `${jPos.jalon.Nom} (${jPos.typeTexte}) — ${jPos.dateStr}`;
           const bottomPx = MONTHS_AREA_HEIGHT + BAR_HEIGHT + JALON_BASE_GAP + (jPos.niveau * JALON_LEVEL_HEIGHT);
           
           html += `<div class="jalon-marker ${jPos.jalonType}" style="left:${jPos.percentX}%;" title="${title}"></div>`;
-          html += `<div class="jalon-label" style="left:${jPos.percentX}%; bottom:${bottomPx}px;">${jPos.jalon.Nom}</div>`;
+          html += `<div class="jalon-label" style="left:${jPos.percentX}%; bottom:${bottomPx}px;">
+            <div class="jalon-label-nom">${jPos.jalon.Nom}</div>
+            <div class="jalon-label-date">${jPos.dateStr}</div>
+          </div>`;
         });
 
         if(showCritical){
@@ -785,6 +829,9 @@ document.getElementById("btn-print").addEventListener("click", () => window.prin
 document.getElementById("filtre-projet").addEventListener("change", construire);
 document.getElementById("filtre-plage").addEventListener("change", construire);
 document.getElementById("show-critical").addEventListener("change", construire);
+document.getElementById("filtre-jalon-majeur").addEventListener("change", construire);
+document.getElementById("filtre-jalon-livrable").addEventListener("change", construire);
+document.getElementById("filtre-jalon-info").addEventListener("change", construire);
 
 grist.onRecords(() => init());
 init();
