@@ -109,13 +109,18 @@
 
   /* Timeline par mois */
   .timeline-wrapper {
-    display: flex;
-    gap: 0;
-    align-items: flex-end;
-    height: 60px;
     position: relative;
-    margin-bottom: 8px;
     width: 100%;
+    margin-bottom: 8px;
+  }
+
+  .timeline-months {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 30px;
+    display: flex;
   }
 
   .month-cell {
@@ -129,7 +134,6 @@
     font-size: 9px;
     color: var(--texte-mention);
     min-width: 30px;
-    position: relative;
   }
   .month-label { margin-top: auto; order: 2; }
   .month-bar {
@@ -143,15 +147,16 @@
   /* Barre projet (durée) */
   .project-bar {
     position: absolute;
+    bottom: 30px;
     height: 12px;
     background: var(--bleu-france);
     border-radius: 2px;
-    top: 20px;
   }
 
   /* Jalons (losanges) */
   .jalon-marker {
     position: absolute;
+    bottom: 30px;
     width: 12px;
     height: 12px;
     margin-left: -6px;
@@ -159,7 +164,6 @@
     border: 2px solid #fff;
     box-shadow: 0 1px 2px rgba(0,0,0,0.2);
     cursor: pointer;
-    top: 18px;
   }
   .jalon-marker:hover { filter: brightness(0.9); }
   .jalon-marker.majeur { background: var(--jalon-majeur); }
@@ -170,7 +174,7 @@
   }
   .jalon-marker.info { background: #6B6B6B; }
 
-  /* Labels de jalons */
+  /* Labels de jalons — empilement multi-niveaux (comme le Gantt) */
   .jalon-label {
     position: absolute;
     font-size: 9px;
@@ -179,21 +183,11 @@
     white-space: nowrap;
     transform: translateX(-50%);
     pointer-events: none;
-    max-width: 100px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    background: rgba(255,255,255,0.85);
-    padding: 2px 4px;
+    background: rgba(255,255,255,0.9);
+    padding: 1px 4px;
     border-radius: 2px;
     z-index: 2;
-  }
-
-  .jalon-label.haut {
-    bottom: 36px;
-  }
-
-  .jalon-label.bas {
-    top: 36px;
+    line-height: 1.3;
   }
 
   /* Segment label */
@@ -458,39 +452,40 @@ function getMonthsBetween(d1, d2){
   return result;
 }
 
-function detectJalonOverlaps(jalons, segDurationMs, containerWidth){
-  if(jalons.length === 0) return [];
-  
-  const positions = jalons.map(j => ({
-    ...j,
-    percentX: ((j.jDate - j.segStart) / segDurationMs) * 100,
-    pixelX: (((j.jDate - j.segStart) / segDurationMs) * containerWidth)
-  }));
-  
-  // Trier par position X pour détection correcte
-  positions.sort((a, b) => a.pixelX - b.pixelX);
-  
-  const threshold = 80; // pixels min entre deux jalons
-  
-  // Assigner positions haut/bas en alternance intelligente
-  positions.forEach((pos, i) => {
-    if(i === 0){
-      pos.verticalPos = "haut";
-    } else {
-      const prev = positions[i-1];
-      const distance = Math.abs(pos.pixelX - prev.pixelX);
-      
-      if(distance < threshold){
-        // Collision : inverser la position du précédent
-        pos.verticalPos = prev.verticalPos === "haut" ? "bas" : "haut";
-      } else {
-        // Pas de collision : revenir au défaut (haut)
-        pos.verticalPos = "haut";
-      }
+// Mesure précise de la largeur d'un texte avec la police réelle du widget
+let _canvasCtx = null;
+function mesurerLargeurTexte(texte){
+  if(!_canvasCtx){
+    const canvas = document.createElement("canvas");
+    _canvasCtx = canvas.getContext("2d");
+    _canvasCtx.font = '700 9px "Marianne", -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif';
+  }
+  return _canvasCtx.measureText(texte).width;
+}
+
+const JALON_LABEL_MARGE = 8;   // px marge minimale entre deux labels adjacents
+const JALON_LEVEL_HEIGHT = 14; // px par niveau d'empilement
+const JALON_BASE_GAP = 6;      // px entre la barre projet et le premier niveau
+const MONTHS_AREA_HEIGHT = 30; // px hauteur zone mois
+const BAR_HEIGHT = 12;         // px hauteur barre projet
+
+// Empile les jalons sur autant de niveaux que nécessaire pour éviter tout chevauchement de texte
+// (même logique que le Gantt : calculerNiveauxJalons)
+function calculerNiveauxJalons(jalonsAvecPixelX){
+  const finOccupeeParNiveau = [];
+  jalonsAvecPixelX.forEach(item => {
+    const largeurTexte = mesurerLargeurTexte(item.jalon.Nom);
+    const demiLargeur = largeurTexte / 2;
+    const xDebut = item.pixelX - demiLargeur;
+    const xFin = item.pixelX + demiLargeur;
+    let niveau = 0;
+    while(finOccupeeParNiveau[niveau] !== undefined && xDebut < finOccupeeParNiveau[niveau] + JALON_LABEL_MARGE){
+      niveau++;
     }
+    finOccupeeParNiveau[niveau] = xFin;
+    item.niveau = niveau;
   });
-  
-  return positions;
+  return finOccupeeParNiveau.length || 1;
 }
 
 function getProjectSegments(projMinDate, projMaxDate){
@@ -599,11 +594,40 @@ function construire(){
       segments.forEach(seg => {
         const segDurationMs = seg.end - seg.start;
 
+        // Préparer jalons du segment + position pixel réelle
+        const estimatedWidth = Math.min(window.innerWidth * 0.85, 1000);
+        const segJalons = [];
+        pJalons.forEach(j => {
+          const jDate = parseDate(j.Date);
+          if(!jDate || jDate < seg.start || jDate > seg.end) return;
+          
+          const typeTexte = getJalonTypeTexte(j);
+          const jalonType = norm(typeTexte) === norm("Jalon majeur") ? "majeur" : 
+                            norm(typeTexte) === norm("Livrable") ? "livrable" : "info";
+          const percentX = ((jDate - seg.start) / segDurationMs) * 100;
+          
+          segJalons.push({
+            jalon: j,
+            jDate: jDate,
+            jalonType: jalonType,
+            typeTexte: typeTexte,
+            percentX: percentX,
+            pixelX: (percentX / 100) * estimatedWidth
+          });
+        });
+
+        // Trier par position X puis empiler sur niveaux pour éviter tout chevauchement
+        segJalons.sort((a, b) => a.pixelX - b.pixelX);
+        const nbNiveaux = calculerNiveauxJalons(segJalons);
+
+        const timelineHeight = MONTHS_AREA_HEIGHT + BAR_HEIGHT + JALON_BASE_GAP + (nbNiveaux * JALON_LEVEL_HEIGHT) + 8;
+
         html += `<div class="segment-label">${seg.label}</div>`;
-        html += `<div class="timeline-wrapper" style="width:100%;">`;
+        html += `<div class="timeline-wrapper" style="height:${timelineHeight}px;">`;
 
         html += `<div class="project-bar" style="left:0%; width:100%;"></div>`;
 
+        html += `<div class="timeline-months">`;
         seg.months.forEach(m => {
           const mStart = new Date(m.year, m.month - 1, 1);
           const mEnd = new Date(m.year, m.month, 1);
@@ -614,37 +638,15 @@ function construire(){
             <div class="month-label">${['J','F','M','A','M','J','J','A','S','O','N','D'][m.month-1]} ${m.year % 100}</div>
           </div>`;
         });
+        html += `</div>`;
 
-        // Préparer jalons du segment
-        const segJalons = [];
-        pJalons.forEach(j => {
-          const jDate = parseDate(j.Date);
-          if(!jDate || jDate < seg.start || jDate > seg.end) return;
-          
-          const typeTexte = getJalonTypeTexte(j);
-          const jalonType = norm(typeTexte) === norm("Jalon majeur") ? "majeur" : 
-                            norm(typeTexte) === norm("Livrable") ? "livrable" : "info";
-          
-          segJalons.push({
-            jalon: j,
-            jDate: jDate,
-            segStart: seg.start,
-            jalonType: jalonType,
-            typeTexte: typeTexte
-          });
-        });
-
-        // Détecter chevauchements avec largeur estimée réelle
-        const estimatedWidth = Math.min(window.innerWidth * 0.85, 1000);
-        const jalonWithPos = detectJalonOverlaps(segJalons, segDurationMs, estimatedWidth);
-
-        // Afficher losanges + labels TOUS les jalons
-        jalonWithPos.forEach(jPos => {
-          const jOffset = ((jPos.jDate - seg.start) / segDurationMs) * 100;
+        // Afficher losanges + labels empilés (TOUS les jalons, aucune perte)
+        segJalons.forEach(jPos => {
           const title = `${jPos.jalon.Nom} (${jPos.typeTexte}) — ${fmtDate(jPos.jDate)}`;
+          const bottomPx = MONTHS_AREA_HEIGHT + BAR_HEIGHT + JALON_BASE_GAP + (jPos.niveau * JALON_LEVEL_HEIGHT);
           
-          html += `<div class="jalon-marker ${jPos.jalonType}" style="left:${jOffset}%;" title="${title}"></div>`;
-          html += `<div class="jalon-label ${jPos.verticalPos}" style="left:${jOffset}%;">${jPos.jalon.Nom}</div>`;
+          html += `<div class="jalon-marker ${jPos.jalonType}" style="left:${jPos.percentX}%;" title="${title}"></div>`;
+          html += `<div class="jalon-label" style="left:${jPos.percentX}%; bottom:${bottomPx}px;">${jPos.jalon.Nom}</div>`;
         });
 
         if(showCritical){
@@ -653,7 +655,7 @@ function construire(){
             if(!tDate || tDate < seg.start || tDate > seg.end) return;
             const tOffset = ((tDate - seg.start) / segDurationMs) * 100;
             const title = `[CRITIQUE] ${t.Tache}`;
-            html += `<div class="jalon-marker critique" style="left:${tOffset}%; top: 42px;" title="${title}"></div>`;
+            html += `<div class="jalon-marker critique" style="left:${tOffset}%; bottom: 14px;" title="${title}"></div>`;
           });
         }
 
