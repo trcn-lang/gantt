@@ -179,17 +179,21 @@
     white-space: nowrap;
     transform: translateX(-50%);
     pointer-events: none;
-    max-width: 70px;
+    max-width: 100px;
     overflow: hidden;
     text-overflow: ellipsis;
+    background: rgba(255,255,255,0.85);
+    padding: 2px 4px;
+    border-radius: 2px;
+    z-index: 2;
   }
 
   .jalon-label.haut {
-    bottom: 34px;
+    bottom: 36px;
   }
 
   .jalon-label.bas {
-    top: 34px;
+    top: 36px;
   }
 
   /* Segment label */
@@ -460,18 +464,28 @@ function detectJalonOverlaps(jalons, segDurationMs, containerWidth){
   const positions = jalons.map(j => ({
     ...j,
     percentX: ((j.jDate - j.segStart) / segDurationMs) * 100,
-    pixelX: (((j.jDate - j.segStart) / segDurationMs) * 100 / 100) * containerWidth
+    pixelX: (((j.jDate - j.segStart) / segDurationMs) * containerWidth)
   }));
   
-  const threshold = 70; // pixels min entre deux jalons pour éviter chevauchement
+  // Trier par position X pour détection correcte
+  positions.sort((a, b) => a.pixelX - b.pixelX);
   
+  const threshold = 80; // pixels min entre deux jalons
+  
+  // Assigner positions haut/bas en alternance intelligente
   positions.forEach((pos, i) => {
-    pos.verticalPos = "haut";
-    
-    if(i > 0){
+    if(i === 0){
+      pos.verticalPos = "haut";
+    } else {
       const prev = positions[i-1];
-      if(Math.abs(pos.pixelX - prev.pixelX) < threshold){
+      const distance = Math.abs(pos.pixelX - prev.pixelX);
+      
+      if(distance < threshold){
+        // Collision : inverser la position du précédent
         pos.verticalPos = prev.verticalPos === "haut" ? "bas" : "haut";
+      } else {
+        // Pas de collision : revenir au défaut (haut)
+        pos.verticalPos = "haut";
       }
     }
   });
@@ -620,10 +634,11 @@ function construire(){
           });
         });
 
-        // Détecter chevauchements et assigner positions haut/bas
-        const jalonWithPos = detectJalonOverlaps(segJalons, segDurationMs, 600);
+        // Détecter chevauchements avec largeur estimée réelle
+        const estimatedWidth = Math.min(window.innerWidth * 0.85, 1000);
+        const jalonWithPos = detectJalonOverlaps(segJalons, segDurationMs, estimatedWidth);
 
-        // Afficher losanges + labels
+        // Afficher losanges + labels TOUS les jalons
         jalonWithPos.forEach(jPos => {
           const jOffset = ((jPos.jDate - seg.start) / segDurationMs) * 100;
           const title = `${jPos.jalon.Nom} (${jPos.typeTexte}) — ${fmtDate(jPos.jDate)}`;
