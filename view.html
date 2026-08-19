@@ -199,6 +199,27 @@
     line-height: 1.2;
   }
 
+  /* Ligne "aujourd'hui" */
+  .today-line {
+    position: absolute;
+    width: 2px;
+    background: rgba(206, 5, 0, 0.4);
+    bottom: 30px;
+    top: 0;
+    z-index: 1;
+    pointer-events: none;
+  }
+  .today-label {
+    position: absolute;
+    font-size: 8px;
+    font-weight: 600;
+    color: #CE0500;
+    white-space: nowrap;
+    transform: translateX(-50%);
+    bottom: -18px;
+    pointer-events: none;
+  }
+
   /* Segment label */
   .segment-label {
     font-size: 10px;
@@ -254,6 +275,8 @@
   .upcoming-table tr:nth-child(even) { background: var(--fond-alt); }
   .upcoming-table .majeur { color: var(--jalon-majeur); font-weight: 600; }
   .upcoming-table .livrable { color: var(--jalon-livrable); font-weight: 600; }
+  .upcoming-table .en-retard { color: #CE0500; font-weight: 600; }
+  .upcoming-table .passe { color: var(--texte-mention); font-weight: 600; }
 
   /* ========== IMPRESSION A4 ========== */
   @page {
@@ -373,28 +396,52 @@ function getJalonTachesRequises(jalon){
   return raw.map(id => (typeof id === 'object' ? id : DB.taches.find(t => t.id === id))).filter(Boolean);
 }
 
-function getJalonStatut(jalon){
-  const requises = getJalonTachesRequises(jalon);
+function getStatutTache(tache){
+  const statut = resolveRef(DB.parametres, tache.Statut, "Statut") || "";
+  if(norm(statut) === norm("Terminé")) return "Terminé";
   
-  if(requises.length > 0){
-    const tachesTerminees = requises.filter(t => 
-      norm(resolveRef(DB.parametres, t.Statut, "Statut")) === norm("Terminé")
-    );
-    
-    if(tachesTerminees.length === requises.length){
-      return "Terminé";
-    } else if(tachesTerminees.length > 0){
-      return "En cours";
+  const dFin = parseDate(tache.Date_fin);
+  if(dFin && Date.now() > dFin.getTime()){
+    return "En retard";
+  }
+  
+  return statut;
+}
+
+function getStatutJalon(jalon){
+  const typeTexte = getJalonTypeTexte(jalon);
+  const isMajeur = norm(typeTexte) === norm("Jalon majeur");
+  const isLivrable = norm(typeTexte) === norm("Livrable");
+  
+  const d = parseDate(jalon.Date);
+  const estPassee = d && Date.now() > d.getTime();
+  
+  // Livrable : peut être "En retard"
+  if(isLivrable){
+    const requises = getJalonTachesRequises(jalon);
+    if(requises.length > 0){
+      const tachesTerminees = requises.filter(t => 
+        norm(resolveRef(DB.parametres, t.Statut, "Statut")) === norm("Terminé")
+      );
+      
+      if(tachesTerminees.length === requises.length){
+        return "Terminé";
+      } else if(tachesTerminees.length > 0){
+        return "En cours";
+      } else {
+        // Aucune tâche terminée
+        if(estPassee) return "En retard";
+        return "À faire";
+      }
     } else {
+      // Livrable sans tâches requises : se fier à la date
+      if(estPassee) return "En retard";
       return "À faire";
     }
   }
   
-  const d = parseDate(jalon.Date);
-  if(d && Date.now() >= d.getTime()){
-    return "Terminé";
-  }
-  
+  // Majeur ou Pour information : ne peut pas être "En retard", juste "Passé"
+  if(estPassee) return "Passé";
   return "À faire";
 }
 
@@ -703,6 +750,15 @@ function construire(){
           });
         }
 
+        // Ajouter marqueur "aujourd'hui"
+        const today = new Date();
+        today.setUTCHours(0, 0, 0, 0);
+        if(today >= seg.start && today <= seg.end){
+          const todayPercent = ((today - seg.start) / segDurationMs) * 100;
+          html += `<div class="today-line" style="left:${todayPercent}%;"></div>`;
+          html += `<div class="today-label" style="left:${todayPercent}%;">Aujourd'hui</div>`;
+        }
+
         html += `</div>`;
       });
 
@@ -761,8 +817,9 @@ function construire(){
         <tbody>`;
 
     tachesToDisplay.forEach(t => {
-      const statut = resolveRef(DB.parametres, t.Statut, "Statut") || "—";
-      const couleur = STATUTS[statut] || "#666666";
+      const statut = getStatutTache(t);
+      const couleur = statut === "En retard" ? "#CE0500" : (STATUTS[statut] || "#666666");
+      const classStatut = statut === "En retard" ? "en-retard" : "";
       const porteur = resolveRef(DB.porteurs, t.Porteur, "Nom") || "—";
       const dateFin = fmtDate(t.Date_fin);
 
@@ -771,7 +828,7 @@ function construire(){
         <td>${t.Tache || "—"}</td>
         <td>${t.nomProjet || "—"}</td>
         <td>${porteur}</td>
-        <td style="color: ${couleur}; font-weight: 600;">● ${statut}</td>
+        <td style="color: ${couleur}; font-weight: 600;" class="${classStatut}">● ${statut}</td>
       </tr>`;
     });
 
@@ -804,8 +861,18 @@ function construire(){
       const typeTexte = getJalonTypeTexte(j);
       const typeClass = norm(typeTexte) === norm("Jalon majeur") ? "majeur" : 
                         norm(typeTexte) === norm("Livrable") ? "livrable" : "";
-      const statut = getJalonStatut(j);
-      const couleur = STATUTS[statut];
+      const statut = getStatutJalon(j);
+      
+      let couleur = STATUTS[statut];
+      let classStatut = "";
+      if(statut === "En retard"){
+        couleur = "#CE0500";
+        classStatut = "en-retard";
+      } else if(statut === "Passé"){
+        couleur = "#666666";
+        classStatut = "passe";
+      }
+      
       const proj = DB.projets.find(p => p.id === refId(j.Projet));
 
       html += `<tr>
@@ -813,7 +880,7 @@ function construire(){
         <td>${j.Nom}</td>
         <td>${proj ? proj.Projet : "—"}</td>
         <td class="${typeClass}">${typeTexte || "—"}</td>
-        <td style="color: ${couleur}; font-weight: 600;">● ${statut}</td>
+        <td style="color: ${couleur}; font-weight: 600;" class="${classStatut}">● ${statut}</td>
       </tr>`;
     });
 
