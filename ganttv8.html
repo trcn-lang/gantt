@@ -1,0 +1,907 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Récap — Vue synthétique A4</title>
+<script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
+<style>
+  :root {
+    --bleu-france: #000091;
+    --bleu-975: #ECECFE;
+    --texte: #161616;
+    --texte-mention: #666666;
+    --bordure: #DDDDDD;
+    --fond: #FFFFFF;
+    --fond-alt: #F6F6F6;
+    --jalon-majeur: #C41E3A;
+    --jalon-livrable: #FF6B35;
+    --critique: #CE0500;
+    --statut-a-faire: #929292;
+    --statut-en-cours: #0063CB;
+    --statut-termine: #18753C;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  
+  body {
+    font-family: "Marianne", -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+    color: var(--texte);
+    background: var(--fond);
+    font-size: 13px;
+  }
+
+  .app { display: flex; flex-direction: column; height: 100vh; }
+
+  /* ========== TOPBAR & TOOLBAR ========== */
+  .topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--bordure);
+    flex-wrap: wrap;
+  }
+  .topbar h1 { font-size: 18px; font-weight: 700; color: var(--bleu-france); }
+  .meta { font-size: 11px; color: var(--texte-mention); }
+
+  .toolbar {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--bordure);
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  .toolbar label { font-size: 12px; font-weight: 600; color: var(--texte-mention); }
+  .toolbar select {
+    padding: 6px 10px;
+    border: 1px solid var(--bordure);
+    border-radius: 4px;
+    font-size: 12px;
+    background: #fff;
+  }
+
+  .btn {
+    padding: 8px 16px;
+    background: var(--bleu-france);
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    transition: background 0.2s;
+  }
+  .btn:hover { background: #0056b3; }
+
+  /* ========== SCROLL CONTAINER ========== */
+  .scroll { flex: 1; overflow: auto; padding: 20px; }
+
+  /* ========== RÉCAP CONTENT (pour écran) ========== */
+  .recap-container {
+    background: var(--fond);
+    padding: 20px;
+    border-radius: 6px;
+  }
+
+  .recap-header {
+    margin-bottom: 24px;
+    border-bottom: 2px solid var(--bleu-france);
+    padding-bottom: 12px;
+  }
+  .recap-header h2 { font-size: 20px; font-weight: 700; color: var(--bleu-france); margin-bottom: 4px; }
+  .recap-header .date-gen { font-size: 11px; color: var(--texte-mention); }
+
+  /* Ligne projet */
+  .project-row {
+    margin-bottom: 20px;
+    padding: 12px;
+    background: var(--fond-alt);
+    border-left: 4px solid var(--bleu-france);
+    border-radius: 4px;
+  }
+  .project-name { font-size: 14px; font-weight: 700; color: var(--bleu-france); margin-bottom: 8px; }
+  .project-dates { font-size: 11px; color: var(--texte-mention); margin-bottom: 8px; }
+
+  /* Timeline par mois */
+  .timeline-wrapper {
+    position: relative;
+    width: 100%;
+    margin-bottom: 8px;
+  }
+
+  .timeline-months {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 30px;
+    display: flex;
+  }
+
+  .month-cell {
+    flex: 1;
+    border-right: 1px solid var(--bordure);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-end;
+    padding: 4px 2px;
+    font-size: 9px;
+    color: var(--texte-mention);
+    min-width: 30px;
+  }
+  .month-label { margin-top: auto; order: 2; }
+  .month-bar {
+    width: 100%;
+    height: 8px;
+    background: #e0e0e0;
+    margin-bottom: 4px;
+    order: 1;
+  }
+
+  /* Barre projet (durée) */
+  .project-bar {
+    position: absolute;
+    bottom: 30px;
+    height: 12px;
+    background: var(--bleu-france);
+    border-radius: 2px;
+  }
+
+  /* Jalons (losanges) */
+  .jalon-marker {
+    position: absolute;
+    bottom: 30px;
+    width: 12px;
+    height: 12px;
+    margin-left: -6px;
+    transform: rotate(45deg);
+    border: 2px solid #fff;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+    cursor: pointer;
+  }
+  .jalon-marker:hover { filter: brightness(0.9); }
+  .jalon-marker.majeur { background: var(--jalon-majeur); }
+  .jalon-marker.livrable { background: var(--jalon-livrable); }
+  .jalon-marker.critique { 
+    border: 2px solid #fff;
+    box-shadow: 0 0 0 1px var(--critique);
+  }
+  .jalon-marker.info { background: #6B6B6B; }
+
+  /* Labels de jalons — empilement multi-niveaux (comme le Gantt), nom + date */
+  .jalon-label {
+    position: absolute;
+    text-align: center;
+    transform: translateX(-50%);
+    pointer-events: none;
+    background: rgba(255,255,255,0.9);
+    padding: 1px 4px;
+    border-radius: 2px;
+    z-index: 2;
+    white-space: nowrap;
+  }
+  .jalon-label .jalon-label-nom {
+    font-size: 9px;
+    font-weight: 700;
+    color: var(--texte);
+    line-height: 1.2;
+  }
+  .jalon-label .jalon-label-date {
+    font-size: 8px;
+    font-weight: 500;
+    color: var(--texte-mention);
+    line-height: 1.2;
+  }
+
+  /* Ligne "aujourd'hui" */
+  .today-line {
+    position: absolute;
+    width: 2px;
+    background: rgba(206, 5, 0, 0.4);
+    bottom: 30px;
+    top: 0;
+    z-index: 1;
+    pointer-events: none;
+  }
+  .today-label {
+    position: absolute;
+    font-size: 8px;
+    font-weight: 600;
+    color: #CE0500;
+    white-space: nowrap;
+    transform: translateX(-50%);
+    bottom: -18px;
+    pointer-events: none;
+  }
+
+  /* Segment label */
+  .segment-label {
+    font-size: 10px;
+    color: var(--texte-mention);
+    margin-bottom: 4px;
+    margin-top: 8px;
+    font-weight: 600;
+  }
+
+  /* Légende */
+  .legend {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin-top: 20px;
+    padding-top: 12px;
+    border-top: 1px solid var(--bordure);
+    font-size: 11px;
+  }
+  .legend-item { display: flex; align-items: center; gap: 6px; }
+  .legend-puce { width: 12px; height: 12px; border-radius: 1px; }
+  .legend-puce.majeur { background: var(--jalon-majeur); }
+  .legend-puce.livrable { background: var(--jalon-livrable); }
+  .legend-puce.critique { background: var(--bleu-france); border: 1px solid var(--critique); }
+  .legend-puce.bar { background: var(--bleu-france); }
+
+  /* Tableau échéances */
+  .upcoming-section {
+    margin-top: 32px;
+    padding-top: 20px;
+    border-top: 2px solid var(--bleu-france);
+  }
+  .upcoming-section h3 { font-size: 14px; font-weight: 700; color: var(--bleu-france); margin-bottom: 12px; }
+
+  .upcoming-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+  }
+  .upcoming-table th {
+    background: var(--bleu-975);
+    padding: 8px;
+    text-align: center;
+    font-weight: 600;
+    color: var(--bleu-france);
+    border-bottom: 1px solid var(--bordure);
+  }
+  .upcoming-table td {
+    padding: 8px;
+    border-bottom: 1px solid var(--bordure);
+    text-align: center;
+  }
+  .upcoming-table tr:nth-child(even) { background: var(--fond-alt); }
+  .upcoming-table .majeur { color: var(--jalon-majeur); font-weight: 600; }
+  .upcoming-table .livrable { color: var(--jalon-livrable); font-weight: 600; }
+  .upcoming-table .en-retard { color: #CE0500; font-weight: 600; }
+  .upcoming-table .passe { color: var(--texte-mention); font-weight: 600; }
+
+  /* ========== IMPRESSION A4 ========== */
+  @page {
+    size: A4 landscape;
+    margin: 10mm;
+  }
+
+  @media print {
+    .toolbar, .topbar { display: none !important; }
+    .scroll { padding: 0 !important; overflow: visible !important; height: auto; }
+    .recap-container { box-shadow: none !important; padding: 0; }
+    body { background: transparent; }
+  }
+
+  .empty-state { padding: 40px; text-align: center; color: var(--texte-mention); }
+
+  #status { margin-left: auto; font-size: 11px; color: var(--texte-mention); }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <div class="topbar">
+    <h1>📊 Récap — Vue synthétique A4</h1>
+    <div class="meta" id="meta">Chargement…</div>
+  </div>
+
+  <div class="toolbar">
+    <button class="btn" id="btn-print">🖨️ Imprimer</button>
+    
+    <label>Projet :</label>
+    <select id="filtre-projet"><option value="">Tous</option></select>
+
+    <label>Plage :</label>
+    <select id="filtre-plage">
+      <option value="all">Tous les jalons</option>
+      <option value="12w">Prochaines 12 semaines</option>
+      <option value="26w">Prochaines 26 semaines</option>
+      <option value="52w">Prochaine année</option>
+    </select>
+
+    <label style="margin-left: 12px;">
+      <input type="checkbox" id="show-critical" checked>
+      Mettre en avant tâches critiques
+    </label>
+
+    <span style="border-left: 1px solid var(--bordure); padding-left: 12px; margin-left: 4px; display: flex; gap: 10px; align-items: center;">
+      <label style="display:flex; align-items:center; gap:4px;">
+        <input type="checkbox" id="filtre-jalon-majeur" checked> Jalon majeur
+      </label>
+      <label style="display:flex; align-items:center; gap:4px;">
+        <input type="checkbox" id="filtre-jalon-livrable" checked> Livrable
+      </label>
+      <label style="display:flex; align-items:center; gap:4px;">
+        <input type="checkbox" id="filtre-jalon-info" checked> Pour information
+      </label>
+    </span>
+
+    <span id="status"></span>
+  </div>
+
+  <div class="scroll">
+    <div id="content" class="empty-state">Chargement…</div>
+  </div>
+
+</div>
+
+<script>
+const STATUTS = {
+  "À faire": "#929292",
+  "En cours": "#0063CB",
+  "Terminé": "#18753C"
+};
+
+const norm = (s) => String(s||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").trim();
+
+function parseDate(v){
+  if(v===null||v===undefined||v==="") return null;
+  if(typeof v==="number") return new Date(v*1000);
+  const d=new Date(String(v).trim());
+  return isNaN(d.getTime())?null:d;
+}
+
+function refId(v){
+  if(Array.isArray(v)) return v[1];
+  return v;
+}
+
+function resolveRef(table, id, col){
+  const rid=refId(id);
+  if(rid===null||rid===undefined) return null;
+  const ligne=table.find(row=>row.id===rid);
+  return ligne?ligne[col]:null;
+}
+
+function fmtDate(v){
+  const d=parseDate(v);
+  if(!d) return "";
+  return String(d.getUTCDate()).padStart(2,"0")+"/"+String(d.getUTCMonth()+1).padStart(2,"0")+"/"+d.getUTCFullYear();
+}
+
+function getJalonTypeTexte(jalon){
+  const raw = jalon.Type;
+  if(!raw) return "";
+  if(Array.isArray(raw)){
+    if(raw[0]==='L') return raw[1] || "";
+    if(raw[0]==='E') return "";
+  }
+  return raw;
+}
+
+function getJalonTachesRequises(jalon){
+  const raw = jalon.Taches_requises;
+  if(!raw || !Array.isArray(raw)) return [];
+  if(raw[0]==='L') return raw.slice(1).map(id => DB.taches.find(t => t.id === id)).filter(Boolean);
+  if(raw[0]==='E') return [];
+  return raw.map(id => (typeof id === 'object' ? id : DB.taches.find(t => t.id === id))).filter(Boolean);
+}
+
+function getStatutTache(tache){
+  const statut = resolveRef(DB.parametres, tache.Statut, "Statut") || "";
+  if(norm(statut) === norm("Terminé")) return "Terminé";
+  
+  const dFin = parseDate(tache.Date_fin);
+  if(dFin && Date.now() > dFin.getTime()){
+    return "En retard";
+  }
+  
+  return statut;
+}
+
+function getStatutJalon(jalon){
+  const typeTexte = getJalonTypeTexte(jalon);
+  const isMajeur = norm(typeTexte) === norm("Jalon majeur");
+  const isLivrable = norm(typeTexte) === norm("Livrable");
+  
+  const d = parseDate(jalon.Date);
+  const estPassee = d && Date.now() > d.getTime();
+  
+  // Livrable : peut être "En retard"
+  if(isLivrable){
+    const requises = getJalonTachesRequises(jalon);
+    if(requises.length > 0){
+      const tachesTerminees = requises.filter(t => 
+        norm(resolveRef(DB.parametres, t.Statut, "Statut")) === norm("Terminé")
+      );
+      
+      if(tachesTerminees.length === requises.length){
+        return "Terminé";
+      } else if(tachesTerminees.length > 0){
+        return "En cours";
+      } else {
+        // Aucune tâche terminée
+        if(estPassee) return "En retard";
+        return "À faire";
+      }
+    } else {
+      // Livrable sans tâches requises : se fier à la date
+      if(estPassee) return "En retard";
+      return "À faire";
+    }
+  }
+  
+  // Majeur ou Pour information : ne peut pas être "En retard", juste "Passé"
+  if(estPassee) return "Passé";
+  return "À faire";
+}
+
+let DB = {};
+
+grist.ready({requiredAccess:"full"});
+
+function columnarToRows(data){
+  if(!data || typeof data!=="object") return [];
+  if(Array.isArray(data)) return data;
+  const keys=Object.keys(data);
+  if(keys.length===0) return [];
+  const firstCol=data[keys[0]];
+  if(!Array.isArray(firstCol)) return [];
+  const rows=[];
+  for(let i=0;i<firstCol.length;i++){
+    const row={};
+    keys.forEach(k=>row[k]=data[k][i]);
+    rows.push(row);
+  }
+  return rows;
+}
+
+async function init(){
+  try {
+    document.getElementById("status").textContent = "Chargement…";
+    
+    DB.projets = columnarToRows(await grist.docApi.fetchTable("Projets"));
+    DB.jalons = columnarToRows(await grist.docApi.fetchTable("Jalons"));
+    DB.taches = columnarToRows(await grist.docApi.fetchTable("Taches"));
+    DB.parametres = columnarToRows(await grist.docApi.fetchTable("PARAMETRES"));
+    DB.porteurs = columnarToRows(await grist.docApi.fetchTable("Porteurs"));
+
+    const jalonSelectEl = document.getElementById("filtre-projet");
+    jalonSelectEl.innerHTML = '<option value="">Tous</option>';
+    DB.projets.forEach(p => {
+      const opt = document.createElement("option");
+      opt.value = p.id;
+      opt.textContent = p.Projet;
+      jalonSelectEl.appendChild(opt);
+    });
+
+    document.getElementById("meta").textContent = `${DB.projets.length} projet(s) · ${DB.jalons.length} jalon(s) · ${DB.taches.length} tâche(s)`;
+    document.getElementById("status").textContent = "✓ Chargé";
+
+    construire();
+  } catch(e) {
+    console.error("❌", e);
+    document.getElementById("status").textContent = "❌ " + e.message;
+  }
+}
+
+function getMonthsBetween(d1, d2){
+  const result = [];
+  const start = new Date(d1);
+  start.setUTCDate(1);
+  
+  const end = new Date(d2);
+  end.setUTCDate(1);
+  end.setUTCMonth(end.getUTCMonth() + 1);
+  
+  let current = new Date(start);
+  let index = 0;
+  
+  while(current < end){
+    result.push({
+      year: current.getUTCFullYear(),
+      month: current.getUTCMonth() + 1,
+      index: index,
+      date: new Date(current)
+    });
+    current.setUTCMonth(current.getUTCMonth() + 1);
+    index++;
+  }
+  
+  return result;
+}
+
+// Mesure précise de la largeur d'un texte avec la police réelle du widget
+let _canvasCtx = null;
+function mesurerLargeurTexte(texte, font){
+  if(!_canvasCtx){
+    const canvas = document.createElement("canvas");
+    _canvasCtx = canvas.getContext("2d");
+  }
+  _canvasCtx.font = font || '700 9px "Marianne", -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif';
+  return _canvasCtx.measureText(texte).width;
+}
+
+const FONT_JALON_NOM = '700 9px "Marianne", -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif';
+const FONT_JALON_DATE = '500 8px "Marianne", -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif';
+
+const JALON_LABEL_MARGE = 8;   // px marge minimale entre deux labels adjacents
+const JALON_LEVEL_HEIGHT = 28; // px par niveau d'empilement (nom + date sur 2 lignes)
+const JALON_BASE_GAP = 6;      // px entre la barre projet et le premier niveau
+const MONTHS_AREA_HEIGHT = 30; // px hauteur zone mois
+const BAR_HEIGHT = 12;         // px hauteur barre projet
+
+// Empile les jalons sur autant de niveaux que nécessaire pour éviter tout chevauchement de texte
+// (même logique que le Gantt : calculerNiveauxJalons). Prend en compte nom ET date (2 lignes).
+function calculerNiveauxJalons(jalonsAvecPixelX){
+  const finOccupeeParNiveau = [];
+  jalonsAvecPixelX.forEach(item => {
+    const largeurNom = mesurerLargeurTexte(item.jalon.Nom, FONT_JALON_NOM);
+    const largeurDate = mesurerLargeurTexte(item.dateStr, FONT_JALON_DATE);
+    const largeurTexte = Math.max(largeurNom, largeurDate);
+    const demiLargeur = largeurTexte / 2;
+    const xDebut = item.pixelX - demiLargeur;
+    const xFin = item.pixelX + demiLargeur;
+    let niveau = 0;
+    while(finOccupeeParNiveau[niveau] !== undefined && xDebut < finOccupeeParNiveau[niveau] + JALON_LABEL_MARGE){
+      niveau++;
+    }
+    finOccupeeParNiveau[niveau] = xFin;
+    item.niveau = niveau;
+  });
+  return finOccupeeParNiveau.length || 1;
+}
+
+function getProjectSegments(projMinDate, projMaxDate){
+  const segments = [];
+  const durationMs = projMaxDate - projMinDate;
+  const durationMonths = durationMs / (30.44 * 24 * 60 * 60 * 1000);
+  const numSegments = Math.ceil(durationMonths / 6);
+  
+  for(let i = 0; i < numSegments; i++){
+    const segStart = new Date(projMinDate);
+    segStart.setUTCMonth(segStart.getUTCMonth() + (i * 6));
+    
+    const segEnd = new Date(projMinDate);
+    segEnd.setUTCMonth(segEnd.getUTCMonth() + ((i + 1) * 6));
+    
+    if(segEnd > projMaxDate) segEnd.setTime(projMaxDate.getTime());
+    
+    const monthNames = ['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc'];
+    const segLabel = `${monthNames[segStart.getUTCMonth()]} ${segStart.getUTCFullYear()} - ${monthNames[segEnd.getUTCMonth()]} ${segEnd.getUTCFullYear()}`;
+    
+    segments.push({
+      index: i,
+      start: new Date(segStart),
+      end: new Date(segEnd),
+      label: segLabel,
+      months: getMonthsBetween(segStart, segEnd)
+    });
+  }
+  
+  return segments;
+}
+
+function construire(){
+  const filtreProjet = document.getElementById("filtre-projet").value;
+  const filtrePlage = document.getElementById("filtre-plage").value;
+  const showCritical = document.getElementById("show-critical").checked;
+  const showMajeur = document.getElementById("filtre-jalon-majeur").checked;
+  const showLivrable = document.getElementById("filtre-jalon-livrable").checked;
+  const showInfo = document.getElementById("filtre-jalon-info").checked;
+
+  let projets = DB.projets;
+  if(filtreProjet){
+    projets = projets.filter(p => p.id === parseInt(filtreProjet));
+  }
+
+  let today = new Date();
+  let plageEnd = new Date();
+  
+  switch(filtrePlage){
+    case "12w": plageEnd.setDate(plageEnd.getDate() + 7*12); break;
+    case "26w": plageEnd.setDate(plageEnd.getDate() + 7*26); break;
+    case "52w": plageEnd.setDate(plageEnd.getDate() + 7*52); break;
+    default: plageEnd = new Date(today.getFullYear() + 2, 11, 31);
+  }
+
+  const jalonsVisibles = DB.jalons.filter(j => {
+    if(!projets.some(p => p.id === refId(j.Projet))) return false;
+    const d = parseDate(j.Date);
+    if(!d) return false;
+    if(filtrePlage !== "all" && d > plageEnd) return false;
+
+    // Filtre par type de jalon (checkboxes)
+    const typeTexte = getJalonTypeTexte(j);
+    const isMajeur = norm(typeTexte) === norm("Jalon majeur");
+    const isLivrable = norm(typeTexte) === norm("Livrable");
+    const isInfo = !isMajeur && !isLivrable; // "Pour information" ou type non renseigné
+
+    if(isMajeur && !showMajeur) return false;
+    if(isLivrable && !showLivrable) return false;
+    if(isInfo && !showInfo) return false;
+
+    return true;
+  });
+
+  let html = `<div class="recap-container">`;
+  
+  html += `<div class="recap-header">
+    <h2>Récap des échéances</h2>
+    <div class="date-gen">Généré le ${new Date().toLocaleDateString('fr-FR')}</div>
+  </div>`;
+
+  if(projets.length === 0){
+    html += `<div class="empty-state">Aucun projet à afficher</div>`;
+  } else {
+    projets.forEach(proj => {
+      const pJalons = jalonsVisibles.filter(j => refId(j.Projet) === proj.id);
+      const pTaches = DB.taches.filter(t => refId(t.Projet) === proj.id);
+      
+      let projMinDate = null, projMaxDate = null;
+      
+      if(pTaches.length > 0){
+        pTaches.forEach(t => {
+          const d1 = parseDate(t.Date_debut);
+          const d2 = parseDate(t.Date_fin);
+          if(d1 && !projMinDate) projMinDate = new Date(d1);
+          if(d1 && d1 < projMinDate) projMinDate = new Date(d1);
+          if(d2 && !projMaxDate) projMaxDate = new Date(d2);
+          if(d2 && d2 > projMaxDate) projMaxDate = new Date(d2);
+        });
+      }
+      
+      if(pJalons.length > 0){
+        pJalons.forEach(j => {
+          const d = parseDate(j.Date);
+          if(d && !projMinDate) projMinDate = new Date(d);
+          if(d && d < projMinDate) projMinDate = new Date(d);
+          if(d && !projMaxDate) projMaxDate = new Date(d);
+          if(d && d > projMaxDate) projMaxDate = new Date(d);
+        });
+      }
+
+      if(!projMinDate || !projMaxDate) return;
+
+      html += `<div class="project-row">
+        <div class="project-name">${proj.Projet}</div>
+        <div class="project-dates">${fmtDate(projMinDate)} → ${fmtDate(projMaxDate)}</div>`;
+
+      const segments = getProjectSegments(projMinDate, projMaxDate);
+
+      segments.forEach(seg => {
+        const segDurationMs = seg.end - seg.start;
+
+        // Préparer jalons du segment + position pixel réelle
+        const estimatedWidth = Math.min(window.innerWidth * 0.85, 1000);
+        const segJalons = [];
+        pJalons.forEach(j => {
+          const jDate = parseDate(j.Date);
+          if(!jDate || jDate < seg.start || jDate > seg.end) return;
+          
+          const typeTexte = getJalonTypeTexte(j);
+          const jalonType = norm(typeTexte) === norm("Jalon majeur") ? "majeur" : 
+                            norm(typeTexte) === norm("Livrable") ? "livrable" : "info";
+          const percentX = ((jDate - seg.start) / segDurationMs) * 100;
+          
+          segJalons.push({
+            jalon: j,
+            jDate: jDate,
+            jalonType: jalonType,
+            typeTexte: typeTexte,
+            percentX: percentX,
+            pixelX: (percentX / 100) * estimatedWidth,
+            dateStr: fmtDate(jDate)
+          });
+        });
+
+        // Trier par position X puis empiler sur niveaux pour éviter tout chevauchement
+        segJalons.sort((a, b) => a.pixelX - b.pixelX);
+        const nbNiveaux = calculerNiveauxJalons(segJalons);
+
+        const timelineHeight = MONTHS_AREA_HEIGHT + BAR_HEIGHT + JALON_BASE_GAP + (nbNiveaux * JALON_LEVEL_HEIGHT) + 8;
+
+        html += `<div class="segment-label">${seg.label}</div>`;
+        html += `<div class="timeline-wrapper" style="height:${timelineHeight}px;">`;
+
+        html += `<div class="project-bar" style="left:0%; width:100%;"></div>`;
+
+        html += `<div class="timeline-months">`;
+        seg.months.forEach(m => {
+          const mStart = new Date(m.year, m.month - 1, 1);
+          const mEnd = new Date(m.year, m.month, 1);
+          const mWidth = ((mEnd - mStart) / segDurationMs) * 100;
+
+          html += `<div class="month-cell" style="width:${mWidth}%;">
+            <div class="month-bar"></div>
+            <div class="month-label">${['J','F','M','A','M','J','J','A','S','O','N','D'][m.month-1]} ${m.year % 100}</div>
+          </div>`;
+        });
+        html += `</div>`;
+
+        // Afficher losanges + labels empilés (TOUS les jalons, aucune perte)
+        segJalons.forEach(jPos => {
+          const title = `${jPos.jalon.Nom} (${jPos.typeTexte}) — ${jPos.dateStr}`;
+          const bottomPx = MONTHS_AREA_HEIGHT + BAR_HEIGHT + JALON_BASE_GAP + (jPos.niveau * JALON_LEVEL_HEIGHT);
+          
+          html += `<div class="jalon-marker ${jPos.jalonType}" style="left:${jPos.percentX}%;" title="${title}"></div>`;
+          html += `<div class="jalon-label" style="left:${jPos.percentX}%; bottom:${bottomPx}px;">
+            <div class="jalon-label-nom">${jPos.jalon.Nom}</div>
+            <div class="jalon-label-date">${jPos.dateStr}</div>
+          </div>`;
+        });
+
+        if(showCritical){
+          pTaches.filter(t => t.Est_critique === true).forEach(t => {
+            const tDate = parseDate(t.Date_debut);
+            if(!tDate || tDate < seg.start || tDate > seg.end) return;
+            const tOffset = ((tDate - seg.start) / segDurationMs) * 100;
+            const title = `[CRITIQUE] ${t.Tache}`;
+            html += `<div class="jalon-marker critique" style="left:${tOffset}%; bottom: 14px;" title="${title}"></div>`;
+          });
+        }
+
+        // Ajouter marqueur "aujourd'hui"
+        const today = new Date();
+        today.setUTCHours(0, 0, 0, 0);
+        if(today >= seg.start && today <= seg.end){
+          const todayPercent = ((today - seg.start) / segDurationMs) * 100;
+          html += `<div class="today-line" style="left:${todayPercent}%;"></div>`;
+          html += `<div class="today-label" style="left:${todayPercent}%;">Aujourd'hui</div>`;
+        }
+
+        html += `</div>`;
+      });
+
+      html += `</div>`;
+    });
+  }
+
+  html += `<div class="legend">
+    <div class="legend-item">
+      <div class="legend-puce majeur"></div>
+      <span>Jalon majeur</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-puce livrable"></div>
+      <span>Livrable</span>
+    </div>
+    <div class="legend-item">
+      <div style="width: 12px; height: 12px; border-radius: 1px; background: #6B6B6B;"></div>
+      <span>Pour information</span>
+    </div>
+    ${showCritical ? `<div class="legend-item">
+      <div class="legend-puce critique"></div>
+      <span>Tâche critique</span>
+    </div>` : ""}
+    <div class="legend-item">
+      <div class="legend-puce bar"></div>
+      <span>Durée projet</span>
+    </div>
+  </div>`;
+
+  // Tableau des TÂCHES
+  const tachesToDisplay = projets.flatMap(proj => {
+    const projTaches = DB.taches.filter(t => refId(t.Projet) === proj.id);
+    return projTaches.map(t => ({...t, nomProjet: proj.Projet}));
+  }).sort((a, b) => {
+    const dA = parseDate(a.Date_fin);
+    const dB = parseDate(b.Date_fin);
+    if(!dA) return 1;
+    if(!dB) return -1;
+    return dA - dB;
+  });
+
+  if(tachesToDisplay.length > 0){
+    html += `<div class="upcoming-section">
+      <h3>Tâches à suivre</h3>
+      <table class="upcoming-table">
+        <thead>
+          <tr>
+            <th>Fin prévue</th>
+            <th>Tâche</th>
+            <th>Projet</th>
+            <th>Porteur</th>
+            <th>Statut</th>
+          </tr>
+        </thead>
+        <tbody>`;
+
+    tachesToDisplay.forEach(t => {
+      const statut = getStatutTache(t);
+      const couleur = statut === "En retard" ? "#CE0500" : (STATUTS[statut] || "#666666");
+      const classStatut = statut === "En retard" ? "en-retard" : "";
+      const porteur = resolveRef(DB.porteurs, t.Porteur, "Nom") || "—";
+      const dateFin = fmtDate(t.Date_fin);
+
+      html += `<tr>
+        <td>${dateFin}</td>
+        <td>${t.Tache || "—"}</td>
+        <td>${t.nomProjet || "—"}</td>
+        <td>${porteur}</td>
+        <td style="color: ${couleur}; font-weight: 600;" class="${classStatut}">● ${statut}</td>
+      </tr>`;
+    });
+
+    html += `</tbody></table></div>`;
+  }
+
+  // Tableau des JALONS
+  const allUpcoming = jalonsVisibles.sort((a, b) => {
+    const dA = parseDate(a.Date);
+    const dB = parseDate(b.Date);
+    return dA - dB;
+  });
+
+  if(allUpcoming.length > 0){
+    html += `<div class="upcoming-section">
+      <h3>Jalons</h3>
+      <table class="upcoming-table">
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Jalon</th>
+            <th>Projet</th>
+            <th>Type</th>
+            <th>Statut</th>
+          </tr>
+        </thead>
+        <tbody>`;
+
+    allUpcoming.forEach(j => {
+      const typeTexte = getJalonTypeTexte(j);
+      const typeClass = norm(typeTexte) === norm("Jalon majeur") ? "majeur" : 
+                        norm(typeTexte) === norm("Livrable") ? "livrable" : "";
+      const statut = getStatutJalon(j);
+      
+      let couleur = STATUTS[statut];
+      let classStatut = "";
+      if(statut === "En retard"){
+        couleur = "#CE0500";
+        classStatut = "en-retard";
+      } else if(statut === "Passé"){
+        couleur = "#666666";
+        classStatut = "passe";
+      }
+      
+      const proj = DB.projets.find(p => p.id === refId(j.Projet));
+
+      html += `<tr>
+        <td>${fmtDate(j.Date)}</td>
+        <td>${j.Nom}</td>
+        <td>${proj ? proj.Projet : "—"}</td>
+        <td class="${typeClass}">${typeTexte || "—"}</td>
+        <td style="color: ${couleur}; font-weight: 600;" class="${classStatut}">● ${statut}</td>
+      </tr>`;
+    });
+
+    html += `</tbody></table></div>`;
+  }
+
+  html += `</div>`;
+
+  document.getElementById("content").innerHTML = html;
+}
+
+document.getElementById("btn-print").addEventListener("click", () => window.print());
+document.getElementById("filtre-projet").addEventListener("change", construire);
+document.getElementById("filtre-plage").addEventListener("change", construire);
+document.getElementById("show-critical").addEventListener("change", construire);
+document.getElementById("filtre-jalon-majeur").addEventListener("change", construire);
+document.getElementById("filtre-jalon-livrable").addEventListener("change", construire);
+document.getElementById("filtre-jalon-info").addEventListener("change", construire);
+
+grist.onRecords(() => init());
+init();
+</script>
+</body>
+</html>
