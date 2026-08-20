@@ -300,6 +300,8 @@
   .badge.absorbe{background:var(--st-termine)}
   .badge.fixe{background:var(--texte-mention)}
 
+  .retard-icone{font-size:10px;margin-left:4px;cursor:help;flex-shrink:0}
+
   .info-box{
     background:#FFF3CD;border:1px solid #FFC107;border-radius:4px;padding:12px;margin-bottom:16px;font-size:12px;
     color:#856404;line-height:1.4;
@@ -713,7 +715,7 @@ function toDateInput(v){
 let DB={};
 let NON_ATTRIBUE_ID = null;
 let allData={};
-let PERT_DATA={};
+
 let COLLAPSED_PROJETS = new Set();
 
 // ========== ZOOM ==========
@@ -924,135 +926,64 @@ function detectCycles(){
   return DB.taches.some(t => hasCycle(t.id));
 }
 
-// Calcule les dates au plus tôt / au plus tard / marge pour un sous-ensemble de tâches
-// (un projet à la fois), de façon totalement indépendante des autres projets.
-function calculerPertPourTaches(tasksScope){
-  const scopeIds = new Set(tasksScope.map(t=>t.id));
+// Calcule les tâches structurellement "en retard" : une tâche T2 est en retard
+// si l'un de ses prédécesseurs T1 a une Date_fin postérieure à la Date_debut de T2
+// (l'enchaînement logique des dates n'est plus respecté). Idem pour un jalon dont
+// une Taches_requises finit après la date du jalon.
+// Ne modifie aucune donnée Grist : recalculé à la volée à chaque construire().
+function calculerRetardsStructurels(){
+  const provoque = {}; // "T:id" ou "J:id" -> [ {genre,nom} ... ] (ce que cet élément met en retard)
+  const subit    = {}; // "T:id" ou "J:id" -> [ nom du/des responsable(s) ]
 
-  const memoEarly = {};
-  function getEarlyStart(taskId){
-    if(memoEarly[taskId] !== undefined) return memoEarly[taskId];
-    const task = tasksScope.find(t => t.id === taskId);
-    if(!task){ memoEarly[taskId] = null; return null; }
-    // On ignore les prédécesseurs qui seraient dans un autre projet
-    const preds = getPredecessorTasks(task).filter(p => scopeIds.has(refId(p.id||p)));
-    if(preds.length === 0){
-      memoEarly[taskId] = parseDate(task.Date_debut);
-      return memoEarly[taskId];
-    }
-    let maxEnd = null;
-    for(const pred of preds){
-      const predTask = tasksScope.find(t => t.id === refId(pred.id||pred));
-      if(!predTask) continue;
-      const predStart = getEarlyStart(predTask.id);
-      if(!predStart) continue;
-      const predEnd = ajouterJoursOuvres(predStart, predTask.Duree_jours||1);
-      if(!maxEnd || predEnd > maxEnd) maxEnd = predEnd;
-    }
-    memoEarly[taskId] = maxEnd ? jourOuvreSuivant(maxEnd) : parseDate(task.Date_debut);
-    return memoEarly[taskId];
+  function ajouterProvoque(cleSource, genre, nom){
+    (provoque[cleSource] = provoque[cleSource]||[]).push({genre,nom});
   }
-  tasksScope.forEach(t=>{
-    const early = getEarlyStart(t.id);
-    PERT_DATA[t.id] = PERT_DATA[t.id] || {};
-    PERT_DATA[t.id].earlyStart = early;
-    if(early){
-      PERT_DATA[t.id].earlyEnd = ajouterJoursOuvres(early, t.Duree_jours||1);
-    }
-  });
+  function ajouterSubit(cleCible, nomResponsable){
+    (subit[cleCible] = subit[cleCible]||[]).push(nomResponsable);
+  }
 
-  // Fin du "projet" = fin du projet propre à CE PROJET uniquement
-  let projectEnd = null;
-  tasksScope.forEach(t=>{
-    const ee = PERT_DATA[t.id] && PERT_DATA[t.id].earlyEnd;
-    if(ee && (!projectEnd || ee > projectEnd)) projectEnd = ee;
-  });
-  if(!projectEnd) return;
+  DB.taches.forEach(t=>{
+    const finT = parseDate(t.Date_fin);
+    if(!finT) return;
 
-  const memoLate = {};
-  function getLateEnd(taskId){
-    if(memoLate[taskId] !== undefined) return memoLate[taskId];
-    const task = tasksScope.find(t => t.id === taskId);
-    if(!task){ memoLate[taskId] = null; return null; }
-    const successeurs = tasksScope.filter(t => getPredecessorTasks(t).some(p => refId(p.id||p) === taskId));
-    if(successeurs.length === 0){
-      memoLate[taskId] = projectEnd;
-      return projectEnd;
-    }
-    let minStart = null;
-    for(const succ of successeurs){
-      const succLateEnd = getLateEnd(succ.id);
-      if(succLateEnd){
-        const succLateStart = soustraireJoursOuvres(succLateEnd, succ.Duree_jours||1);
-        if(!minStart || succLateStart < minStart) minStart = succLateStart;
+    // Successeurs tâches (Predecesseurs)
+    DB.taches.forEach(s=>{
+      if(s.id===t.id) return;
+      const estSuccesseur = getPredecessorTasks(s).some(p=>refId(p.id||p)===t.id);
+      if(!estSuccesseur) return;
+      const debutS = parseDate(s.Date_debut);
+      if(debutS && finT > debutS){
+        ajouterProvoque(`T:${t.id}`, "tache", s.Tache);
+        ajouterSubit(`T:${s.id}`, t.Tache);
       }
-    }
-    memoLate[taskId] = minStart ? jourOuvrePrecedent(minStart) : projectEnd;
-    return memoLate[taskId];
-  }
-  tasksScope.forEach(t=>{
-    const lateEnd = getLateEnd(t.id);
-    PERT_DATA[t.id] = PERT_DATA[t.id] || {};
-    PERT_DATA[t.id].lateEnd = lateEnd;
-    if(lateEnd){
-      PERT_DATA[t.id].lateStart = soustraireJoursOuvres(lateEnd, t.Duree_jours||1);
-    }
+    });
+
+    // Successeurs jalons (Taches_requises)
+    DB.jalons.forEach(j=>{
+      if(norm(getJalonTypeTexte(j))!==norm("Livrable")) return;
+      const estRequise = getJalonTachesRequises(j).some(rt=>rt.id===t.id);
+      if(!estRequise) return;
+      const dateJ = parseDate(j.Date);
+      if(dateJ && finT > dateJ){
+        ajouterProvoque(`T:${t.id}`, "jalon", j.Nom);
+        ajouterSubit(`J:${j.id}`, t.Tache);
+      }
+    });
   });
 
-  tasksScope.forEach(t=>{
-    const ls = PERT_DATA[t.id].lateStart, es = PERT_DATA[t.id].earlyStart;
-    if(ls && es){
-      const slack = ls >= es ? joursOuvres(es, ls) - 1 : 0;
-      PERT_DATA[t.id].slack = Math.max(0, slack);
-      PERT_DATA[t.id].isCritical = (PERT_DATA[t.id].slack === 0);
-    }
-  });
+  return { provoque, subit };
 }
 
-async function calculatePERT(){
-  if(detectCycles()){
-    console.error("❌ Cycle détecté dans les dépendances");
-    document.getElementById("status").textContent = "❌ Cycle dans les dépendances !";
-    return;
-  }
-  PERT_DATA = {};
-  // Regroupement des tâches par projet : chaque projet a ses propres
-  // dates au plus tôt / au plus tard, indépendamment des autres.
-  const groupes = {};
-  DB.taches.forEach(t=>{
-    const cle = refId(t.Projet) ?? "sans_projet";
-    if(!groupes[cle]) groupes[cle] = [];
-    groupes[cle].push(t);
-  });
-  Object.values(groupes).forEach(tasksScope => calculerPertPourTaches(tasksScope));
-
-  const actions = [];
-  DB.taches.forEach(t=>{
-    const d = PERT_DATA[t.id];
-    if(!d) return;
-    actions.push(["UpdateRecord","Taches",t.id,{
-      Date_au_plus_tot: d.earlyStart ? Math.floor(d.earlyStart.getTime()/1000) : null,
-      Date_au_plus_tard: d.lateEnd ? Math.floor(d.lateEnd.getTime()/1000) : null,
-      Marge_totale: d.slack !== undefined ? d.slack : null,
-      Est_critique: !!d.isCritical,
-      Chemin_critique: d.isCritical ? "Oui" : "Non"
-    }]);
-  });
-  if(actions.length){
-    try{ await grist.docApi.applyUserActions(actions); }
-    catch(e){ console.error("❌ Erreur sauvegarde PERT:", e); }
-  }
-  syncPertIntoDB();
+// Accès pratique : le badge "provoque" et "subit" d'un élément donné.
+function getRetardStructurel(genre, id){
+  const cle = (genre==="tache"?"T:":"J:")+id;
+  const r = RETARDS_STRUCTURELS || {provoque:{},subit:{}};
+  return {
+    provoque: r.provoque[cle] || [],
+    subit:    r.subit[cle]    || []
+  };
 }
-
-function syncPertIntoDB(){
-  DB.taches.forEach(t=>{
-    const d = PERT_DATA[t.id];
-    if(!d) return;
-    t.Est_critique = !!d.isCritical;
-    t.Marge_totale = d.slack !== undefined ? d.slack : t.Marge_totale;
-  });
-}
+let RETARDS_STRUCTURELS = {provoque:{}, subit:{}};
 
 let INIT_EN_COURS = false;
 let NON_ATTRIBUE_VERIFIE = false;
@@ -1442,7 +1373,6 @@ async function saveJalon(){
       await grist.docApi.applyUserActions([["AddRecord","Jalons",null,values]]);
     }
     await init();
-    await calculatePERT();
     construire();
     // Cascade automatique si la date a changé
     if(dateChangee && ancienJalon){
@@ -1899,7 +1829,6 @@ async function saveTache(){
       await grist.docApi.applyUserActions([["AddRecord","Taches",null,values]]);
     }
     await init();
-    await calculatePERT();
     construire();
     // Cascade automatique si Date_fin a changé (édition uniquement)
     if(dateFinChangee && ancienneTache){
@@ -1924,7 +1853,6 @@ async function deleteTache(){
     await grist.docApi.applyUserActions([["RemoveRecord","Taches",id]]);
     closeModal("modal-tache");
     await init();
-    await calculatePERT();
     construire();
   }catch(e){ alert("Erreur: "+e.message); console.error(e); }
 }
@@ -2260,7 +2188,6 @@ async function confirmerCascade(){
     closeModal("modal-cascade");
     if(LAST_CASCADE_SOURCE) closeModal(LAST_CASCADE_SOURCE.modal);
     await init();
-    await calculatePERT();
     construire();
   }catch(e){ alert("Erreur lors de la cascade : "+e.message); console.error(e); }
   LAST_CASCADE_IMPACTS=[];
@@ -2302,6 +2229,7 @@ function calculerNiveauxJalons(jalonsProj, minI){
 }
 
 function construire(){
+  RETARDS_STRUCTURELS = calculerRetardsStructurels();
   const allDates = [];
   DB.taches.forEach(t => {
     if(COLLAPSED_PROJETS.has(refId(t.Projet))) return; // projet masqué : ne compte pas dans la plage visible
@@ -2412,6 +2340,18 @@ function construire(){
       const nomSpanTache = el("span","nom",t.Tache);
       nomSpanTache.onclick=(e)=>{ e.stopPropagation(); openTacheEdit(t); };
       labTask.appendChild(nomSpanTache);
+      // Retard structurel : cette tâche en provoque un (⚠️→) ou le subit (🔴)
+      const retardT = getRetardStructurel("tache", t.id);
+      if(retardT.provoque.length>0){
+        const icoProvoque = el("span","retard-icone provoque","⚠️");
+        icoProvoque.title = "Met en retard : " + retardT.provoque.map(x=>x.nom).join(", ");
+        labTask.appendChild(icoProvoque);
+      }
+      if(retardT.subit.length>0){
+        const icoSubit = el("span","retard-icone subit","🔴");
+        icoSubit.title = "En retard (bloquée par " + retardT.subit.join(", ") + ")";
+        labTask.appendChild(icoSubit);
+      }
       if(porteurTexte) labTask.appendChild(el("span","porteur",porteurTexte));
       labelsDiv.appendChild(labTask);
       const track=el("div","track tache");
@@ -2420,7 +2360,7 @@ function construire(){
         if(dIdx<=maxI){
           const info=statutInfo(statutTexte);
           const barre=el("div","barre "+info.cls);
-          if(t.Est_critique === true) barre.classList.add("critique");
+          if(t.Date_fin && parseDate(t.Date_fin) < new Date() && norm(statutTexte)!==norm("Terminé")) barre.classList.add("critique");
           barre.style.left=((dIdx-minI)*JOUR_PX)+"px";
           const finIdx = dayIndex(t.Date_fin);
           const duree = t.Duree_jours || 1;
@@ -2528,12 +2468,13 @@ function construire(){
         const topPx=topNum+"px";
         const typeTexte = getJalonTypeTexte(jalon);
         const couleur=cssVarValue(jalonCouleur(typeTexte, jalon.Important));
+        const retardJ = getRetardStructurel("jalon", jalon.id);
         const jalonLine=el("div","jalon-line");
         jalonLine.style.left=leftPx;
         jalonLine.style.top=PROJ_H+"px";
         jalonLine.style.background=couleur;
         projGroup.appendChild(jalonLine);
-        const nameEl=el("div","jalon-name",jalon.Nom);
+        const nameEl=el("div","jalon-name",(retardJ.subit.length>0?"🔴 ":"")+jalon.Nom);
         nameEl.style.left=(xDiamant + JALON_TEXTE_OFFSET)+"px";
         nameEl.style.top=topPx;
         nameEl.style.color=couleur;
@@ -2542,7 +2483,8 @@ function construire(){
         const markerWrap=el("div","jalon-marker-wrap");
         markerWrap.style.left=leftPx;
         markerWrap.style.top=topPx;
-        markerWrap.setAttribute("data-tooltip", `${jalon.Nom}${typeTexte?` (${typeTexte})`:""}\\n${fmtJourComplet(jalon.Date)}`);
+        const tooltipRetard = retardJ.subit.length>0 ? `\\nEn retard (bloqué par ${retardJ.subit.join(", ")})` : "";
+        markerWrap.setAttribute("data-tooltip", `${jalon.Nom}${typeTexte?` (${typeTexte})`:""}\\n${fmtJourComplet(jalon.Date)}${tooltipRetard}`);
         markerWrap.onclick=(e)=>{ e.stopPropagation(); openJalonEdit(jalon); };
         const diamond=el("div","jalon-marker-diamond");
         diamond.style.background=couleur;
@@ -2635,7 +2577,7 @@ function rendreLegende(){
   const itemCrit=el("div","item");
   const puceCrit=el("span","puce critique-puce");
   itemCrit.appendChild(puceCrit);
-  itemCrit.appendChild(document.createTextNode("Tâche critique"));
+  itemCrit.appendChild(document.createTextNode("Tâche en retard"));
   l.appendChild(itemCrit);
 }
 function el(tag,cls,txt){
