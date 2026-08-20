@@ -319,8 +319,9 @@
   .multi-select-item{
     display:flex;align-items:center;gap:8px;padding:6px 8px;cursor:pointer;border-radius:3px;
   }
+  .form-group .multi-select-item{display:flex;align-items:center}
   .multi-select-item:hover{background:var(--fond-alt)}
-  .multi-select-item input[type="checkbox"]{cursor:pointer}
+  .multi-select-item input[type="checkbox"]{cursor:pointer;flex:0 0 auto;margin:0}
 
   /* ========== MODALE TÂCHE 2 COLONNES (identique Kanban) ========== */
   .modal.modal-2col{
@@ -455,6 +456,7 @@
       <button class="btn-zoom" id="btn-zoom-in" title="Zoom avant" aria-label="Zoom avant">+</button>
       <button class="btn-zoom-reset" id="btn-zoom-reset" title="Réinitialiser le zoom">100%</button>
       <button class="btn-zoom-fit" id="btn-zoom-fit" title="Voir tout le projet">⊡ Vue d'ensemble</button>
+      <button class="btn-zoom-fit" id="btn-today" title="Centrer sur la date du jour">📍 Aujourd'hui</button>
     </div>
     <span style="margin-left:auto;font-size:12px;color:var(--texte-mention)" id="status"></span>
   </div>
@@ -777,6 +779,12 @@ function zoomVueEnsemble(){
   setJourPx(pxParJour);
   construire();
   setTimeout(()=>{ scrollDiv.scrollLeft = 0; }, 320);
+}
+
+// Centre la vue sur la date du jour, sans changer le niveau de zoom.
+function allerAujourdhui(){
+  ZOOM_CENTER_DAY = Math.floor(Date.now()/86400000);
+  construire();
 }
 
 grist.ready({requiredAccess:"full"});
@@ -2609,6 +2617,7 @@ document.getElementById("btn-zoom-in").addEventListener("click", zoomAvant);
 document.getElementById("btn-zoom-out").addEventListener("click", zoomArriere);
 document.getElementById("btn-zoom-reset").addEventListener("click", zoomReinitialiser);
 document.getElementById("btn-zoom-fit").addEventListener("click", zoomVueEnsemble);
+document.getElementById("btn-today").addEventListener("click", allerAujourdhui);
 setJourPx(ZOOM_DEFAUT);
 grist.onRecords(()=>init());
 init();
