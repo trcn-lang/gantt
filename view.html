@@ -153,6 +153,32 @@
     border-radius: 2px;
   }
 
+  /* Deadline projet (Date_cible = dernier Livrable Important) */
+  .deadline-line {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 4px;
+    margin-left: -1px;
+    border-left: 2px dashed var(--critique);
+    z-index: 2;
+    cursor: help;
+  }
+  .deadline-label {
+    position: absolute;
+    top: -2px;
+    font-size: 9px;
+    font-weight: 700;
+    color: var(--critique);
+    white-space: nowrap;
+    line-height: 1;
+    background: var(--fond);
+    padding: 1px 3px;
+    border-radius: 2px;
+    transform: translateX(-50%);
+    z-index: 4;
+  }
+
   /* Jalons (losanges) */
   .jalon-marker {
     position: absolute;
@@ -443,6 +469,25 @@ function getStatutJalon(jalon){
   // Majeur ou Pour information : ne peut pas être "En retard", juste "Passé"
   if(estPassee) return "Passé";
   return "À faire";
+}
+
+// Date_cible d'un projet = date du dernier Livrable Important.
+// Fallback : si aucun Livrable Important, date du dernier Livrable (tout court).
+// Calculée à la volée (pas de formule Grist), recalculée à chaque construire().
+function calculateDateCible(projId){
+  const jalonsProjet = DB.jalons.filter(j => refId(j.Projet) === projId);
+
+  const importants = jalonsProjet
+    .filter(j => norm(getJalonTypeTexte(j)) === norm("Livrable") && j.Important === true)
+    .map(j => parseDate(j.Date))
+    .filter(d => d !== null);
+  if(importants.length > 0) return new Date(Math.max(...importants));
+
+  const livrables = jalonsProjet
+    .filter(j => norm(getJalonTypeTexte(j)) === norm("Livrable"))
+    .map(j => parseDate(j.Date))
+    .filter(d => d !== null);
+  return livrables.length > 0 ? new Date(Math.max(...livrables)) : null;
 }
 
 let DB = {};
@@ -750,6 +795,15 @@ function construire(){
           });
         }
 
+        // Ligne "Date cible" du projet (dernier Livrable Important, fallback dernier Livrable)
+        const dateCible = calculateDateCible(proj.id);
+        if(dateCible && dateCible >= seg.start && dateCible <= seg.end){
+          const cibleOffset = ((dateCible - seg.start) / segDurationMs) * 100;
+          const cibleTitle = `Date cible du projet — ${fmtDate(dateCible)}`;
+          html += `<div class="deadline-line" style="left:${cibleOffset}%;" title="${cibleTitle}"></div>`;
+          html += `<div class="deadline-label" style="left:${cibleOffset}%;">🎯 Cible ${fmtDate(dateCible)}</div>`;
+        }
+
         // Ajouter marqueur "aujourd'hui"
         const today = new Date();
         today.setUTCHours(0, 0, 0, 0);
@@ -786,6 +840,10 @@ function construire(){
     <div class="legend-item">
       <div class="legend-puce bar"></div>
       <span>Durée projet</span>
+    </div>
+    <div class="legend-item">
+      <div style="width: 12px; height: 12px; border-left: 2px dashed var(--critique);"></div>
+      <span>🎯 Date cible (dernier Livrable Important)</span>
     </div>
   </div>`;
 
