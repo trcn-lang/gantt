@@ -320,7 +320,7 @@
 
     <label style="margin-left: 12px;">
       <input type="checkbox" id="show-critical" checked>
-      Mettre en avant tâches critiques
+      Mettre en avant tâches en retard
     </label>
 
     <span style="border-left: 1px solid var(--bordure); padding-left: 12px; margin-left: 4px; display: flex; gap: 10px; align-items: center;">
@@ -395,6 +395,52 @@ function getJalonTachesRequises(jalon){
   if(raw[0]==='E') return [];
   return raw.map(id => (typeof id === 'object' ? id : DB.taches.find(t => t.id === id))).filter(Boolean);
 }
+
+function getPredecessorTasks(task){
+  const raw = task.Predecesseurs;
+  if(!raw || !Array.isArray(raw)) return [];
+  if(raw[0]==='L') return raw.slice(1).map(id => DB.taches.find(t => t.id === id)).filter(Boolean);
+  if(raw[0]==='E') return [];
+  return [];
+}
+
+// Retard structurel : une tâche T2 est en retard si un de ses prédécesseurs T1
+// a une Date_fin postérieure à la Date_debut de T2 (idem pour un jalon dont une
+// Taches_requises finit après la date du jalon). Purement dérivé, aucune écriture Grist.
+function calculerRetardsStructurels(){
+  const provoque = {}, subit = {};
+  function ajouterProvoque(cle,genre,nom){ (provoque[cle]=provoque[cle]||[]).push({genre,nom}); }
+  function ajouterSubit(cle,nom){ (subit[cle]=subit[cle]||[]).push(nom); }
+
+  DB.taches.forEach(t=>{
+    const finT = parseDate(t.Date_fin);
+    if(!finT) return;
+    DB.taches.forEach(s=>{
+      if(s.id===t.id) return;
+      if(!getPredecessorTasks(s).some(p=>p.id===t.id)) return;
+      const debutS = parseDate(s.Date_debut);
+      if(debutS && finT > debutS){
+        ajouterProvoque(`T:${t.id}`,"tache",s.Tache);
+        ajouterSubit(`T:${s.id}`,t.Tache);
+      }
+    });
+    DB.jalons.forEach(j=>{
+      if(norm(getJalonTypeTexte(j))!==norm("Livrable")) return;
+      if(!getJalonTachesRequises(j).some(rt=>rt.id===t.id)) return;
+      const dateJ = parseDate(j.Date);
+      if(dateJ && finT > dateJ){
+        ajouterProvoque(`T:${t.id}`,"jalon",j.Nom);
+        ajouterSubit(`J:${j.id}`,t.Tache);
+      }
+    });
+  });
+  return {provoque, subit};
+}
+function getRetardStructurel(genre, id){
+  const cle=(genre==="tache"?"T:":"J:")+id;
+  return { provoque: RETARDS_STRUCTURELS.provoque[cle]||[], subit: RETARDS_STRUCTURELS.subit[cle]||[] };
+}
+let RETARDS_STRUCTURELS = {provoque:{}, subit:{}};
 
 function getStatutTache(tache){
   const statut = resolveRef(DB.parametres, tache.Statut, "Statut") || "";
@@ -595,6 +641,7 @@ function getProjectSegments(projMinDate, projMaxDate){
 }
 
 function construire(){
+  RETARDS_STRUCTURELS = calculerRetardsStructurels();
   const filtreProjet = document.getElementById("filtre-projet").value;
   const filtrePlage = document.getElementById("filtre-plage").value;
   const showCritical = document.getElementById("show-critical").checked;
@@ -744,11 +791,11 @@ function construire(){
         });
 
         if(showCritical){
-          pTaches.filter(t => t.Est_critique === true).forEach(t => {
+          pTaches.filter(t => getStatutTache(t) === "En retard").forEach(t => {
             const tDate = parseDate(t.Date_debut);
             if(!tDate || tDate < seg.start || tDate > seg.end) return;
             const tOffset = ((tDate - seg.start) / segDurationMs) * 100;
-            const title = `[CRITIQUE] ${t.Tache}`;
+            const title = `[EN RETARD] ${t.Tache}`;
             html += `<div class="jalon-marker critique" style="left:${tOffset}%; bottom: 14px;" title="${title}"></div>`;
           });
         }
@@ -784,7 +831,7 @@ function construire(){
     </div>
     ${showCritical ? `<div class="legend-item">
       <div class="legend-puce critique"></div>
-      <span>Tâche critique</span>
+      <span>Tâche en retard</span>
     </div>` : ""}
     <div class="legend-item">
       <div class="legend-puce bar"></div>
@@ -825,10 +872,18 @@ function construire(){
       const classStatut = statut === "En retard" ? "en-retard" : "";
       const porteur = resolveRef(DB.porteurs, t.Porteur, "Nom") || "—";
       const dateFin = fmtDate(t.Date_fin);
+      const retardT = getRetardStructurel("tache", t.id);
+      let nomAffiche = t.Tache || "—";
+      if(retardT.subit.length>0){
+        nomAffiche += ` <span style="color:#CE0500;font-size:10px;" title="En retard (bloquée par ${retardT.subit.join(", ")})">🔴 bloquée par ${retardT.subit.join(", ")}</span>`;
+      }
+      if(retardT.provoque.length>0){
+        nomAffiche += ` <span style="color:#B34000;font-size:10px;" title="Met en retard : ${retardT.provoque.map(x=>x.nom).join(", ")}">⚠️ met en retard ${retardT.provoque.map(x=>x.nom).join(", ")}</span>`;
+      }
 
       html += `<tr>
         <td>${dateFin}</td>
-        <td>${t.Tache || "—"}</td>
+        <td>${nomAffiche}</td>
         <td>${t.nomProjet || "—"}</td>
         <td>${porteur}</td>
         <td style="color: ${couleur}; font-weight: 600;" class="${classStatut}">● ${statut}</td>
