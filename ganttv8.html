@@ -314,14 +314,17 @@
   .info-box .dep-line .puce{flex:0 0 auto;font-size:11px}
 
   .multi-select{
-    border:1px solid var(--bordure);border-radius:4px;padding:8px;max-height:150px;overflow-y:auto;
+    border:1px solid var(--bordure);border-radius:4px;padding:8px;max-height:150px;
+    overflow-y:auto;overflow-x:hidden;width:100%;box-sizing:border-box;
   }
   .multi-select-item{
-    display:flex;align-items:center;gap:8px;padding:6px 8px;cursor:pointer;border-radius:3px;
+    display:flex;align-items:flex-start;gap:8px;padding:6px 8px;cursor:pointer;border-radius:3px;
+    width:100%;box-sizing:border-box;
   }
-  .form-group .multi-select-item{display:flex;align-items:center}
+  .form-group .multi-select-item{display:flex;align-items:flex-start}
   .multi-select-item:hover{background:var(--fond-alt)}
-  .multi-select-item input[type="checkbox"]{cursor:pointer;flex:0 0 auto;margin:0}
+  .multi-select-item input[type="checkbox"]{cursor:pointer;flex:0 0 auto;margin:2px 0 0 0}
+  .multi-select-item-text{flex:1 1 auto;min-width:0;word-break:break-word;line-height:1.35}
 
   /* ========== MODALE TÂCHE 2 COLONNES (identique Kanban) ========== */
   .modal.modal-2col{
@@ -1309,7 +1312,10 @@ function populateJalonTachesSelect(projetId, selectedTaches){
     checkbox.value = task.id;
     checkbox.checked = isSelected;
     label.appendChild(checkbox);
-    label.appendChild(document.createTextNode(task.Tache));
+    const texte = document.createElement("span");
+    texte.className = "multi-select-item-text";
+    texte.textContent = task.Tache;
+    label.appendChild(texte);
     container.appendChild(label);
   });
 }
@@ -1740,7 +1746,10 @@ function populatePredecessorsSelect(projetId, selectedPreds){
     checkbox.value = task.id;
     checkbox.checked = isSelected;
     label.appendChild(checkbox);
-    label.appendChild(document.createTextNode(task.Tache));
+    const texte = document.createElement("span");
+    texte.className = "multi-select-item-text";
+    texte.textContent = task.Tache;
+    label.appendChild(texte);
     container.appendChild(label);
   });
 }
@@ -1767,7 +1776,10 @@ function populateJalonsDeclencheursSelect(projetId, selectedJalons){
     checkbox.value = jalon.id;
     checkbox.checked = isSelected;
     label.appendChild(checkbox);
-    label.appendChild(document.createTextNode(jalon.Nom));
+    const texte = document.createElement("span");
+    texte.className = "multi-select-item-text";
+    texte.textContent = jalon.Nom;
+    label.appendChild(texte);
     container.appendChild(label);
   });
 }
