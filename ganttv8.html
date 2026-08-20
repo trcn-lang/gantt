@@ -2054,10 +2054,26 @@ function calculerCascadeDepuisTache(startTask){
     }
   }
 
+  // ─── Conflits amont : jalons qui attendent cette tâche et que la nouvelle
+  // Date_fin dépasse maintenant (quel que soit leur caractère Fixe ou non).
+  const nouvelleDateFinSource = parseDate(startTask.Date_fin);
+  jalonsScope
+    .filter(j => norm(getJalonTypeTexte(j)) === norm("Livrable"))
+    .filter(j => getJalonTachesRequises(j).some(t => t.id === startTask.id))
+    .forEach(j => {
+      const dateJalon = parseDate(j.Date);
+      if(!dateJalon || !nouvelleDateFinSource) return;
+      if(nouvelleDateFinSource <= dateJalon) return; // pas de dépassement
+      const deltaJours = joursOuvres(dateJalon, nouvelleDateFinSource);
+      impacts.push({
+        genre:"jalon", element:j, nom:j.Nom,
+        statut:"conflit", deltaJours,
+        detail:`Tâche finit le ${fmtJourComplet(Math.floor(nouvelleDateFinSource.getTime()/1000))} > Jalon le ${fmtJourComplet(Math.floor(dateJalon.getTime()/1000))}`
+      });
+    });
+
   return impacts;
 }
-
-// ─── Cascade depuis un jalon (date modifiée) ────────────────────────────────
 function calculerCascadeDepuisJalon(jalon){
   const projId = refId(jalon.Projet);
   const tasksScope = DB.taches.filter(t=>refId(t.Projet)===projId);
@@ -2065,7 +2081,7 @@ function calculerCascadeDepuisJalon(jalon){
   const nouvelleDateJalon = parseDate(jalon.Date);
   if(!nouvelleDateJalon) return impacts;
 
-  // Tâches déclenchées par ce jalon (Jalon_declencheur)
+  // ─── Cascades vers l'avant : tâches déclenchées par ce jalon
   tasksScope
     .filter(t=>getTacheJalonsDeclencheurs(t).some(j=>j.id===jalon.id))
     .forEach(t=>{
@@ -2084,6 +2100,18 @@ function calculerCascadeDepuisJalon(jalon){
       });
     });
 
+  // ─── Conflits amont : tâches requises dont la Date_fin dépasse la nouvelle date du jalon
+  getJalonTachesRequises(jalon).forEach(t=>{
+    const finTache = parseDate(t.Date_fin);
+    if(!finTache || finTache <= nouvelleDateJalon) return;
+    const deltaJours = joursOuvres(nouvelleDateJalon, finTache);
+    impacts.push({
+      genre:"tache", element:t, nom:t.Tache,
+      statut:"conflit", deltaJours,
+      detail:`Finit le ${fmtJourComplet(Math.floor(finTache.getTime()/1000))} > Jalon avancé au ${fmtJourComplet(Math.floor(nouvelleDateJalon.getTime()/1000))}`
+    });
+  });
+
   return impacts;
 }
 
@@ -2094,46 +2122,106 @@ function afficherRecapCascade(sourceType, sourceNom, impacts){
 
   const recapDiv = document.getElementById("cascade-recap");
   recapDiv.innerHTML = "";
-  document.getElementById("cascade-titre").textContent = `${impacts.length} impact(s) calendaire(s)`;
 
-  const nbShift = impacts.filter(i=>i.statut==="shift").length;
+  const conflits = impacts.filter(i=>i.statut==="conflit");
+  const cascades = impacts.filter(i=>i.statut!=="conflit");
+  const nbShift  = cascades.filter(i=>i.statut==="shift").length;
+
+  document.getElementById("cascade-titre").textContent =
+    [conflits.length>0 ? `${conflits.length} conflit(s)` : "",
+     cascades.length>0 ? `${cascades.length} impact(s) à propager` : ""]
+    .filter(Boolean).join(" · ") || "Impacts calendaires";
+
   document.getElementById("btn-confirmer-cascade").style.display = nbShift>0 ? "inline-block" : "none";
 
-  impacts.forEach(impact=>{
-    const ligne = document.createElement("div");
-    ligne.className = "cascade-recap-line" + (impact.statut!=="shift" ? " dim" : "");
+  // ── Section conflits (informationnelle, pas d'action automatique) ──────────
+  if(conflits.length>0){
+    const titre = document.createElement("div");
+    titre.style.cssText = "font-size:11px;font-weight:700;color:var(--critique);text-transform:uppercase;letter-spacing:.5px;margin:4px 0 6px 0;";
+    titre.textContent = "⚠️ Conflits détectés";
+    recapDiv.appendChild(titre);
 
-    const icone = document.createElement("span");
-    icone.textContent = impact.genre==="jalon" ? "◆" : "▶";
-    icone.style.cssText = "font-size:10px;opacity:0.6;flex-shrink:0";
-    ligne.appendChild(icone);
+    conflits.forEach(impact=>{
+      const ligne = document.createElement("div");
+      ligne.className = "cascade-recap-line";
+      ligne.style.background = "#FFF5F5";
 
-    const nom = document.createElement("span");
-    nom.className = "nom-element";
-    nom.textContent = impact.nom;
-    ligne.appendChild(nom);
+      const icone = document.createElement("span");
+      icone.textContent = impact.genre==="jalon" ? "◆" : "▶";
+      icone.style.cssText = "font-size:10px;flex-shrink:0;color:var(--critique)";
+      ligne.appendChild(icone);
 
-    const dates = document.createElement("span");
-    dates.className = "dates-shift";
-    if(impact.statut==="shift"){
-      const oldD = impact.oldDebut || impact.oldFin;
-      const newD = impact.newDebut || impact.newFin;
-      if(oldD && newD)
-        dates.textContent = `${fmtJourComplet(Math.floor(oldD.getTime()/1000))} → ${fmtJourComplet(Math.floor(newD.getTime()/1000))}`;
-    } else if(impact.statut==="absorbe"){
-      dates.textContent = `durée ${impact.nouvelleDuree}j (compressé)`;
+      const nom = document.createElement("span");
+      nom.className = "nom-element";
+      nom.textContent = impact.nom;
+      ligne.appendChild(nom);
+
+      const detail = document.createElement("span");
+      detail.className = "dates-shift";
+      detail.textContent = impact.detail || "";
+      ligne.appendChild(detail);
+
+      const badge = document.createElement("span");
+      badge.className = "badge conflit";
+      badge.textContent = "Conflit";
+      badge.style.background = "var(--critique)";
+      ligne.appendChild(badge);
+
+      recapDiv.appendChild(ligne);
+    });
+
+    if(cascades.length>0){
+      const sep = document.createElement("div");
+      sep.style.cssText = "border-top:1px solid var(--bordure);margin:10px 0 6px 0;";
+      recapDiv.appendChild(sep);
     }
-    ligne.appendChild(dates);
+  }
 
-    const badge = document.createElement("span");
-    badge.className = "badge " + impact.statut;
-    badge.textContent = impact.statut==="shift" ? "Décalé"
-      : impact.statut==="absorbe" ? "Absorbé"
-      : "Fixe — bloqué";
-    ligne.appendChild(badge);
+  // ── Section cascades (décalages et absorptions) ────────────────────────────
+  if(cascades.length>0){
+    const titre = document.createElement("div");
+    titre.style.cssText = "font-size:11px;font-weight:700;color:var(--texte-mention);text-transform:uppercase;letter-spacing:.5px;margin:4px 0 6px 0;";
+    titre.textContent = "Propagation";
+    recapDiv.appendChild(titre);
 
-    recapDiv.appendChild(ligne);
-  });
+    cascades.forEach(impact=>{
+      const ligne = document.createElement("div");
+      ligne.className = "cascade-recap-line" + (impact.statut!=="shift" ? " dim" : "");
+
+      const icone = document.createElement("span");
+      icone.textContent = impact.genre==="jalon" ? "◆" : "▶";
+      icone.style.cssText = "font-size:10px;opacity:0.6;flex-shrink:0";
+      ligne.appendChild(icone);
+
+      const nom = document.createElement("span");
+      nom.className = "nom-element";
+      nom.textContent = impact.nom;
+      ligne.appendChild(nom);
+
+      const dates = document.createElement("span");
+      dates.className = "dates-shift";
+      if(impact.statut==="shift"){
+        const oldD = impact.oldDebut || impact.oldFin;
+        const newD = impact.newDebut || impact.newFin;
+        if(oldD && newD)
+          dates.textContent = `${fmtJourComplet(Math.floor(oldD.getTime()/1000))} → ${fmtJourComplet(Math.floor(newD.getTime()/1000))}`;
+      } else if(impact.statut==="absorbe"){
+        dates.textContent = `durée réduite à ${impact.nouvelleDuree}j`;
+      } else if(impact.statut==="fixe"){
+        dates.textContent = `reste au ${fmtJourComplet(Math.floor(impact.oldFin.getTime()/1000))}`;
+      }
+      ligne.appendChild(dates);
+
+      const badge = document.createElement("span");
+      badge.className = "badge " + impact.statut;
+      badge.textContent = impact.statut==="shift" ? "Décalé"
+        : impact.statut==="absorbe" ? "Absorbé"
+        : "Fixe";
+      ligne.appendChild(badge);
+
+      recapDiv.appendChild(ligne);
+    });
+  }
 
   openModal("modal-cascade");
 }
