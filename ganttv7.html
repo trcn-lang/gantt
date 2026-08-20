@@ -20,6 +20,7 @@
     --jalon-majeur:#C41E3A;
     --jalon-livrable:#FF6B35;
     --jalon-info:#6B6B6B;
+    --critique:#CE0500;
     --jour:16px;
     --label-w:300px;
     --row-h:44px;
@@ -283,6 +284,37 @@
   .form-actions.with-delete{justify-content:space-between}
   .btn-cancel{background:#ccc;color:#000}
   .btn-cancel:hover{background:#aaa}
+  .btn-cascade{background:#B34000}
+  .btn-cascade:hover{background:#8f3300}
+
+  .mode-toggle{display:flex;gap:0;border:1px solid var(--bordure);border-radius:4px;overflow:hidden;width:fit-content}
+  .mode-toggle-btn{
+    padding:6px 14px;border:none;background:var(--fond-alt);color:var(--texte);
+    cursor:pointer;font-size:12px;font-weight:600;
+  }
+  .mode-toggle-btn.active{background:var(--bleu-france);color:#fff}
+  .mode-toggle-btn:not(.active):hover{background:var(--bleu-975)}
+  .mode-hint{font-size:11px;color:var(--texte-mention);margin-top:4px}
+
+  .cascade-recap-line{
+    display:flex;align-items:center;gap:8px;padding:8px;border-bottom:1px solid var(--bordure);font-size:12px;
+  }
+  .cascade-recap-line:last-child{border-bottom:none}
+  .cascade-recap-line .nom-tache{font-weight:600;flex:1}
+  .cascade-recap-line .dates-shift{color:var(--texte-mention);white-space:nowrap}
+  .cascade-recap-line.absorbee{opacity:0.65}
+  .cascade-recap-line .badge-stop{
+    font-size:10px;font-weight:700;padding:2px 6px;border-radius:3px;
+    background:var(--st-termine);color:#fff;white-space:nowrap;
+  }
+  .cascade-recap-line .badge-gele{
+    font-size:10px;font-weight:700;padding:2px 6px;border-radius:3px;
+    background:var(--texte-mention);color:#fff;white-space:nowrap;
+  }
+  .cascade-recap-line .badge-shift{
+    font-size:10px;font-weight:700;padding:2px 6px;border-radius:3px;
+    background:var(--critique);color:#fff;white-space:nowrap;
+  }
 
   .info-box{
     background:#FFF3CD;border:1px solid #FFC107;border-radius:4px;padding:12px;margin-bottom:16px;font-size:12px;
@@ -513,9 +545,23 @@
         <div id="info-dependances" class="info-box" style="display:none;"></div>
 
         <div class="form-group"><label>Tâche *</label><input type="text" id="field-tache-nom" placeholder="ex: Publication liste"></div>
+
+        <div class="form-group">
+          <label>Mode de saisie</label>
+          <div class="mode-toggle">
+            <button type="button" class="mode-toggle-btn active" id="btn-mode-duree" onclick="setModeSaisie('Durée')">📏 Durée</button>
+            <button type="button" class="mode-toggle-btn" id="btn-mode-fixe" onclick="setModeSaisie('Date fixe')">📌 Date fixe</button>
+          </div>
+          <div class="mode-hint" id="mode-hint"></div>
+        </div>
+        <input type="hidden" id="field-tache-mode" value="Durée">
+
         <div class="form-group"><label>Date début *</label><input type="date" id="field-tache-debut"></div>
-        <div class="form-group"><label>Date fin *</label><input type="date" id="field-tache-fin"></div>
-        <div class="form-group"><label>Durée (jours ouvrés)</label><input type="number" id="field-tache-duree" readonly placeholder="calculée automatiquement"></div>
+        <div class="form-group" id="group-tache-duree"><label>Durée (jours ouvrés) *</label><input type="number" id="field-tache-duree" min="1"></div>
+        <div class="form-group" id="group-tache-fin"><label>Date fin *</label><input type="date" id="field-tache-fin"></div>
+
+        <div id="warning-superposition" class="info-box warning" style="display:none;"></div>
+
         <div class="form-group"><label>Porteur</label><select id="field-tache-porteur"></select></div>
         <div class="form-group"><label>Statut</label><select id="field-tache-statut"></select></div>
 
@@ -547,10 +593,24 @@
 
     <div class="form-actions" id="modal-tache-actions">
       <button class="btn btn-danger" id="btn-delete-tache" style="display:none" onclick="deleteTache()">Supprimer</button>
+      <button class="btn btn-cascade" id="btn-cascade-tache" style="display:none" onclick="lancerRepercussionRetard()">🔄 Répercuter le retard</button>
       <div style="display:flex;gap:8px;">
         <button class="btn btn-cancel" onclick="closeModal('modal-tache')">Annuler</button>
         <button class="btn" id="btn-save-tache" onclick="saveTache()">Créer</button>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- MODALE RÉCAPITULATIF CASCADE -->
+<div class="modal-overlay" id="modal-cascade">
+  <div class="modal" style="max-width:600px;">
+    <h2>🔄 Répercuter le retard</h2>
+    <p id="cascade-intro" style="margin-bottom:12px;font-size:13px;color:var(--texte-mention);"></p>
+    <div id="cascade-recap"></div>
+    <div class="form-actions">
+      <button class="btn btn-cancel" onclick="closeModal('modal-cascade')">Annuler</button>
+      <button class="btn" id="btn-confirmer-cascade" onclick="confirmerRepercussionRetard()">Confirmer la répercussion</button>
     </div>
   </div>
 </div>
@@ -619,7 +679,13 @@ const JALON_COULEURS = {
   "livrable":     "var(--jalon-livrable)",
   "pour information": "var(--jalon-info)",
 };
-function jalonCouleur(type){
+// jalonCouleur retourne la couleur du jalon selon son type ET son flag Important.
+// Si Important=true ET Type="Livrable" → rouge critique (ancien "Jalon majeur")
+// Sinon → couleur standard du type
+function jalonCouleur(type, important){
+  if(norm(type) === norm("Livrable") && important === true){
+    return "var(--critique)";  // Rouge pour les Livrables Important
+  }
   return JALON_COULEURS[norm(type)] || "var(--jalon-info)";
 }
 
@@ -803,6 +869,9 @@ function getJalonTypeTexte(jalon){
 function getTacheJalonsDeclencheurs(task){
   return parseListeReference(task.Jalon_declencheur, DB.jalons);
 }
+// Date_cible d'un projet = date du dernier Livrable Important.
+// Fallback : si aucun Livrable Important, date du dernier Livrable (tout court).
+// Calculée à la volée (pas de formule Grist), recalculée à chaque construire().
 function getJalonTachesRequisesNonTerminees(jalon){
   return getJalonTachesRequises(jalon).filter(t=>{
     const statutTexte = resolveRef(DB.parametres, t.Statut, "Statut");
@@ -1182,13 +1251,101 @@ function soustraireJoursOuvres(date, n){
   }
   return d;
 }
-function majDuree(){
-  const debut=document.getElementById("field-tache-debut").value;
-  const fin=document.getElementById("field-tache-fin").value;
-  if(debut && fin){
-    const n=joursOuvres(new Date(debut), new Date(fin));
-    document.getElementById("field-tache-duree").value = n>0?n:"";
+// Décode le champ Mode (Choice Grist) en texte simple, comme getJalonTypeTexte pour Type.
+// Défaut "Durée" si absent (rétro-compatibilité avec les tâches créées avant ce chantier).
+function getTacheMode(t){
+  const raw = t.Mode;
+  if(!raw) return "Durée";
+  if(Array.isArray(raw)){
+    if(raw[0]==='L') return raw[1] || "Durée";
+    return "Durée";
   }
+  return raw;
+}
+
+// Bascule l'UI de la modale tâche entre les 2 modes de saisie.
+// Les 3 champs (debut/duree/fin) existent toujours en base ; seul change
+// celui qui est calculé (readonly) vs celui qui est saisi.
+function setModeSaisie(mode){
+  document.getElementById("field-tache-mode").value = mode;
+  document.getElementById("btn-mode-duree").classList.toggle("active", mode==="Durée");
+  document.getElementById("btn-mode-fixe").classList.toggle("active", mode==="Date fixe");
+
+  const dureeInput = document.getElementById("field-tache-duree");
+  const finInput = document.getElementById("field-tache-fin");
+  const hint = document.getElementById("mode-hint");
+
+  if(mode==="Durée"){
+    dureeInput.readOnly = false;
+    finInput.readOnly = true;
+    hint.textContent = "Vous saisissez la date de début et la durée ; la date de fin est calculée.";
+  } else {
+    dureeInput.readOnly = true;
+    finInput.readOnly = false;
+    hint.textContent = "Vous saisissez les 2 dates ; la durée est calculée. Les dates restent figées même si un prédécesseur bouge.";
+  }
+  recalcDepuisMode();
+  checkSuperposition();
+}
+
+// Recalcule le champ manquant selon le mode actif.
+function recalcDepuisMode(){
+  const mode = document.getElementById("field-tache-mode").value;
+  const debut = document.getElementById("field-tache-debut").value;
+  if(!debut) return;
+
+  if(mode==="Durée"){
+    const duree = parseInt(document.getElementById("field-tache-duree").value) || 0;
+    if(duree>0){
+      const fin = ajouterJoursOuvres(new Date(debut), duree);
+      document.getElementById("field-tache-fin").value = toDateInput(Math.floor(fin.getTime()/1000));
+    }
+  } else {
+    const fin = document.getElementById("field-tache-fin").value;
+    if(fin){
+      const n = joursOuvres(new Date(debut), new Date(fin));
+      document.getElementById("field-tache-duree").value = n>0 ? n : "";
+    }
+  }
+}
+
+// Date de début proposée = date de fin du prédécesseur le plus tardif + 1 jour ouvré.
+// Renvoie null si aucun prédécesseur sélectionné (ou dates manquantes).
+function proposerDateDebut(){
+  const checkboxes = document.querySelectorAll("#field-tache-predecesseurs input[type='checkbox']:checked");
+  let maxFin = null;
+  checkboxes.forEach(cb=>{
+    const predTask = DB.taches.find(t=>t.id===parseInt(cb.value));
+    if(!predTask) return;
+    const f = parseDate(predTask.Date_fin);
+    if(f && (!maxFin || f>maxFin)) maxFin = f;
+  });
+  return maxFin ? jourOuvreSuivant(maxFin) : null;
+}
+
+// Signal faible (non bloquant) : la tâche démarre avant la fin de son prédécesseur le plus tardif.
+// Toujours affiché s'il y a superposition, quel que soit le mode — mais seul le mode "Date fixe"
+// l'accepte réellement (en mode Durée la date de début est normalement dérivée du prédécesseur).
+function checkSuperposition(){
+  const box = document.getElementById("warning-superposition");
+  const debut = document.getElementById("field-tache-debut").value;
+  if(!debut){ box.style.display="none"; return; }
+  const proposee = proposerDateDebut();
+  if(proposee && new Date(debut) < proposee){
+    const mode = document.getElementById("field-tache-mode").value;
+    const proposeeEpoch = Math.floor(proposee.getTime()/1000);
+    box.style.display = "block";
+    box.textContent = mode==="Date fixe"
+      ? `⚠️ Cette tâche démarre avant la fin de son prédécesseur le plus tardif (qui finit le ${fmtJourComplet(proposeeEpoch)}). Superposition acceptée car le mode "Date fixe" est gelé.`
+      : `⚠️ La date de début est antérieure à la fin du prédécesseur le plus tardif (${fmtJourComplet(proposeeEpoch)}).`;
+  } else {
+    box.style.display = "none";
+  }
+}
+
+function majDuree(){
+  recalcDepuisMode();
+  checkSuperposition();
 }
 
 function findParamId(col, valeur){
@@ -1602,10 +1759,12 @@ function openTacheCreate(projetId){
   document.getElementById("modal-tache-title").textContent="Nouvelle Tâche";
   document.getElementById("btn-save-tache").textContent="Créer";
   document.getElementById("btn-delete-tache").style.display="none";
+  document.getElementById("btn-cascade-tache").style.display="none";
   document.getElementById("info-dependances").style.display="none";
   populatePredecessorsSelect(projetId, []);
   populateJalonsDeclencheursSelect(projetId, []);
   displayActionsInModal(null);
+  setModeSaisie("Durée");
   openModal("modal-tache");
 }
 
@@ -1637,6 +1796,7 @@ function openTacheEdit(t){
   document.getElementById("modal-tache-title").textContent="Modifier la tâche";
   document.getElementById("btn-save-tache").textContent="Enregistrer";
   document.getElementById("btn-delete-tache").style.display="inline-block";
+  document.getElementById("btn-cascade-tache").style.display="inline-block";
   const preds = getPredecessorTasks(t);
   const blocked = getPredecessorsBlocked(t);
   const jalonsDecl = getTacheJalonsDeclencheurs(t);
@@ -1675,6 +1835,7 @@ function openTacheEdit(t){
   populatePredecessorsSelect(refId(t.Projet), preds);
   populateJalonsDeclencheursSelect(refId(t.Projet), jalonsDecl);
   displayActionsInModal(t.id);
+  setModeSaisie(getTacheMode(t));
   openModal("modal-tache");
 }
 
@@ -1734,23 +1895,37 @@ function populateJalonsDeclencheursSelect(projetId, selectedJalons){
 }
 
 async function saveTache(){
+  const ok = await saveTacheInterne();
+  if(ok) closeModal("modal-tache");
+}
+
+// Persiste la tâche sans fermer la modale (réutilisé par le bouton "Répercuter le retard",
+// qui a besoin de sauvegarder d'abord l'état courant avant de calculer la cascade).
+// Renvoie true en cas de succès, false sinon (et affiche l'erreur).
+async function saveTacheInterne(){
   const id=document.getElementById("field-tache-id").value;
   const projet_id=parseInt(document.getElementById("field-tache-projet").value);
   const nom=document.getElementById("field-tache-nom").value.trim();
+  const mode=document.getElementById("field-tache-mode").value;
   const debut=document.getElementById("field-tache-debut").value;
   const fin=document.getElementById("field-tache-fin").value;
   const porteur=document.getElementById("field-tache-porteur").value;
   const statut=document.getElementById("field-tache-statut").value;
   const comments=document.getElementById("field-tache-comments").value.trim();
-  if(!nom || !debut || !fin){ alert("Champs obligatoires"); return; }
+  if(!nom || !debut || !fin){ alert("Champs obligatoires"); return false; }
+  // Seul cas bloquant du mode Durée/Date fixe : une fin antérieure au début.
+  if(new Date(fin) < new Date(debut)){
+    alert("❌ La date de fin ne peut pas être antérieure à la date de début.");
+    return false;
+  }
   const duree=joursOuvres(new Date(debut), new Date(fin));
   try{
     const proj=DB.projets.find(c=>c.id===projet_id);
-    if(!proj){ alert("Projet non trouvé"); return; }
+    if(!proj){ alert("Projet non trouvé"); return false; }
     const statutId=findParamId("Statut", statut);
     const porteurId=findPorteurId(porteur) || NON_ATTRIBUE_ID;
     const equipeId = refId(proj.Equipe);
-    if(!equipeId){ alert("Équipe invalide"); return; }
+    if(!equipeId){ alert("Équipe invalide"); return false; }
     const checkboxes = document.querySelectorAll("#field-tache-predecesseurs input[type='checkbox']:checked");
     const predecessorIds = Array.from(checkboxes).map(cb => parseInt(cb.value));
     if(id){
@@ -1758,7 +1933,7 @@ async function saveTache(){
       for(const predId of predecessorIds){
         if(isDescendant(currentTaskId, predId)){
           alert("❌ Cycle détecté : cette dépendance créerait une boucle. Sélection annulée.");
-          return;
+          return false;
         }
       }
     }
@@ -1771,14 +1946,14 @@ async function saveTache(){
       for(const jalonId of jalonDeclencheurIds){
         if(isDescendantUnifie('T:'+currentTaskId, 'J:'+jalonId)){
           alert("❌ Cycle détecté : ce livrable déclencheur créerait une boucle. Sélection annulée.");
-          return;
+          return false;
         }
       }
     }
     const jalonDeclencheur = ['L', ...jalonDeclencheurIds];
 
     const values={
-      Equipe:equipeId, Projet:projet_id, Tache:nom,
+      Equipe:equipeId, Projet:projet_id, Tache:nom, Mode:mode,
       Date_debut:Math.floor(new Date(debut).getTime()/1000),
       Date_fin: Math.floor(new Date(fin).getTime()/1000),
       Duree_jours:duree, Statut:statutId, Porteur:porteurId,
@@ -1790,11 +1965,11 @@ async function saveTache(){
     }else{
       await grist.docApi.applyUserActions([["AddRecord","Taches",null,values]]);
     }
-    closeModal("modal-tache");
     await init();
     await calculatePERT();
     construire();
-  }catch(e){ alert("Erreur: "+e.message); console.error(e); }
+    return true;
+  }catch(e){ alert("Erreur: "+e.message); console.error(e); return false; }
 }
 
 async function deleteTache(){
@@ -1808,6 +1983,202 @@ async function deleteTache(){
     await calculatePERT();
     construire();
   }catch(e){ alert("Erreur: "+e.message); console.error(e); }
+}
+
+// ============================================================================
+// DÉCALAGE EN CASCADE — "Répercuter le retard"
+// ============================================================================
+// Déclenchement : bouton explicite (jamais automatique), depuis la modale
+// d'édition d'une tâche déjà existante.
+//
+// Principe (logique PERT standard) :
+//  - On part de la tâche éditée (dont la date de fin vient d'être enregistrée).
+//  - Pour chaque successeur direct (via Predecesseurs), on calcule la date de
+//    début minimale = fin du prédécesseur le plus tardif + 1 jour ouvré.
+//  - Si le successeur est en mode "Date fixe" : il ne bouge JAMAIS. Le
+//    chevauchement est accepté (signal visuel), et la cascade s'arrête sur
+//    cette branche avec sa date de fin d'origine inchangée.
+//  - Sinon, si le décalage nécessaire est absorbable par sa marge (Marge_totale,
+//    calculée par le PERT) : la tâche n'est pas modifiée, elle "absorbe" le
+//    retard — c'est un point d'arrêt de la cascade sur cette branche.
+//  - Sinon, la tâche est décalée du nombre de jours nécessaire (même durée
+//    conservée), et la cascade continue vers SES propres successeurs.
+// Un récapitulatif non bloquant liste tous les impacts avant application.
+let LAST_CASCADE_IMPACTS = [];
+let LAST_CASCADE_TASK_ID = null;
+
+async function lancerRepercussionRetard(){
+  const id = parseInt(document.getElementById("field-tache-id").value);
+  if(!id) return;
+  // On sauvegarde d'abord l'état courant du formulaire (sans fermer la modale)
+  // pour que la cascade parte bien des dates que l'utilisateur vient de saisir.
+  const ok = await saveTacheInterne();
+  if(!ok) return;
+  const task = DB.taches.find(t=>t.id===id);
+  if(!task){ alert("Tâche introuvable après enregistrement."); return; }
+
+  const impacts = calculerCascade(task);
+  LAST_CASCADE_IMPACTS = impacts;
+  LAST_CASCADE_TASK_ID = id;
+  afficherRecapCascade(task, impacts);
+}
+
+// Parcourt la chaîne de successeurs (au sein du même projet) et calcule les impacts.
+function calculerCascade(startTask){
+  const projId = refId(startTask.Projet);
+  const tasksScope = DB.taches.filter(t=>refId(t.Projet)===projId);
+  const byId = {};
+  tasksScope.forEach(t=>byId[t.id]=t);
+
+  function directSuccessors(taskId){
+    return tasksScope.filter(t => getPredecessorTasks(t).some(p=>refId(p.id||p)===taskId));
+  }
+
+  const impacts = [];
+  // Date de fin "effective" à utiliser pour propager vers les successeurs :
+  // celle qui vient d'être enregistrée pour startTask, puis au fil de la cascade.
+  const finEffective = {};
+  finEffective[startTask.id] = parseDate(startTask.Date_fin);
+
+  const visites = new Set([startTask.id]);
+  const file = [startTask.id];
+
+  while(file.length){
+    const currentId = file.shift();
+    const successeurs = directSuccessors(currentId);
+
+    successeurs.forEach(s=>{
+      if(visites.has(s.id)) return; // évite les boucles / doubles passages
+      visites.add(s.id);
+
+      const predsIds = getPredecessorTasks(s).map(p=>refId(p.id||p)).filter(pid=>byId[pid]);
+      let maxFin = null;
+      predsIds.forEach(pid=>{
+        const f = finEffective[pid] !== undefined ? finEffective[pid] : parseDate(byId[pid].Date_fin);
+        if(f && (!maxFin || f > maxFin)) maxFin = f;
+      });
+      if(!maxFin){ finEffective[s.id] = parseDate(s.Date_fin); file.push(s.id); return; }
+
+      const debutMini = jourOuvreSuivant(maxFin);
+      const debutActuel = parseDate(s.Date_debut);
+
+      if(!debutActuel || debutMini <= debutActuel){
+        // Pas de décalage nécessaire pour cette tâche : on continue la cascade
+        // avec sa date de fin actuelle, mais rien à afficher pour elle.
+        finEffective[s.id] = parseDate(s.Date_fin);
+        file.push(s.id);
+        return;
+      }
+
+      const deltaJours = joursOuvres(debutActuel, debutMini) - 1;
+      const modeS = getTacheMode(s);
+
+      if(modeS === "Date fixe"){
+        finEffective[s.id] = parseDate(s.Date_fin); // gelée : ne bouge pas
+        impacts.push({
+          task:s, statut:"gele", deltaJours,
+          oldDebut:debutActuel, oldFin:parseDate(s.Date_fin),
+          newDebut:debutActuel, newFin:parseDate(s.Date_fin)
+        });
+        // Point d'arrêt : ses successeurs ne sont pas impactés par CE décalage
+        return;
+      }
+
+      const marge = (typeof s.Marge_totale === "number") ? s.Marge_totale : 0;
+      if(deltaJours <= marge){
+        finEffective[s.id] = parseDate(s.Date_fin); // absorbée par la marge : ne bouge pas
+        impacts.push({
+          task:s, statut:"absorbe", deltaJours,
+          oldDebut:debutActuel, oldFin:parseDate(s.Date_fin),
+          newDebut:debutActuel, newFin:parseDate(s.Date_fin)
+        });
+        // Point d'arrêt : la tâche non-critique absorbe le retard via sa marge
+        return;
+      }
+
+      // Décalage effectif : même durée, nouvelles dates
+      const nouvelleFin = ajouterJoursOuvres(debutMini, s.Duree_jours||1);
+      finEffective[s.id] = nouvelleFin;
+      impacts.push({
+        task:s, statut:"shift", deltaJours,
+        oldDebut:debutActuel, oldFin:parseDate(s.Date_fin),
+        newDebut:debutMini, newFin:nouvelleFin
+      });
+      file.push(s.id); // la cascade continue au-delà d'une tâche réellement décalée
+    });
+  }
+
+  return impacts;
+}
+
+function afficherRecapCascade(startTask, impacts){
+  const recapDiv = document.getElementById("cascade-recap");
+  const introEl = document.getElementById("cascade-intro");
+  recapDiv.innerHTML = "";
+
+  if(impacts.length === 0){
+    introEl.textContent = `Aucune tâche successeur de "${startTask.Tache}" n'est impactée par ce changement de date.`;
+    document.getElementById("btn-confirmer-cascade").style.display = "none";
+  } else {
+    const nbShift = impacts.filter(i=>i.statut==="shift").length;
+    const nbAbsorbe = impacts.filter(i=>i.statut==="absorbe").length;
+    const nbGele = impacts.filter(i=>i.statut==="gele").length;
+    let phrase = `${nbShift} tâche(s) vont être décalée(s).`;
+    if(nbAbsorbe>0) phrase += ` ${nbAbsorbe} tâche(s) absorbent le retard via leur marge (inchangées).`;
+    if(nbGele>0) phrase += ` ${nbGele} tâche(s) en mode "Date fixe" restent figées (chevauchement accepté).`;
+    introEl.textContent = phrase;
+    document.getElementById("btn-confirmer-cascade").style.display = nbShift>0 ? "inline-block" : "none";
+
+    impacts.forEach(impact=>{
+      const ligne = document.createElement("div");
+      ligne.className = "cascade-recap-line" + (impact.statut!=="shift" ? " absorbee" : "");
+      const nom = document.createElement("span");
+      nom.className = "nom-tache";
+      nom.textContent = impact.task.Tache;
+      ligne.appendChild(nom);
+
+      const dates = document.createElement("span");
+      dates.className = "dates-shift";
+      if(impact.statut==="shift"){
+        dates.textContent = `${fmtJourComplet(Math.floor(impact.oldDebut.getTime()/1000))} → ${fmtJourComplet(Math.floor(impact.newDebut.getTime()/1000))} (+${impact.deltaJours} j.)`;
+      } else {
+        dates.textContent = `reste au ${fmtJourComplet(Math.floor(impact.oldDebut.getTime()/1000))}`;
+      }
+      ligne.appendChild(dates);
+
+      const badge = document.createElement("span");
+      if(impact.statut==="shift"){
+        badge.className = "badge-shift"; badge.textContent = "Décalée";
+      } else if(impact.statut==="absorbe"){
+        badge.className = "badge-stop"; badge.textContent = "Absorbée (marge)";
+      } else {
+        badge.className = "badge-gele"; badge.textContent = "Date fixe — gelée";
+      }
+      ligne.appendChild(badge);
+
+      recapDiv.appendChild(ligne);
+    });
+  }
+
+  openModal("modal-cascade");
+}
+
+async function confirmerRepercussionRetard(){
+  const aAppliquer = LAST_CASCADE_IMPACTS.filter(i=>i.statut==="shift");
+  if(aAppliquer.length === 0){ closeModal("modal-cascade"); return; }
+  try{
+    const actions = aAppliquer.map(i => ["UpdateRecord","Taches",i.task.id,{
+      Date_debut: Math.floor(i.newDebut.getTime()/1000),
+      Date_fin: Math.floor(i.newFin.getTime()/1000)
+      // Duree_jours inchangée : la cascade décale, elle ne raccourcit/rallonge pas la tâche.
+    }]);
+    await grist.docApi.applyUserActions(actions);
+    closeModal("modal-cascade");
+    closeModal("modal-tache");
+    await init();
+    await calculatePERT();
+    construire();
+  }catch(e){ alert("Erreur lors de la répercussion : "+e.message); console.error(e); }
 }
 
 // Mesure précise de la largeur d'un texte avec la police réelle du widget
@@ -2070,7 +2441,7 @@ function construire(){
         const topNum=JALON_TOP_BASE + niveau * JALON_NIVEAU_ESPACEMENT;
         const topPx=topNum+"px";
         const typeTexte = getJalonTypeTexte(jalon);
-        const couleur=cssVarValue(jalonCouleur(typeTexte));
+        const couleur=cssVarValue(jalonCouleur(typeTexte, jalon.Important));
         const jalonLine=el("div","jalon-line");
         jalonLine.style.left=leftPx;
         jalonLine.style.top=PROJ_H+"px";
@@ -2128,6 +2499,7 @@ function construire(){
           });
         }
     });
+
     grid.appendChild(projGroup);
   });
   document.getElementById("kanban").innerHTML="";
@@ -2191,6 +2563,19 @@ document.getElementById("btn-add-projet").onclick=()=>openProjetCreate();
 document.getElementById("field-jalon-type").addEventListener("change", toggleJalonTachesRequisesVisibilite);
 document.getElementById("field-tache-debut").addEventListener("change", majDuree);
 document.getElementById("field-tache-fin").addEventListener("change", majDuree);
+document.getElementById("field-tache-duree").addEventListener("change", majDuree);
+// Écoute déléguée : quand on (dé)coche un prédécesseur, on ne propose une date de
+// début que si le champ est vide (nouvelle tâche) — on n'écrase jamais une date
+// déjà choisie explicitement par l'utilisateur.
+document.getElementById("field-tache-predecesseurs").addEventListener("change", ()=>{
+  const debutInput = document.getElementById("field-tache-debut");
+  if(!debutInput.value){
+    const proposee = proposerDateDebut();
+    if(proposee) debutInput.value = toDateInput(Math.floor(proposee.getTime()/1000));
+  }
+  recalcDepuisMode();
+  checkSuperposition();
+});
 document.getElementById("btn-add-action").addEventListener("click", (e) => {
   e.preventDefault();
   const tacheId = parseInt(document.getElementById("field-tache-id").value);
