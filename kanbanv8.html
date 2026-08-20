@@ -141,6 +141,8 @@
     display:flex;gap:5px;align-items:baseline;
   }
   .card .dep-line .puce{flex:0 0 auto;font-size:9px}
+  .card .dep-line.retard-subit{color:#CE0500;font-weight:600}
+  .card .dep-line.retard-provoque{color:#B34000;font-weight:600}
   .card .echeance-badge{
     display:inline-block;font-size:11px;font-weight:700;padding:3px 8px;
     border-radius:10px;margin-bottom:6px;
@@ -541,7 +543,7 @@ const STATUTS = [
   {nom:"Terminé",   cls:"st-termine",  couleur:"var(--st-termine)"},
 ];
 let NON_ATTRIBUE_ID = null;
-let PERT_DATA = {};
+
 
 function norm(s){
   return String(s||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").trim();
@@ -833,136 +835,44 @@ function detectCycles(){
   return DB.taches.some(t => hasCycle(t.id));
 }
 
-// Calcule les dates au plus tôt / au plus tard / marge pour un sous-ensemble de tâches
-// (un projet à la fois), de façon totalement indépendante des autres projets.
-function calculerPertPourTaches(tasksScope){
-  const scopeIds = new Set(tasksScope.map(t=>t.id));
+// Retard structurel : une tâche T2 est en retard si un de ses prédécesseurs T1
+// a une Date_fin postérieure à la Date_debut de T2 (idem pour un jalon dont une
+// Taches_requises finit après la date du jalon). Purement dérivé, aucune écriture Grist.
+function calculerRetardsStructurels(){
+  const provoque = {}, subit = {};
+  function ajouterProvoque(cle,genre,nom){ (provoque[cle]=provoque[cle]||[]).push({genre,nom}); }
+  function ajouterSubit(cle,nom){ (subit[cle]=subit[cle]||[]).push(nom); }
 
-  const memoEarly = {};
-  function getEarlyStart(taskId){
-    if(memoEarly[taskId] !== undefined) return memoEarly[taskId];
-    const task = tasksScope.find(t => t.id === taskId);
-    if(!task){ memoEarly[taskId] = null; return null; }
-    // On ignore les prédécesseurs qui seraient dans un autre projet
-    const preds = getPredecessorTasks(task).filter(p => scopeIds.has(refId(p.id||p)));
-    if(preds.length === 0){
-      memoEarly[taskId] = parseDate(task.Date_debut);
-      return memoEarly[taskId];
-    }
-    let maxEnd = null;
-    for(const pred of preds){
-      const predTask = tasksScope.find(t => t.id === refId(pred.id||pred));
-      if(!predTask) continue;
-      const predStart = getEarlyStart(predTask.id);
-      if(!predStart) continue;
-      const predEnd = ajouterJoursOuvres(predStart, predTask.Duree_jours||1);
-      if(!maxEnd || predEnd > maxEnd) maxEnd = predEnd;
-    }
-    memoEarly[taskId] = maxEnd ? jourOuvreSuivant(maxEnd) : parseDate(task.Date_debut);
-    return memoEarly[taskId];
-  }
-  tasksScope.forEach(t=>{
-    const early = getEarlyStart(t.id);
-    PERT_DATA[t.id] = PERT_DATA[t.id] || {};
-    PERT_DATA[t.id].earlyStart = early;
-    if(early){
-      PERT_DATA[t.id].earlyEnd = ajouterJoursOuvres(early, t.Duree_jours||1);
-    }
-  });
-
-  // Fin du "projet" = fin du projet propre à CE PROJET uniquement
-  let projectEnd = null;
-  tasksScope.forEach(t=>{
-    const ee = PERT_DATA[t.id] && PERT_DATA[t.id].earlyEnd;
-    if(ee && (!projectEnd || ee > projectEnd)) projectEnd = ee;
-  });
-  if(!projectEnd) return;
-
-  const memoLate = {};
-  function getLateEnd(taskId){
-    if(memoLate[taskId] !== undefined) return memoLate[taskId];
-    const task = tasksScope.find(t => t.id === taskId);
-    if(!task){ memoLate[taskId] = null; return null; }
-    const successeurs = tasksScope.filter(t => getPredecessorTasks(t).some(p => refId(p.id||p) === taskId));
-    if(successeurs.length === 0){
-      memoLate[taskId] = projectEnd;
-      return projectEnd;
-    }
-    let minStart = null;
-    for(const succ of successeurs){
-      const succLateEnd = getLateEnd(succ.id);
-      if(succLateEnd){
-        const succLateStart = soustraireJoursOuvres(succLateEnd, succ.Duree_jours||1);
-        if(!minStart || succLateStart < minStart) minStart = succLateStart;
+  DB.taches.forEach(t=>{
+    const finT = parseDate(t.Date_fin);
+    if(!finT) return;
+    DB.taches.forEach(s=>{
+      if(s.id===t.id) return;
+      if(!getPredecessorTasks(s).some(p=>refId(p.id||p)===t.id)) return;
+      const debutS = parseDate(s.Date_debut);
+      if(debutS && finT > debutS){
+        ajouterProvoque(`T:${t.id}`,"tache",s.Tache);
+        ajouterSubit(`T:${s.id}`,t.Tache);
       }
-    }
-    memoLate[taskId] = minStart ? jourOuvrePrecedent(minStart) : projectEnd;
-    return memoLate[taskId];
-  }
-  tasksScope.forEach(t=>{
-    const lateEnd = getLateEnd(t.id);
-    PERT_DATA[t.id] = PERT_DATA[t.id] || {};
-    PERT_DATA[t.id].lateEnd = lateEnd;
-    if(lateEnd){
-      PERT_DATA[t.id].lateStart = soustraireJoursOuvres(lateEnd, t.Duree_jours||1);
-    }
+    });
+    DB.jalons.forEach(j=>{
+      if(norm(getJalonTypeTexte(j))!==norm("Livrable")) return;
+      if(!getJalonTachesRequises(j).some(rt=>rt.id===t.id)) return;
+      const dateJ = parseDate(j.Date);
+      if(dateJ && finT > dateJ){
+        ajouterProvoque(`T:${t.id}`,"jalon",j.Nom);
+        ajouterSubit(`J:${j.id}`,t.Tache);
+      }
+    });
   });
-
-  tasksScope.forEach(t=>{
-    const ls = PERT_DATA[t.id].lateStart, es = PERT_DATA[t.id].earlyStart;
-    if(ls && es){
-      const slack = ls >= es ? joursOuvres(es, ls) - 1 : 0;
-      PERT_DATA[t.id].slack = Math.max(0, slack);
-      PERT_DATA[t.id].isCritical = (PERT_DATA[t.id].slack === 0);
-    }
-  });
+  return {provoque, subit};
 }
-
-async function calculatePERT(){
-  if(detectCycles()){
-    console.error("❌ Cycle détecté dans les dépendances");
-    document.getElementById("status").textContent = "❌ Cycle dans les dépendances !";
-    return;
-  }
-  PERT_DATA = {};
-  // Regroupement des tâches par projet : chaque projet a ses propres
-  // dates au plus tôt / au plus tard, indépendamment des autres.
-  const groupes = {};
-  DB.taches.forEach(t=>{
-    const cle = refId(t.Projet) ?? "sans_projet";
-    if(!groupes[cle]) groupes[cle] = [];
-    groupes[cle].push(t);
-  });
-  Object.values(groupes).forEach(tasksScope => calculerPertPourTaches(tasksScope));
-
-  const actions = [];
-  DB.taches.forEach(t=>{
-    const d = PERT_DATA[t.id];
-    if(!d) return;
-    actions.push(["UpdateRecord","Taches",t.id,{
-      Date_au_plus_tot: d.earlyStart ? Math.floor(d.earlyStart.getTime()/1000) : null,
-      Date_au_plus_tard: d.lateEnd ? Math.floor(d.lateEnd.getTime()/1000) : null,
-      Marge_totale: d.slack !== undefined ? d.slack : null,
-      Est_critique: !!d.isCritical,
-      Chemin_critique: d.isCritical ? "Oui" : "Non"
-    }]);
-  });
-  if(actions.length){
-    try{ await grist.docApi.applyUserActions(actions); }
-    catch(e){ console.error("❌ Erreur sauvegarde PERT:", e); }
-  }
-  syncPertIntoDB();
+function getRetardStructurel(genre, id){
+  const cle=(genre==="tache"?"T:":"J:")+id;
+  const r = RETARDS_STRUCTURELS || {provoque:{},subit:{}};
+  return { provoque: r.provoque[cle]||[], subit: r.subit[cle]||[] };
 }
-
-// Reporte les résultats PERT (calculés en mémoire) dans DB.taches pour un affichage immédiat
-function syncPertIntoDB(){
-  DB.taches.forEach(t=>{
-    const d = PERT_DATA[t.id];
-    if(!d) return;
-    t.Est_critique = !!d.isCritical;
-    t.Marge_totale = d.slack !== undefined ? d.slack : t.Marge_totale;
-  });
-}
+let RETARDS_STRUCTURELS = {provoque:{}, subit:{}};
 
 // ========== SOUS-ACTIONS (Table ACTIONS) ==========
 
@@ -1350,7 +1260,6 @@ async function saveTache(){
       await grist.docApi.applyUserActions([["AddRecord","Taches",null,values]]);
     }
     await init();
-    await calculatePERT();
     construire();
 
     // Cascade automatique si Date_fin a changé
@@ -1562,7 +1471,6 @@ async function confirmerCascade(){
     closeModal("modal-cascade");
     if(LAST_CASCADE_SOURCE) closeModal(LAST_CASCADE_SOURCE.modal);
     await init();
-    await calculatePERT();
     construire();
   }catch(e){ alert("Erreur lors de la cascade : "+e.message); console.error(e); }
   LAST_CASCADE_IMPACTS=[];
@@ -1581,7 +1489,6 @@ async function deleteTache(){
     await grist.docApi.applyUserActions(actions);
     closeModal("modal-tache");
     await init();
-    await calculatePERT();
     construire();
   }catch(e){ alert("Erreur: "+e.message); console.error(e); }
 }
@@ -1825,6 +1732,7 @@ async function deleteSousAction(){
 /* ---------- Construction du Kanban matriciel ---------- */
 
 function construire(){
+  RETARDS_STRUCTURELS = calculerRetardsStructurels();
   filtreProjet = document.getElementById("filtre-projet").value;
   const filtreEquipe = document.getElementById("filtre-equipe").value;
 
@@ -1942,6 +1850,22 @@ function construire(){
           const ligne = el("div", "dep-line");
           ligne.appendChild(el("span","puce","🟡"));
           ligne.appendChild(document.createTextNode(`Dépend de : ${noms}`));
+          card.appendChild(ligne);
+        }
+
+        // ✅ Retard structurel : cette tâche en provoque un / le subit
+        const retardT = getRetardStructurel("tache", t.id);
+        if(retardT.subit.length > 0){
+          const ligne = el("div", "dep-line retard-subit");
+          ligne.appendChild(el("span","puce","🔴"));
+          ligne.appendChild(document.createTextNode(`En retard (bloquée par ${retardT.subit.join(", ")})`));
+          card.appendChild(ligne);
+        }
+        if(retardT.provoque.length > 0){
+          const noms = retardT.provoque.map(x=>x.nom).join(", ");
+          const ligne = el("div", "dep-line retard-provoque");
+          ligne.appendChild(el("span","puce","⚠️"));
+          ligne.appendChild(document.createTextNode(`Met en retard : ${noms}`));
           card.appendChild(ligne);
         }
 
