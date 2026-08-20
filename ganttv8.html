@@ -335,7 +335,7 @@
   }
   .modal-columns-wrapper{
     display:grid;
-    grid-template-columns:50% 50%;
+    grid-template-columns:minmax(0,1fr) minmax(0,1fr);
     gap:24px;
     flex:1 1 auto;
     min-height:0;
@@ -344,6 +344,8 @@
   .modal.modal-2col h2{margin-bottom:16px}
   .modal-left-column{
     overflow-y:auto;
+    overflow-x:hidden;
+    min-width:0;
     min-height:0;
   }
   .modal-right-column{
@@ -351,6 +353,7 @@
     flex-direction:column;
     border-left:1px solid var(--bordure);
     padding-left:24px;
+    min-width:0;
     min-height:0;
     overflow:hidden;
   }
