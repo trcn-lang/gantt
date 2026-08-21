@@ -2284,6 +2284,12 @@ function construire(){
     minI = today - 14;
     maxI = today + 21;
   }
+  // Toujours inclure "aujourd'hui" (+ petite marge) dans la plage affichée, même si
+  // aucune tâche/jalon ne s'y trouve : sinon le marqueur "Aujourd'hui" et le bouton
+  // 📍 Aujourd'hui n'ont aucun jour valide vers lequel se centrer.
+  const todayIdx = Math.floor(Date.now()/86400000);
+  minI = Math.min(minI, todayIdx - 3);
+  maxI = Math.max(maxI, todayIdx + 3);
   const jourSemaineMinI = new Date(minI*86400000).getUTCDay();
   const decalageLundi = (jourSemaineMinI + 6) % 7;
   const minILundi = minI - decalageLundi;
