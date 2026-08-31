@@ -756,6 +756,13 @@ function fmtJourComplet(v){
   const mm=String(d.getUTCMonth()+1).padStart(2,"0");
   return `${jours[d.getUTCDay()]} ${jj}/${mm}`;
 }
+function fmtDateCourt(v){
+  const d=parseDate(v);
+  if(!d) return "";
+  const jj=String(d.getUTCDate()).padStart(2,"0");
+  const mm=String(d.getUTCMonth()+1).padStart(2,"0");
+  return `${jj}/${mm}`;
+}
 function toDateInput(v){
   const d=parseDate(v);
   if(!d) return "";
@@ -2884,7 +2891,9 @@ function construire(){
         jalonLine.style.top=PROJ_H+"px";
         jalonLine.style.background=couleur;
         projGroup.appendChild(jalonLine);
-        const nameEl=el("div","jalon-name",jalon.Nom);
+        const nameEl=el("div","jalon-name");
+        const dateStr = fmtDateCourt(jalon.Date) || "??";
+        nameEl.textContent = `${dateStr} ${jalon.Nom}`;
         nameEl.style.left=(xDiamant + JALON_TEXTE_OFFSET)+"px";
         nameEl.style.top=topPx;
         nameEl.style.color=couleur;
