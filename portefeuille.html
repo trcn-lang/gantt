@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Portefeuille — Vue d'ensemble</title>
+<script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
+<style>
+  :root {
+    --bleu-france: #000091;
+    --bleu-975: #ECECFE;
+    --texte: #161616;
+    --texte-mention: #666666;
+    --bordure: #DDDDDD;
+    --fond: #FFFFFF;
+    --fond-alt: #F6F6F6;
+    --st-faire: #929292;
+    --st-encours: #0063CB;
+    --st-termine: #18753C;
+    --critique: #CE0500;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+
+  body {
+    font-family: "Marianne", -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+    color: var(--texte);
+    background: var(--fond);
+    font-size: 13px;
+  }
+
+  .app { display: flex; flex-direction: column; height: 100vh; }
+
+  .topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--bordure);
+    flex-wrap: wrap;
+  }
+  .topbar h1 { font-size: 18px; font-weight: 700; color: var(--bleu-france); }
+  .meta { font-size: 11px; color: var(--texte-mention); }
+
+  .toolbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--bordure);
+    flex-wrap: wrap;
+  }
+  .toolbar label { font-size: 12px; color: var(--texte-mention); }
+  .toolbar select, .toolbar input[type="text"] {
+    padding: 5px 8px;
+    border: 1px solid var(--bordure);
+    border-radius: 4px;
+    font-size: 12px;
+    font-family: inherit;
+  }
+  .toolbar input[type="text"] { min-width: 200px; }
+  #status { margin-left: auto; font-size: 11px; color: var(--texte-mention); }
+
+  .scroll { flex: 1; overflow: auto; padding: 16px; }
+
+  .empty-state { padding: 40px; text-align: center; color: var(--texte-mention); }
+
+  table.portefeuille { width: 100%; border-collapse: collapse; }
+  table.portefeuille thead th {
+    text-align: left;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: .5px;
+    color: var(--texte-mention);
+    padding: 8px 10px;
+    border-bottom: 2px solid var(--bleu-france);
+  }
+  table.portefeuille tbody tr {
+    border-bottom: 1px solid var(--bordure);
+  }
+  table.portefeuille tbody tr:hover { background: var(--fond-alt); }
+  table.portefeuille td { padding: 10px; vertical-align: middle; }
+  td.col-statut { border-left: 4px solid transparent; }
+
+  .badge-statut {
+    display: inline-block;
+    padding: 3px 9px;
+    border-radius: 3px;
+    font-size: 11px;
+    font-weight: 600;
+    color: #fff;
+    white-space: nowrap;
+  }
+  .st-a-faire   { background: var(--st-faire); }
+  .st-en-cours  { background: var(--st-encours); }
+  .st-termine   { background: var(--st-termine); }
+  .st-en-retard { background: var(--critique); }
+  .st-vide      { background: #ccc; color: #444; }
+
+  .nom-projet { font-weight: 700; color: var(--bleu-france); }
+  .badge-tag {
+    display: inline-block;
+    padding: 2px 7px;
+    border-radius: 3px;
+    background: var(--bleu-975);
+    color: var(--bleu-france);
+    font-size: 11px;
+    margin-right: 4px;
+  }
+  .echeance { font-size: 12px; }
+  .echeance .nom-jalon { color: var(--texte); }
+  .echeance .date-jalon { color: var(--texte-mention); margin-left: 4px; }
+  .echeance.vide { color: var(--texte-mention); font-style: italic; }
+
+  .group-header td {
+    background: var(--fond-alt);
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .5px;
+    color: var(--texte-mention);
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--bordure);
+  }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <div class="topbar">
+    <h1>🗂️ Portefeuille — Vue d'ensemble</h1>
+    <div class="meta" id="meta">Chargement…</div>
+  </div>
+
+  <div class="toolbar">
+    <label>Équipe :</label>
+    <select id="filtre-equipe"><option value="">Toutes</option></select>
+
+    <label>Type :</label>
+    <select id="filtre-type"><option value="">Tous</option></select>
+
+    <label>Recherche :</label>
+    <input type="text" id="filtre-texte" placeholder="Nom, description…">
+
+    <span id="status"></span>
+  </div>
+
+  <div class="scroll">
+    <div id="content" class="empty-state">Chargement…</div>
+  </div>
+
+</div>
+
+<script>
+const norm = (s) => String(s||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").trim();
+
+function parseDate(v){
+  if(v===null||v===undefined||v==="") return null;
+  if(typeof v==="number") return new Date(v*1000);
+  const d=new Date(String(v).trim());
+  return isNaN(d.getTime())?null:d;
+}
+function refId(v){
+  if(Array.isArray(v)) return v[1];
+  return v;
+}
+function resolveRef(table, id, col){
+  const rid=refId(id);
+  if(rid===null||rid===undefined) return null;
+  const ligne=table.find(row=>row.id===rid);
+  return ligne?ligne[col]:null;
+}
+function fmtDate(v){
+  const d=parseDate(v);
+  if(!d) return "";
+  return String(d.getUTCDate()).padStart(2,"0")+"/"+String(d.getUTCMonth()+1).padStart(2,"0")+"/"+d.getUTCFullYear();
+}
+function getJalonTypeTexte(jalon){
+  const raw = jalon.Type;
+  if(!raw) return "";
+  if(Array.isArray(raw)){
+    if(raw[0]==='L') return raw[1] || "";
+    if(raw[0]==='E') return "";
+  }
+  return raw;
+}
+function getJalonTachesRequises(jalon){
+  const raw = jalon.Taches_requises;
+  if(!raw || !Array.isArray(raw)) return [];
+  if(raw[0]==='L') return raw.slice(1).map(id => DB.taches.find(t => t.id === id)).filter(Boolean);
+  if(raw[0]==='E') return [];
+  return [];
+}
+function getPredecessorTasks(task){
+  const raw = task.Predecesseurs;
+  if(!raw || !Array.isArray(raw)) return [];
+  if(raw[0]==='L') return raw.slice(1).map(id => DB.taches.find(t => t.id === id)).filter(Boolean);
+  if(raw[0]==='E') return [];
+  return [];
+}
+
+// ── Statuts dérivés (mêmes règles que le Récap / le Rétroplanning) ─────────
+function getStatutTache(tache){
+  const statut = resolveRef(DB.parametres, tache.Statut, "Statut") || "";
+  if(norm(statut) === norm("Terminé")) return "Terminé";
+  const dFin = parseDate(tache.Date_fin);
+  if(dFin && Date.now() > dFin.getTime()) return "En retard";
+  return statut;
+}
+function getStatutJalon(jalon){
+  const typeTexte = getJalonTypeTexte(jalon);
+  const isLivrable = norm(typeTexte) === norm("Livrable");
+  const d = parseDate(jalon.Date);
+  const estPassee = d && Date.now() > d.getTime();
+  if(isLivrable){
+    const requises = getJalonTachesRequises(jalon);
+    if(requises.length > 0){
+      const terminees = requises.filter(t => norm(resolveRef(DB.parametres, t.Statut, "Statut")) === norm("Terminé"));
+      if(terminees.length === requises.length) return "Terminé";
+      if(terminees.length > 0) return "En cours";
+      return estPassee ? "En retard" : "À faire";
+    }
+    return estPassee ? "En retard" : "À faire";
+  }
+  return estPassee ? "Passé" : "À faire";
+}
+
+// ── Retard structurel (§5.5) — purement dérivé, pas d'écriture ─────────────
+function calculerRetardsStructurels(){
+  const subit = {};
+  function ajouterSubit(cle){ subit[cle]=true; }
+  DB.taches.forEach(t=>{
+    const finT = parseDate(t.Date_fin);
+    if(!finT) return;
+    DB.taches.forEach(s=>{
+      if(s.id===t.id) return;
+      if(!getPredecessorTasks(s).some(p=>p.id===t.id)) return;
+      const debutS = parseDate(s.Date_debut);
+      if(debutS && finT > debutS) ajouterSubit(`T:${s.id}`);
+    });
+    DB.jalons.forEach(j=>{
+      if(norm(getJalonTypeTexte(j))!==norm("Livrable")) return;
+      if(!getJalonTachesRequises(j).some(rt=>rt.id===t.id)) return;
+      const dateJ = parseDate(j.Date);
+      if(dateJ && finT > dateJ) ajouterSubit(`J:${j.id}`);
+    });
+  });
+  return subit;
+}
+let RETARDS_SUBIT = {};
+
+// ── Statut global d'un projet ────────────────────────────────────────────
+// Ordre de gravité : En retard > En cours > À faire > Terminé > Vide.
+// "En retard" couvre à la fois le retard simple (date dépassée) ET le
+// retard structurel (bloqué par un prédécesseur en retard), pour donner au
+// chef de bureau un seul signal fiable sans avoir à ouvrir le projet.
+function getStatutProjet(projetId){
+  const taches = DB.taches.filter(t=>refId(t.Projet)===projetId);
+  const livrables = DB.jalons.filter(j=>refId(j.Projet)===projetId && norm(getJalonTypeTexte(j))===norm("Livrable"));
+  if(taches.length===0 && livrables.length===0) return "Vide";
+
+  const statutsTaches = taches.map(getStatutTache);
+  const statutsJalons = livrables.map(getStatutJalon);
+
+  const enRetard = statutsTaches.includes("En retard")
+    || statutsJalons.includes("En retard")
+    || taches.some(t=>RETARDS_SUBIT[`T:${t.id}`])
+    || livrables.some(j=>RETARDS_SUBIT[`J:${j.id}`]);
+  if(enRetard) return "En retard";
+
+  const tousTermines = (taches.length===0 || statutsTaches.every(s=>s==="Terminé"))
+    && (livrables.length===0 || statutsJalons.every(s=>s==="Terminé"));
+  if(tousTermines) return "Terminé";
+
+  const aucunDemarre = statutsTaches.every(s=>s==="À faire") && statutsJalons.every(s=>s==="À faire");
+  if(aucunDemarre) return "À faire";
+
+  return "En cours";
+}
+
+function getProchainJalonLivrable(projetId){
+  const livrables = DB.jalons.filter(j=>refId(j.Projet)===projetId && norm(getJalonTypeTexte(j))===norm("Livrable"));
+  if(!livrables.length) return null;
+  const nonAtteints = livrables
+    .filter(j=>getStatutJalon(j)!=="Terminé")
+    .sort((a,b)=>parseDate(a.Date)-parseDate(b.Date));
+  return nonAtteints.length ? nonAtteints[0] : null;
+}
+
+const STATUT_INFO = {
+  "En retard": { cls:"st-en-retard", label:"En retard" },
+  "En cours":  { cls:"st-en-cours",  label:"En cours"  },
+  "À faire":   { cls:"st-a-faire",   label:"À faire"   },
+  "Terminé":   { cls:"st-termine",   label:"Terminé"   },
+  "Vide":      { cls:"st-vide",      label:"Vide"      }
+};
+const ORDRE_GRAVITE = ["En retard","En cours","À faire","Terminé","Vide"];
+
+// ── Chargement des données ──────────────────────────────────────────────
+let DB = {};
+grist.ready({requiredAccess:"full"});
+
+function columnarToRows(data){
+  if(!data || typeof data!=="object") return [];
+  if(Array.isArray(data)) return data;
+  const keys=Object.keys(data);
+  if(keys.length===0) return [];
+  const firstCol=data[keys[0]];
+  if(!Array.isArray(firstCol)) return [];
+  const rows=[];
+  for(let i=0;i<firstCol.length;i++){
+    const row={};
+    keys.forEach(k=>row[k]=data[k][i]);
+    rows.push(row);
+  }
+  return rows;
+}
+
+function uniq(arr){ return [...new Set(arr.filter(Boolean))]; }
+function fillSelect(id, rows, labelCol){
+  const sel = document.getElementById(id);
+  const current = sel.value;
+  sel.innerHTML = sel.options[0].outerHTML; // conserve l'option "Toutes/Tous"
+  rows.forEach(r=>{
+    const opt=document.createElement("option");
+    opt.value=r.id;
+    opt.textContent=r[labelCol];
+    sel.appendChild(opt);
+  });
+  if([...sel.options].some(o=>o.value===current)) sel.value=current;
+}
+
+async function init(){
+  try{
+    document.getElementById("status").textContent = "Chargement…";
+    DB.projets = columnarToRows(await grist.docApi.fetchTable("Projets"));
+    DB.jalons = columnarToRows(await grist.docApi.fetchTable("Jalons"));
+    DB.taches = columnarToRows(await grist.docApi.fetchTable("Taches"));
+    DB.parametres = columnarToRows(await grist.docApi.fetchTable("PARAMETRES"));
+
+    RETARDS_SUBIT = calculerRetardsStructurels();
+
+    fillSelect("filtre-equipe", DB.parametres.filter(p=>p.Equipe), "Equipe");
+    fillSelect("filtre-type", DB.parametres.filter(p=>p.Type_Projet), "Type_Projet");
+
+    document.getElementById("meta").textContent = `${DB.projets.length} projet(s)`;
+    document.getElementById("status").textContent = "✓ Chargé";
+
+    construire();
+  }catch(e){
+    console.error("❌", e);
+    document.getElementById("status").textContent = "❌ " + e.message;
+  }
+}
+
+function construire(){
+  const content = document.getElementById("content");
+  const equipeFiltre = document.getElementById("filtre-equipe").value;
+  const typeFiltre = document.getElementById("filtre-type").value;
+  const texteFiltre = norm(document.getElementById("filtre-texte").value);
+
+  let projets = DB.projets.filter(p=>{
+    if(equipeFiltre && String(refId(p.Equipe)) !== equipeFiltre) return false;
+    if(typeFiltre && String(refId(p.Type_Projet)) !== typeFiltre) return false;
+    if(texteFiltre){
+      const hay = norm((p.Projet||"") + " " + (p.Description||""));
+      if(!hay.includes(texteFiltre)) return false;
+    }
+    return true;
+  });
+
+  if(projets.length===0){
+    content.className = "empty-state";
+    content.innerHTML = "Aucun projet ne correspond à ces filtres.";
+    return;
+  }
+  content.className = "";
+
+  const enrichis = projets.map(p=>{
+    const statut = getStatutProjet(p.id);
+    const prochainJalon = getProchainJalonLivrable(p.id);
+    return { p, statut, prochainJalon };
+  });
+
+  enrichis.sort((a,b)=>{
+    const ga = ORDRE_GRAVITE.indexOf(a.statut), gb = ORDRE_GRAVITE.indexOf(b.statut);
+    if(ga!==gb) return ga-gb;
+    const da = a.prochainJalon ? parseDate(a.prochainJalon.Date) : null;
+    const db = b.prochainJalon ? parseDate(b.prochainJalon.Date) : null;
+    if(da && db) return da-db;
+    if(da) return -1;
+    if(db) return 1;
+    return String(a.p.Projet).localeCompare(String(b.p.Projet));
+  });
+
+  let html = `<table class="portefeuille"><thead><tr>
+    <th>Statut</th><th>Projet</th><th>Équipe</th><th>Type</th><th>Prochaine échéance</th>
+  </tr></thead><tbody>`;
+
+  let dernierGroupe = null;
+  enrichis.forEach(({p, statut, prochainJalon})=>{
+    if(statut !== dernierGroupe){
+      html += `<tr class="group-header"><td colspan="5">${STATUT_INFO[statut].label}</td></tr>`;
+      dernierGroupe = statut;
+    }
+    const equipeLabel = resolveRef(DB.parametres, p.Equipe, "Equipe") || "—";
+    const typeLabel = resolveRef(DB.parametres, p.Type_Projet, "Type_Projet") || "—";
+    const info = STATUT_INFO[statut];
+    const echeanceHtml = prochainJalon
+      ? `<span class="echeance"><span class="nom-jalon">${escapeHtml(prochainJalon.Nom)}</span><span class="date-jalon">${fmtDate(prochainJalon.Date)}</span></span>`
+      : `<span class="echeance vide">${statut==="Terminé" ? "Tous les jalons atteints" : "Aucun jalon Livrable défini"}</span>`;
+
+    html += `<tr>
+      <td class="col-statut"><span class="badge-statut ${info.cls}">${info.label}</span></td>
+      <td class="nom-projet">${escapeHtml(p.Projet||"")}</td>
+      <td><span class="badge-tag">${escapeHtml(equipeLabel)}</span></td>
+      <td><span class="badge-tag">${escapeHtml(typeLabel)}</span></td>
+      <td>${echeanceHtml}</td>
+    </tr>`;
+  });
+
+  html += `</tbody></table>`;
+  content.innerHTML = html;
+}
+
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+document.getElementById("filtre-equipe").addEventListener("change", construire);
+document.getElementById("filtre-type").addEventListener("change", construire);
+document.getElementById("filtre-texte").addEventListener("input", construire);
+
+grist.onRecords(()=>init());
+init();
+</script>
+</body>
+</html>
