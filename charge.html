@@ -84,6 +84,7 @@
     background: var(--fond-alt);
     border-right: 2px solid var(--bleu-france);
     border-bottom: 2px solid var(--bleu-france);
+    box-shadow: 3px 0 6px -2px rgba(0,0,0,0.15);
   }
   .cell-semaine-header {
     position: sticky; top: 0; z-index: 2;
@@ -97,9 +98,12 @@
   .cell-semaine-header .num { font-size: 10px; font-weight: 700; color: var(--bleu-france); }
   .cell-semaine-header .dates { font-size: 9px; color: var(--texte-mention); white-space: nowrap; }
   .cell-semaine-header .jalons { min-height: 12px; margin-top: 2px; display: flex; justify-content: center; gap: 2px; flex-wrap: wrap; }
+  .jalon-tooltip-wrap {
+    display: inline-block; cursor: help; position: relative; line-height: 0;
+  }
   .losange-jalon {
     width: 8px; height: 8px; transform: rotate(45deg);
-    display: inline-block; cursor: help;
+    display: inline-block;
   }
 
   .cell-equipe {
@@ -107,12 +111,14 @@
     background: var(--fond-alt);
     border-right: 2px solid var(--bleu-france);
     border-bottom: 1px solid var(--bordure);
+    box-shadow: 3px 0 6px -2px rgba(0,0,0,0.15);
     padding: 8px 10px;
     font-weight: 700;
     font-size: 12px;
     display: flex;
     align-items: center;
     min-width: 150px;
+    min-height: 44px;
   }
 
   .cell-charge {
@@ -122,6 +128,7 @@
     font-size: 12px; font-weight: 600;
     cursor: help;
     position: relative;
+    min-height: 44px;
   }
   .cell-charge.vide { color: var(--texte-mention); font-weight: 400; }
 
@@ -330,7 +337,8 @@ async function init(){
     DB.taches = columnarToRows(await grist.docApi.fetchTable("Taches"));
     DB.parametres = columnarToRows(await grist.docApi.fetchTable("PARAMETRES"));
 
-    document.getElementById("meta").textContent = `${DB.taches.length} tâche(s) actives réparties sur les équipes`;
+    const nbActives = DB.taches.filter(t=>getStatutTache(t)!=="Terminé").length;
+    document.getElementById("meta").textContent = `${nbActives} tâche(s) active(s) réparties sur les équipes`;
     document.getElementById("status").textContent = "✓ Chargé";
 
     construire();
@@ -377,7 +385,7 @@ function construire(){
     const losanges = jalonsSemaine.map(j=>{
       const couleur = j.Important===true ? "var(--critique)" : "var(--jalon-livrable)";
       const tip = `${j.Nom}\n${fmtCourt(parseDate(j.Date))}`;
-      return `<span class="losange-jalon" style="background:${couleur}" data-tooltip="${escapeHtml(tip)}"></span>`;
+      return `<span class="jalon-tooltip-wrap" data-tooltip="${escapeHtml(tip)}"><span class="losange-jalon" style="background:${couleur}"></span></span>`;
     }).join("");
     const classeAuj = idx===SEMAINE_AUJOURDHUI_IDX ? " colonne-aujourdhui" : "";
     html += `<div class="cell-semaine-header${classeAuj}" data-col="${idx}">
@@ -394,12 +402,15 @@ function construire(){
       const cellule = grille[eq.id][idx];
       const alpha = cellule.count===0 ? 0 : 0.15 + 0.75*(cellule.count/maxCount);
       const bg = cellule.count===0 ? "#fff" : `rgba(var(--heat),${alpha.toFixed(2)})`;
+      // Au-delà de ~0.4 d'opacité, le bleu France est assez sombre pour que
+      // le texte foncé par défaut (var(--texte)) devienne illisible.
+      const couleurTexte = alpha >= 0.4 ? "#fff" : "var(--texte)";
       const classeVide = cellule.count===0 ? " vide" : "";
       const classeAuj = idx===SEMAINE_AUJOURDHUI_IDX ? " colonne-aujourdhui" : "";
       const tip = cellule.count>0
         ? `${eq.Equipe} — S${numeroSemaineISO(lundi)}\n` + cellule.taches.map(n=>"• "+n).join("\n")
         : `${eq.Equipe} — S${numeroSemaineISO(lundi)}\nAucune tâche active`;
-      html += `<div class="cell-charge${classeVide}${classeAuj}" style="background:${bg}" data-tooltip="${escapeHtml(tip)}">
+      html += `<div class="cell-charge${classeVide}${classeAuj}" style="background:${bg};color:${couleurTexte}" data-tooltip="${escapeHtml(tip)}">
         ${cellule.count>0 ? cellule.count : ""}
       </div>`;
     });
