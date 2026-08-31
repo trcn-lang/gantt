@@ -677,8 +677,9 @@
       <input type="text" id="field-dupli-nom" placeholder="ex: Mobilité SVT S2 2026">
     </div>
     <div class="form-group">
-      <label>Nouvelle date de démarrage *</label>
-      <input type="date" id="field-dupli-date-debut">
+      <label>Nouvelle date d'échéance *</label>
+      <input type="date" id="field-dupli-date-fin">
+      <div style="font-size:11px;color:var(--texte-mention);margin-top:4px;" id="dupli-ancrage-info"></div>
     </div>
     <div class="info-box" id="dupli-info" style="display:none;"></div>
     <div id="dupli-apercu" style="display:none;margin-top:8px;">
@@ -962,25 +963,6 @@ function isDescendant(taskId, candidateId, visited){
     if(isDescendant(succ.id, candidateId, visited)) return true;
   }
   return false;
-}
-
-function detectCycles(){
-  const visited = new Set();
-  const stack = new Set();
-  function hasCycle(taskId){
-    if(stack.has(taskId)) return true;
-    if(visited.has(taskId)) return false;
-    visited.add(taskId); stack.add(taskId);
-    const task = DB.taches.find(t => t.id === taskId);
-    if(task){
-      for(const pred of getPredecessorTasks(task)){
-        if(hasCycle(refId(pred.id||pred))) return true;
-      }
-    }
-    stack.delete(taskId);
-    return false;
-  }
-  return DB.taches.some(t => hasCycle(t.id));
 }
 
 // Calcule les tâches structurellement "en retard" : une tâche T2 est en retard
@@ -1315,10 +1297,13 @@ async function deleteProjet(){
   if(!id) return;
   const tachesLiees=DB.taches.filter(t=>refId(t.Projet)===id);
   const jalonsLies=DB.jalons.filter(j=>refId(j.Projet)===id);
-  const msg=`Ce projet contient ${tachesLiees.length} tâche(s) et ${jalonsLies.length} jalon(s). Tout supprimer ?`;
+  const actionsLiees=tachesLiees.flatMap(t=>getActionsTache(t.id));
+  const msg=`Ce projet contient ${tachesLiees.length} tâche(s), ${jalonsLies.length} jalon(s) et ${actionsLiees.length} sous-action(s). Tout supprimer ?`;
   if(!confirm(msg)) return;
   try{
     const actions=[];
+    // Sous-actions d'abord : sans cela elles resteraient orphelines en base.
+    actionsLiees.forEach(a=>actions.push(["RemoveRecord","ACTIONS",a.id]));
     tachesLiees.forEach(t=>actions.push(["RemoveRecord","Taches",t.id]));
     jalonsLies.forEach(j=>actions.push(["RemoveRecord","Jalons",j.id]));
     actions.push(["RemoveRecord","Projets",id]);
@@ -1332,20 +1317,24 @@ async function deleteProjet(){
 // DUPLICATION / TEMPLATE DE PROJET RÉCURRENT
 // ============================================================================
 // Principe : chaque tâche/jalon du projet source est repéré par son décalage
-// en JOURS OUVRÉS par rapport à l'élément le plus ancien du projet (l'"ancrage").
-// À la duplication, ce même décalage en jours ouvrés est réappliqué depuis la
-// nouvelle date de démarrage choisie — cohérent avec le calcul de durée (§5.3)
-// et la cascade (§5.4), qui raisonnent déjà en jours ouvrés dans tout l'outil.
-// Les dates de fin de tâche sont toujours recalculées depuis Duree_jours (jamais
-// décalées indépendamment), ce qui garantit que la durée d'origine est préservée
-// à l'identique dans la copie.
+// en JOURS OUVRÉS par rapport à l'élément qui finit le plus tard dans le
+// projet (l'"ancrage", basé sur la Date_fin des tâches et la Date des jalons).
+// À la duplication, l'utilisateur saisit la nouvelle DATE DE FIN cible (ex:
+// date d'une CAP, d'un jury, d'une échéance réglementaire) et ce même
+// décalage en jours ouvrés est réappliqué EN ARRIÈRE depuis cette date —
+// cohérent avec le pilotage par échéance typique des processus RH, et avec
+// le calcul de durée en jours ouvrés déjà utilisé partout ailleurs (§5.3, §5.4).
+// La Date_debut de chaque tâche est toujours recalculée depuis sa Date_fin et
+// sa Duree_jours (jamais décalée indépendamment), ce qui garantit que la durée
+// d'origine est préservée à l'identique dans la copie.
 
+let DUPLI_EN_COURS  = false; // gèle le rechargement auto pendant la séquence d'écritures
 let DUPLI_SOURCE_ID = null;
-let DUPLI_ANCRAGE   = null; // Date (objet Date) la plus ancienne du projet source
+let DUPLI_ANCRAGE   = null; // Date (objet Date) la plus tardive du projet source
 
 // Décalage en jours ouvrés de `date` par rapport à `ancrage` (0 si identique,
-// négatif si `date` est antérieure à `ancrage` — cas normalement inexistant
-// mais couvert par sécurité).
+// négatif si `date` est antérieure à `ancrage` — le cas normal ici, puisque
+// l'ancrage est la date de fin la plus tardive du projet).
 function offsetOuvresDepuis(ancrage, date){
   if(date.getTime() >= ancrage.getTime()) return joursOuvres(ancrage, date) - 1;
   return -(joursOuvres(date, ancrage) - 1);
@@ -1356,16 +1345,45 @@ function dateDecaleeOuvree(ancrage, offset){
   return soustraireJoursOuvres(ancrage, Math.abs(offset) + 1);
 }
 
-// Renvoie l'ancrage (date la plus ancienne parmi les tâches et jalons du
-// projet) ainsi que les listes de tâches/jalons du projet.
+// Renvoie l'ancrage du rétroplanning ainsi que les listes de tâches/jalons.
+// L'ancre suit la même définition que la Date_cible d'un projet (cf. §5.2) :
+//   1. dernier jalon Livrable *Fixe*  (échéance à ancrage hiérarchique dur)
+//   2. à défaut, dernier jalon Livrable
+//   3. à défaut, date la plus tardive du projet (fin de tâche ou jalon)
+// Motivation : dans un processus RH, l'échéance qui structure le rétroplanning
+// est le livrable (CAP, jury, publication), pas une tâche de clôture
+// administrative qui pourrait traîner après lui.
 function calculerAncrageEtItems(projetId){
   const taches = DB.taches.filter(t=>refId(t.Projet)===projetId);
   const jalons = DB.jalons.filter(j=>refId(j.Projet)===projetId);
-  const dates = [];
-  taches.forEach(t=>{ const d=parseDate(t.Date_debut); if(d) dates.push(d); });
-  jalons.forEach(j=>{ const d=parseDate(j.Date); if(d) dates.push(d); });
-  const ancrage = dates.length ? new Date(Math.min(...dates.map(d=>d.getTime()))) : null;
-  return { ancrage, taches, jalons };
+
+  function plusTardif(liste, getDate){
+    let best = null;
+    liste.forEach(x=>{
+      const d = getDate(x);
+      if(d && (!best || d > best.date)) best = { date:d, element:x };
+    });
+    return best;
+  }
+
+  const livrables = jalons.filter(j=>norm(getJalonTypeTexte(j))===norm("Livrable"));
+
+  let choix = plusTardif(livrables.filter(j=>j.Important===true), j=>parseDate(j.Date));
+  if(choix) return { ancrage:choix.date, ancrageLibelle:`Livrable fixe « ${choix.element.Nom} »`, taches, jalons };
+
+  choix = plusTardif(livrables, j=>parseDate(j.Date));
+  if(choix) return { ancrage:choix.date, ancrageLibelle:`Livrable « ${choix.element.Nom} »`, taches, jalons };
+
+  const candidats = [];
+  taches.forEach(t=>{ const d=parseDate(t.Date_fin); if(d) candidats.push({date:d, nom:t.Tache}); });
+  jalons.forEach(j=>{ const d=parseDate(j.Date); if(d) candidats.push({date:d, nom:j.Nom}); });
+  if(!candidats.length) return { ancrage:null, ancrageLibelle:null, taches, jalons };
+  candidats.sort((a,b)=>b.date-a.date);
+  return {
+    ancrage: candidats[0].date,
+    ancrageLibelle: `dernière échéance « ${candidats[0].nom} » (aucun livrable défini)`,
+    taches, jalons
+  };
 }
 
 function openDupliquerProjet(projetId){
@@ -1375,19 +1393,22 @@ function openDupliquerProjet(projetId){
   document.getElementById("field-dupli-projet-source").value = projetId;
   document.getElementById("field-dupli-source-nom").value = proj.Projet;
   document.getElementById("field-dupli-nom").value = proj.Projet + " (copie)";
-  document.getElementById("field-dupli-date-debut").value = "";
+  document.getElementById("field-dupli-date-fin").value = "";
   document.getElementById("dupli-apercu").style.display = "none";
   document.getElementById("btn-confirmer-dupliquer").disabled = true;
   document.getElementById("btn-confirmer-dupliquer").textContent = "Dupliquer";
 
-  const { ancrage } = calculerAncrageEtItems(projetId);
+  const { ancrage, ancrageLibelle } = calculerAncrageEtItems(projetId);
   DUPLI_ANCRAGE = ancrage;
   const infoDiv = document.getElementById("dupli-info");
+  const ancrageDiv = document.getElementById("dupli-ancrage-info");
   if(!ancrage){
+    ancrageDiv.textContent = "";
     infoDiv.className = "info-box warning";
     infoDiv.style.display = "block";
     infoDiv.textContent = "Ce projet n'a aucune tâche ni jalon daté : rien à dupliquer.";
   } else {
+    ancrageDiv.textContent = `Rétroplanning ancré sur : ${ancrageLibelle}, actuellement le ${fmtJourComplet(Math.floor(ancrage.getTime()/1000))}.`;
     infoDiv.style.display = "none";
   }
   openModal("modal-dupliquer-projet");
@@ -1396,7 +1417,7 @@ function openDupliquerProjet(projetId){
 // Recalcule l'aperçu (décalage + liste tâches/jalons) à chaque frappe.
 function majApercuDuplication(){
   const nom = document.getElementById("field-dupli-nom").value.trim();
-  const dateVal = document.getElementById("field-dupli-date-debut").value;
+  const dateVal = document.getElementById("field-dupli-date-fin").value;
   const btn = document.getElementById("btn-confirmer-dupliquer");
   const infoDiv = document.getElementById("dupli-info");
   const apercuWrap = document.getElementById("dupli-apercu");
@@ -1415,10 +1436,16 @@ function majApercuDuplication(){
 
   const items = [];
   taches.forEach(t=>{
-    const d = parseDate(t.Date_debut);
+    const d = parseDate(t.Date_fin);
     if(!d) return;
     const offset = offsetOuvresDepuis(DUPLI_ANCRAGE, d);
-    items.push({ genre:"tache", nom:t.Tache, oldDate:d, newDate: dateDecaleeOuvree(nouvelleAncrage, offset) });
+    const nouvelleFin = dateDecaleeOuvree(nouvelleAncrage, offset);
+    const duree = t.Duree_jours || 1;
+    items.push({
+      genre:"tache", nom:t.Tache,
+      oldDate:d, newDate:nouvelleFin,
+      newDebut: soustraireJoursOuvres(nouvelleFin, duree)
+    });
   });
   jalons.forEach(j=>{
     const d = parseDate(j.Date);
@@ -1429,11 +1456,19 @@ function majApercuDuplication(){
   items.sort((a,b)=>a.oldDate-b.oldDate);
 
   const deltaOuvre = offsetOuvresDepuis(DUPLI_ANCRAGE, nouvelleAncrage);
-  infoDiv.className = "info-box";
+  // Premier démarrage du nouveau rétroplanning (date la plus précoce calculée)
+  const premierDebut = items.length ? new Date(Math.min(...items.map(i=>i.newDebut ? i.newDebut.getTime() : i.newDate.getTime()))) : null;
+  const aujourdhui = new Date(); aujourdhui.setHours(0,0,0,0);
+  const demarrePasse = premierDebut && premierDebut < aujourdhui;
+
+  infoDiv.className = demarrePasse ? "info-box warning" : "info-box";
   infoDiv.style.display = "block";
   infoDiv.textContent = `${taches.length} tâche(s), ${jalons.length} jalon(s), ${nbActions} sous-action(s) seront dupliqués. `
     + `Décalage : ${deltaOuvre >= 0 ? "+" : ""}${deltaOuvre} jour(s) ouvré(s) `
-    + `(départ actuel : ${fmtJourComplet(Math.floor(DUPLI_ANCRAGE.getTime()/1000))} → nouveau départ : ${fmtJourComplet(Math.floor(nouvelleAncrage.getTime()/1000))}).`;
+    + `(échéance actuelle : ${fmtJourComplet(Math.floor(DUPLI_ANCRAGE.getTime()/1000))} → nouvelle échéance : ${fmtJourComplet(Math.floor(nouvelleAncrage.getTime()/1000))}).`;
+  if(demarrePasse){
+    infoDiv.textContent += ` ⚠️ Avec cette échéance, le rétroplanning devrait démarrer le ${fmtJourComplet(Math.floor(premierDebut.getTime()/1000))}, soit dans le passé : l'échéance est trop proche pour tenir le processus complet.`;
+  }
 
   apercuList.innerHTML = "";
   items.forEach(item=>{
@@ -1462,7 +1497,7 @@ async function confirmerDuplicationProjet(){
   const projetId = DUPLI_SOURCE_ID;
   const proj = DB.projets.find(p=>p.id===projetId);
   const nouveauNom = document.getElementById("field-dupli-nom").value.trim();
-  const dateVal = document.getElementById("field-dupli-date-debut").value;
+  const dateVal = document.getElementById("field-dupli-date-fin").value;
   if(!proj || !nouveauNom || !dateVal || !DUPLI_ANCRAGE){ alert("Champs obligatoires manquants"); return; }
   const nouvelleAncrage = new Date(dateVal);
 
@@ -1470,6 +1505,10 @@ async function confirmerDuplicationProjet(){
   btn.disabled = true;
   btn.textContent = "Duplication en cours…";
 
+  // La duplication enchaîne 5 écritures successives ; chacune déclenche
+  // grist.onRecords → init(), qui rechargerait DB en pleine séquence.
+  // On gèle ce rechargement jusqu'au init() final, maîtrisé.
+  DUPLI_EN_COURS = true;
   try{
     const { taches, jalons } = calculerAncrageEtItems(projetId);
     const idsTachesSource = new Set(taches.map(t=>t.id));
@@ -1488,15 +1527,17 @@ async function confirmerDuplicationProjet(){
     ]);
     const nouveauProjetId = resProjet.retValues[0];
 
-    // 2. Nouvelles Tâches — Statut réinitialisé à "À faire", Porteur conservé,
-    //    Commentaires vidés ; Predecesseurs/Jalon_declencheur posés à vide pour
-    //    l'instant (remappés à l'étape 4, une fois tous les nouveaux id connus).
+    // 2. Nouvelles Tâches — ancrées sur leur Date_fin (la Date_debut est
+    //    recalculée en arrière depuis la durée). Statut réinitialisé à
+    //    "À faire", Porteur conservé, Commentaires vidés ; Predecesseurs/
+    //    Jalon_declencheur posés à vide pour l'instant (remappés à l'étape 4,
+    //    une fois tous les nouveaux id connus).
     const tacheActions = taches.map(t=>{
-      const debut = parseDate(t.Date_debut);
-      const offset = offsetOuvresDepuis(DUPLI_ANCRAGE, debut);
-      const nouveauDebut = dateDecaleeOuvree(nouvelleAncrage, offset);
+      const fin = parseDate(t.Date_fin);
+      const offset = offsetOuvresDepuis(DUPLI_ANCRAGE, fin);
+      const nouvelleFin = dateDecaleeOuvree(nouvelleAncrage, offset);
       const duree = t.Duree_jours || 1;
-      const nouvelleFin = ajouterJoursOuvres(nouveauDebut, duree);
+      const nouveauDebut = soustraireJoursOuvres(nouvelleFin, duree);
       return ["AddRecord","Taches",null,{
         Equipe: refId(proj.Equipe),
         Projet: nouveauProjetId,
@@ -1604,6 +1645,7 @@ async function confirmerDuplicationProjet(){
     alert("Erreur lors de la duplication : "+e.message);
     console.error(e);
   }finally{
+    DUPLI_EN_COURS = false;
     btn.disabled = false;
     btn.textContent = "Dupliquer";
   }
@@ -1984,16 +2026,11 @@ function openTacheEdit(t){
   const duree=t.Duree_jours||1;
   let finValue = t.Date_fin;
   if(!finValue){
+    // Repli quand Date_fin est absente : on réutilise ajouterJoursOuvres pour
+    // rester cohérent avec le reste de l'outil (l'ancienne version ignorait les
+    // jours fériés et pouvait afficher une fin décalée d'un jour ou plus).
     const debutDate=parseDate(t.Date_debut);
-    let finDate=debutDate?new Date(debutDate):null;
-    if(finDate && duree>1){
-      let restant=duree-1;
-      while(restant>0){
-        finDate.setDate(finDate.getDate()+1);
-        const j=finDate.getDay();
-        if(j!==0 && j!==6) restant--;
-      }
-    }
+    const finDate = debutDate ? ajouterJoursOuvres(debutDate, duree) : null;
     finValue = finDate ? Math.floor(finDate.getTime()/1000) : null;
   }
   document.getElementById("field-tache-id").value=t.id;
@@ -2195,9 +2232,17 @@ async function saveTache(){
 async function deleteTache(){
   const id=parseInt(document.getElementById("field-tache-id").value);
   if(!id) return;
-  if(!confirm("Supprimer cette tâche ?")) return;
+  const actionsLiees = getActionsTache(id);
+  const msg = actionsLiees.length
+    ? `Supprimer cette tâche et ses ${actionsLiees.length} sous-action(s) ?`
+    : "Supprimer cette tâche ?";
+  if(!confirm(msg)) return;
   try{
-    await grist.docApi.applyUserActions([["RemoveRecord","Taches",id]]);
+    // Les sous-actions doivent partir avec la tâche, sinon elles subsistent
+    // en base sans parent visible (lignes orphelines dans ACTIONS).
+    const actions = actionsLiees.map(a=>["RemoveRecord","ACTIONS",a.id]);
+    actions.push(["RemoveRecord","Taches",id]);
+    await grist.docApi.applyUserActions(actions);
     closeModal("modal-tache");
     await init();
     construire();
@@ -2248,7 +2293,7 @@ function calculerCascadeDepuisTache(startTask){
       jalonsScope
         .filter(j=>norm(getJalonTypeTexte(j))===norm("Livrable"))
         .filter(j=>getJalonTachesRequises(j).some(t=>t.id===currentId))
-        .forEach(j=>{ if(!visites.has(`J:${j.id}`)) traiterSuccesseurJalon(j); });
+        .forEach(j=>{ if(!visites.has(`J:${j.id}`)) traiterSuccesseurJalon(j, currentId); });
     }
     // (jalons non-fixe peuvent aussi avoir des successeurs tâches via Jalon_declencheur,
     // mais on ne propage pas au-delà pour garder la popup lisible)
@@ -2304,11 +2349,16 @@ function calculerCascadeDepuisTache(startTask){
     file.push(`T:${s.id}`);
   }
 
-  function traiterSuccesseurJalon(j){
+  function traiterSuccesseurJalon(j, sourceTacheId){
     visites.add(`J:${j.id}`);
     const jalonFixe = j.Important === true;
     const dateJalon = parseDate(j.Date);
-    const dateFinSource = finEffective[startTask.id]; // date de fin de l'élément source
+    // Date de fin effective de la TÂCHE REQUISE qui atteint ce jalon — et non
+    // celle de la tâche à l'origine de la cascade : sur une chaîne A→B→C, le
+    // jalon conditionné par C doit être comparé à la fin recalculée de C.
+    const dateFinSource = finEffective[sourceTacheId] !== undefined
+      ? finEffective[sourceTacheId]
+      : parseDate((byTaskId[sourceTacheId]||{}).Date_fin);
     if(!dateJalon || !dateFinSource){ return; }
     if(dateFinSource <= dateJalon){ return; } // pas de dépassement
 
@@ -2400,14 +2450,18 @@ function afficherRecapCascade(sourceType, sourceNom, impacts){
 
   const conflits = impacts.filter(i=>i.statut==="conflit");
   const cascades = impacts.filter(i=>i.statut!=="conflit");
-  const nbShift  = cascades.filter(i=>i.statut==="shift").length;
+  // Le bouton Confirmer doit apparaître dès qu'il y a une écriture à faire —
+  // pas seulement un décalage (shift) mais aussi une absorption (durée
+  // réduite, Date_debut modifiée). Un impact "absorbe" est un changement
+  // silencieux mais réel : sans lui, "Annuler" perdait l'absorption calculée.
+  const nbAAppliquer = cascades.filter(i=>i.statut==="shift" || i.statut==="absorbe").length;
 
   document.getElementById("cascade-titre").textContent =
     [conflits.length>0 ? `${conflits.length} conflit(s)` : "",
      cascades.length>0 ? `${cascades.length} impact(s) à propager` : ""]
     .filter(Boolean).join(" · ") || "Impacts calendaires";
 
-  document.getElementById("btn-confirmer-cascade").style.display = nbShift>0 ? "inline-block" : "none";
+  document.getElementById("btn-confirmer-cascade").style.display = nbAAppliquer>0 ? "inline-block" : "none";
 
   // ── Section conflits (informationnelle, pas d'action automatique) ──────────
   if(conflits.length>0){
@@ -2969,10 +3023,10 @@ document.getElementById("btn-zoom-reset").addEventListener("click", zoomReinitia
 document.getElementById("btn-zoom-fit").addEventListener("click", zoomVueEnsemble);
 document.getElementById("btn-today").addEventListener("click", allerAujourdhui);
 document.getElementById("field-dupli-nom").addEventListener("input", majApercuDuplication);
-document.getElementById("field-dupli-date-debut").addEventListener("input", majApercuDuplication);
-document.getElementById("field-dupli-date-debut").addEventListener("change", majApercuDuplication);
+document.getElementById("field-dupli-date-fin").addEventListener("input", majApercuDuplication);
+document.getElementById("field-dupli-date-fin").addEventListener("change", majApercuDuplication);
 setJourPx(ZOOM_DEFAUT);
-grist.onRecords(()=>init());
+grist.onRecords(()=>{ if(!DUPLI_EN_COURS) init(); });
 init();
 </script>
 </body>
