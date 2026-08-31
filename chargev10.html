@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Charge — Frictions calendaires</title>
+<script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
+<style>
+  :root {
+    --bleu-france: #000091;
+    --bleu-975: #ECECFE;
+    --texte: #161616;
+    --texte-mention: #666666;
+    --bordure: #DDDDDD;
+    --fond: #FFFFFF;
+    --fond-alt: #F6F6F6;
+    --jalon-livrable: #FF6B35;
+    --critique: #CE0500;
+    --heat: 0,0,145; /* RGB du bleu-france, utilisé en rgba() pour la carte de chaleur */
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+
+  body {
+    font-family: "Marianne", -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+    color: var(--texte);
+    background: var(--fond);
+    font-size: 13px;
+  }
+
+  .app { display: flex; flex-direction: column; height: 100vh; }
+
+  .topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--bordure);
+    flex-wrap: wrap;
+  }
+  .topbar h1 { font-size: 18px; font-weight: 700; color: var(--bleu-france); }
+  .meta { font-size: 11px; color: var(--texte-mention); }
+
+  .toolbar {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--bordure);
+    flex-wrap: wrap;
+  }
+  .btn {
+    padding: 6px 12px;
+    border: 1px solid var(--bordure);
+    border-radius: 4px;
+    background: #fff;
+    cursor: pointer;
+    font-size: 12px;
+    font-family: inherit;
+  }
+  .btn:hover { background: var(--fond-alt); }
+
+  .legende { display: flex; align-items: center; gap: 10px; font-size: 11px; color: var(--texte-mention); }
+  .legende-heat { display: flex; align-items: center; gap: 3px; }
+  .legende-heat .case { width: 16px; height: 16px; border-radius: 2px; border: 1px solid var(--bordure); }
+  .legende-jalon { display: flex; align-items: center; gap: 4px; }
+  .legende-losange { width: 9px; height: 9px; transform: rotate(45deg); display: inline-block; }
+
+  #status { margin-left: auto; font-size: 11px; color: var(--texte-mention); }
+
+  .scroll { flex: 1; overflow: auto; padding: 16px; }
+  .empty-state { padding: 40px; text-align: center; color: var(--texte-mention); }
+
+  /* Deux blocs flex indépendants plutôt qu'une grille unique avec colonne
+     sticky : "position:sticky" combiné à "display:grid" décroche près de la
+     limite de scroll (bug constaté des moteurs Chromium/WebKit). En sortant
+     la colonne Porteur du conteneur qui scrolle, elle n'est simplement plus
+     concernée — plus robuste qu'un correctif sticky. Les hauteurs de ligne
+     (HAUT_ENTETE / HAUT_LIGNE) sont fixées en dur des deux côtés pour garder
+     les deux blocs pixel-alignés puisqu'ils ne partagent plus une grille commune. */
+  .grille-conteneur {
+    display: flex;
+    border: 1px solid var(--bordure);
+    border-radius: 6px;
+    overflow: hidden;
+  }
+  .colonne-fixe {
+    flex: 0 0 170px;
+    display: flex;
+    flex-direction: column;
+    background: var(--fond-alt);
+    border-right: 2px solid var(--bleu-france);
+    box-shadow: 3px 0 6px -2px rgba(0,0,0,0.15);
+    position: relative;
+    z-index: 2;
+  }
+  .grille-scrollable { flex: 1; overflow-x: auto; min-width: 0; }
+  .grille { display: grid; grid-auto-rows: min-content; }
+
+  .cell-coin {
+    height: 58px;
+    border-bottom: 2px solid var(--bleu-france);
+  }
+  .cell-semaine-header {
+    position: sticky; top: 0; z-index: 1;
+    background: var(--fond-alt);
+    border-bottom: 2px solid var(--bleu-france);
+    border-right: 1px solid var(--bordure);
+    padding: 6px 4px;
+    text-align: center;
+    min-width: 76px;
+    height: 58px;
+    box-sizing: border-box;
+  }
+  .cell-semaine-header .num { font-size: 11px; font-weight: 700; color: var(--bleu-france); }
+  .cell-semaine-header .dates { font-size: 10px; color: var(--texte-mention); white-space: nowrap; }
+  .cell-semaine-header .jalons { min-height: 14px; margin-top: 3px; display: flex; justify-content: center; gap: 3px; flex-wrap: wrap; }
+  .jalon-tooltip-wrap {
+    display: inline-block; cursor: help; position: relative; line-height: 0;
+  }
+  .losange-jalon {
+    width: 9px; height: 9px; transform: rotate(45deg);
+    display: inline-block;
+  }
+
+  .cell-porteur {
+    height: 48px;
+    border-bottom: 1px solid var(--bordure);
+    padding: 8px 12px;
+    font-weight: 700;
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    box-sizing: border-box;
+  }
+
+  .cell-charge {
+    border-right: 1px solid var(--bordure);
+    border-bottom: 1px solid var(--bordure);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 600;
+    cursor: help;
+    position: relative;
+    height: 48px;
+    box-sizing: border-box;
+  }
+  .cell-charge.vide { color: var(--texte-mention); font-weight: 400; }
+
+  .colonne-aujourdhui { box-shadow: inset 2px 0 0 var(--critique), inset -2px 0 0 var(--critique); }
+
+  [data-tooltip] { cursor: help; }
+  .tooltip-flottant {
+    position: fixed; z-index: 500; display: none;
+    background: #222; color: #fff; padding: 8px 12px; border-radius: 6px;
+    font-size: 11px; white-space: pre-line; line-height: 1.4;
+    min-width: 160px; max-width: 280px; text-align: left;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.25); pointer-events: none;
+  }
+  .tooltip-flottant::after {
+    content: ''; position: absolute; left: 50%; transform: translateX(-50%);
+    border: 6px solid transparent;
+    top: 100%; border-top-color: #222;
+  }
+  .tooltip-flottant.tooltip-bas::after {
+    top: auto; bottom: 100%; border-top-color: transparent; border-bottom-color: #222;
+  }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <div class="topbar">
+    <h1>📅 Charge — Frictions calendaires</h1>
+    <div class="meta" id="meta">Chargement…</div>
+  </div>
+
+  <div class="toolbar">
+    <button class="btn" id="btn-today">📍 Aujourd'hui</button>
+
+    <span class="legende">
+      <span class="legende-heat">
+        Charge :
+        <span class="case" style="background:#fff"></span>
+        <span class="case" style="background:rgba(0,0,145,0.25)"></span>
+        <span class="case" style="background:rgba(0,0,145,0.5)"></span>
+        <span class="case" style="background:rgba(0,0,145,0.75)"></span>
+        <span class="case" style="background:rgba(0,0,145,1)"></span>
+        élevée
+      </span>
+      <span class="legende-jalon"><span class="legende-losange" style="background:var(--jalon-livrable)"></span> Livrable</span>
+      <span class="legende-jalon"><span class="legende-losange" style="background:var(--critique)"></span> Livrable fixe</span>
+    </span>
+
+    <span id="status"></span>
+  </div>
+
+  <div class="scroll">
+    <div id="content" class="empty-state">Chargement…</div>
+  </div>
+
+</div>
+
+<script>
+const norm = (s) => String(s||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").trim();
+
+function parseDate(v){
+  if(v===null||v===undefined||v==="") return null;
+  if(typeof v==="number") return new Date(v*1000);
+  const d=new Date(String(v).trim());
+  return isNaN(d.getTime())?null:d;
+}
+function refId(v){
+  if(Array.isArray(v)) return v[1];
+  return v;
+}
+function resolveRef(table, id, col){
+  const rid=refId(id);
+  if(rid===null||rid===undefined) return null;
+  const ligne=table.find(row=>row.id===rid);
+  return ligne?ligne[col]:null;
+}
+function getJalonTypeTexte(jalon){
+  const raw = jalon.Type;
+  if(!raw) return "";
+  if(Array.isArray(raw)){
+    if(raw[0]==='L') return raw[1] || "";
+    if(raw[0]==='E') return "";
+  }
+  return raw;
+}
+function getStatutTache(tache){
+  const statut = resolveRef(DB.parametres, tache.Statut, "Statut") || "";
+  if(norm(statut) === norm("Terminé")) return "Terminé";
+  return statut;
+}
+
+// ── Semaines ISO (lundi → dimanche), tout en UTC pour rester cohérent avec
+// le reste de l'outil (les dates Grist sont des timestamps UTC minuit). ─────
+function lundiDeLaSemaine(d){
+  const date = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+  const jour = date.getUTCDay(); // 0=dimanche
+  const diff = (jour===0 ? -6 : 1-jour);
+  date.setUTCDate(date.getUTCDate()+diff);
+  return date;
+}
+function ajouterJours(d, n){
+  const r = new Date(d);
+  r.setUTCDate(r.getUTCDate()+n);
+  return r;
+}
+function numeroSemaineISO(d){
+  const date = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+  date.setUTCDate(date.getUTCDate() + 4 - (date.getUTCDay()||7));
+  const debutAnnee = new Date(Date.UTC(date.getUTCFullYear(),0,1));
+  return Math.ceil((((date - debutAnnee) / 86400000) + 1)/7);
+}
+function fmtCourt(d){
+  return String(d.getUTCDate()).padStart(2,"0")+"/"+String(d.getUTCMonth()+1).padStart(2,"0");
+}
+
+// Plage de semaines à afficher : toute la timeline des tâches/jalons,
+// étendue pour toujours inclure "aujourd'hui" (± 2 semaines de marge) —
+// piège documenté au §8 du README : une plage calculée uniquement à partir
+// des données métier peut exclure silencieusement la date du jour.
+function calculerPlageSemaines(){
+  const dates = [];
+  DB.taches.forEach(t=>{
+    const d1=parseDate(t.Date_debut), d2=parseDate(t.Date_fin);
+    if(d1) dates.push(d1);
+    if(d2) dates.push(d2);
+  });
+  DB.jalons.forEach(j=>{
+    const d=parseDate(j.Date);
+    if(d) dates.push(d);
+  });
+  const aujourdhui = new Date();
+  aujourdhui.setUTCHours(0,0,0,0);
+  dates.push(aujourdhui);
+  if(!dates.length) return [];
+
+  let min = new Date(Math.min(...dates.map(d=>d.getTime())));
+  let max = new Date(Math.max(...dates.map(d=>d.getTime())));
+  min = ajouterJours(lundiDeLaSemaine(min), -14);
+  max = ajouterJours(lundiDeLaSemaine(max), 14);
+
+  const semaines = [];
+  let cur = lundiDeLaSemaine(min);
+  while(cur <= max){
+    semaines.push(new Date(cur));
+    cur = ajouterJours(cur, 7);
+  }
+  return semaines;
+}
+
+// Charge = nb de tâches du porteur dont [Date_debut, Date_fin] recouvre la
+// semaine, hors tâches Terminées. Volontairement indépendant du Statut
+// "En cours" au sens strict : sur une timeline complète, une tâche future
+// n'est jamais "En cours" aujourd'hui, mais elle pèse bien sur la charge
+// planifiée de sa semaine.
+function calculerGrille(semaines, porteurs){
+  const grille = {};
+  porteurs.forEach(p=>{ grille[p.id] = semaines.map(()=>({count:0, taches:[]})); });
+
+  DB.taches.forEach(t=>{
+    if(getStatutTache(t)==="Terminé") return;
+    const porteurId = refId(t.Porteur);
+    if(!grille[porteurId]) return;
+    const debut = parseDate(t.Date_debut), fin = parseDate(t.Date_fin);
+    if(!debut || !fin) return;
+    semaines.forEach((lundi, idx)=>{
+      const dimanche = ajouterJours(lundi, 6);
+      if(debut <= dimanche && fin >= lundi){
+        grille[porteurId][idx].count++;
+        grille[porteurId][idx].taches.push(t.Tache);
+      }
+    });
+  });
+  return grille;
+}
+
+function calculerJalonsParSemaine(semaines){
+  return semaines.map(lundi=>{
+    const dimanche = ajouterJours(lundi, 6);
+    return DB.jalons.filter(j=>{
+      if(norm(getJalonTypeTexte(j))!==norm("Livrable")) return false;
+      const d = parseDate(j.Date);
+      return d && d>=lundi && d<=dimanche;
+    });
+  });
+}
+
+let DB = {};
+grist.ready({requiredAccess:"full"});
+
+// ── Tooltip flottant positionné en JS (remplace le hover CSS pur) ──────────
+// Nécessaire pour basculer sous la case quand il n'y a pas la place au-dessus
+// (ex: porteur en surcharge avec 10 tâches simultanées dans une case proche
+// du haut du widget — la bulle CSS pure ne peut pas se réadapter dynamiquement).
+let tooltipEl = null;
+function initTooltip(){
+  if(tooltipEl) return;
+  tooltipEl = document.createElement("div");
+  tooltipEl.className = "tooltip-flottant";
+  document.body.appendChild(tooltipEl);
+}
+function afficherTooltip(el){
+  const texte = el.getAttribute("data-tooltip");
+  if(!texte) return;
+  tooltipEl.textContent = texte;
+  tooltipEl.style.visibility = "hidden";
+  tooltipEl.style.display = "block";
+  tooltipEl.style.left = "0px";
+  tooltipEl.style.top = "0px";
+
+  const r = el.getBoundingClientRect();
+  const tRect = tooltipEl.getBoundingClientRect();
+  const marge = 8;
+
+  let flip = false;
+  let top = r.top - tRect.height - marge;
+  if(top < 4){
+    top = r.bottom + marge;
+    flip = true;
+  }
+  let left = r.left + r.width/2 - tRect.width/2;
+  left = Math.max(4, Math.min(left, window.innerWidth - tRect.width - 4));
+
+  tooltipEl.classList.toggle("tooltip-bas", flip);
+  tooltipEl.style.left = left + "px";
+  tooltipEl.style.top = top + "px";
+  tooltipEl.style.visibility = "visible";
+}
+function masquerTooltip(){
+  if(tooltipEl) tooltipEl.style.display = "none";
+}
+function attacherTooltips(container){
+  container.querySelectorAll("[data-tooltip]").forEach(el=>{
+    el.addEventListener("mouseenter", ()=>afficherTooltip(el));
+    el.addEventListener("mouseleave", masquerTooltip);
+  });
+}
+
+function columnarToRows(data){
+  if(!data || typeof data!=="object") return [];
+  if(Array.isArray(data)) return data;
+  const keys=Object.keys(data);
+  if(keys.length===0) return [];
+  const firstCol=data[keys[0]];
+  if(!Array.isArray(firstCol)) return [];
+  const rows=[];
+  for(let i=0;i<firstCol.length;i++){
+    const row={};
+    keys.forEach(k=>row[k]=data[k][i]);
+    rows.push(row);
+  }
+  return rows;
+}
+
+async function init(){
+  try{
+    document.getElementById("status").textContent = "Chargement…";
+    DB.projets = columnarToRows(await grist.docApi.fetchTable("Projets"));
+    DB.jalons = columnarToRows(await grist.docApi.fetchTable("Jalons"));
+    DB.taches = columnarToRows(await grist.docApi.fetchTable("Taches"));
+    DB.parametres = columnarToRows(await grist.docApi.fetchTable("PARAMETRES"));
+
+    const nbActives = DB.taches.filter(t=>getStatutTache(t)!=="Terminé").length;
+    document.getElementById("meta").textContent = `${nbActives} tâche(s) active(s) réparties sur les porteurs`;
+    document.getElementById("status").textContent = "✓ Chargé";
+
+    construire();
+  }catch(e){
+    console.error("❌", e);
+    document.getElementById("status").textContent = "❌ " + e.message;
+  }
+}
+
+let SEMAINE_AUJOURDHUI_IDX = -1;
+
+function construire(){
+  const content = document.getElementById("content");
+  // Lignes = Porteurs (agents), et non plus les 4 Sections organisationnelles.
+  // "Non attribué" est poussé en fin de liste (entrée système), le reste trié
+  // alphabétiquement pour rester repérable sur ~35 lignes.
+  const porteurs = DB.parametres.filter(p=>p.Equipe).sort((a,b)=>{
+    const aNA = norm(a.Equipe)===norm("Non attribué"), bNA = norm(b.Equipe)===norm("Non attribué");
+    if(aNA !== bNA) return aNA ? 1 : -1;
+    return String(a.Equipe).localeCompare(String(b.Equipe));
+  });
+  const semaines = calculerPlageSemaines();
+
+  if(!porteurs.length || !semaines.length){
+    content.className = "empty-state";
+    content.innerHTML = "Aucun porteur ou aucune donnée datée à afficher.";
+    return;
+  }
+  content.className = "";
+
+  const grille = calculerGrille(semaines, porteurs);
+  const jalonsParSemaine = calculerJalonsParSemaine(semaines);
+
+  let maxCount = 0;
+  porteurs.forEach(p=> semaines.forEach((_,idx)=>{ maxCount = Math.max(maxCount, grille[p.id][idx].count); }));
+  maxCount = Math.max(maxCount, 1);
+
+  const aujourdhui = new Date(); aujourdhui.setUTCHours(0,0,0,0);
+  const lundiAujourdhui = lundiDeLaSemaine(aujourdhui);
+  SEMAINE_AUJOURDHUI_IDX = semaines.findIndex(s=>s.getTime()===lundiAujourdhui.getTime());
+
+  let colonneFixe = `<div class="colonne-fixe"><div class="cell-coin"></div>`;
+  porteurs.forEach(p=>{
+    colonneFixe += `<div class="cell-porteur">${escapeHtml(p.Equipe)}</div>`;
+  });
+  colonneFixe += `</div>`;
+
+  let html = `<div class="grille-conteneur">${colonneFixe}<div class="grille-scrollable"><div class="grille" style="grid-template-columns:repeat(${semaines.length},76px);">`;
+
+  // En-tête des semaines
+  semaines.forEach((lundi, idx)=>{
+    const dimanche = ajouterJours(lundi, 6);
+    const jalonsSemaine = jalonsParSemaine[idx];
+    const losanges = jalonsSemaine.map(j=>{
+      const couleur = j.Important===true ? "var(--critique)" : "var(--jalon-livrable)";
+      const tip = `${j.Nom}\n${fmtCourt(parseDate(j.Date))}`;
+      return `<span class="jalon-tooltip-wrap" data-tooltip="${escapeHtml(tip)}"><span class="losange-jalon" style="background:${couleur}"></span></span>`;
+    }).join("");
+    const classeAuj = idx===SEMAINE_AUJOURDHUI_IDX ? " colonne-aujourdhui" : "";
+    html += `<div class="cell-semaine-header${classeAuj}" data-col="${idx}">
+      <div class="num">S${numeroSemaineISO(lundi)}</div>
+      <div class="dates">${fmtCourt(lundi)}–${fmtCourt(dimanche)}</div>
+      <div class="jalons">${losanges}</div>
+    </div>`;
+  });
+
+  // Lignes de charge (la colonne porteur est déjà posée dans colonneFixe, à part)
+  porteurs.forEach(p=>{
+    semaines.forEach((lundi, idx)=>{
+      const cellule = grille[p.id][idx];
+      const alpha = cellule.count===0 ? 0 : 0.15 + 0.75*(cellule.count/maxCount);
+      const bg = cellule.count===0 ? "#fff" : `rgba(var(--heat),${alpha.toFixed(2)})`;
+      // Au-delà de ~0.4 d'opacité, le bleu France est assez sombre pour que
+      // le texte foncé par défaut (var(--texte)) devienne illisible.
+      const couleurTexte = alpha >= 0.4 ? "#fff" : "var(--texte)";
+      const classeVide = cellule.count===0 ? " vide" : "";
+      const classeAuj = idx===SEMAINE_AUJOURDHUI_IDX ? " colonne-aujourdhui" : "";
+      const tip = cellule.count>0
+        ? `${p.Equipe} — S${numeroSemaineISO(lundi)}\n` + cellule.taches.map(n=>"• "+n).join("\n")
+        : `${p.Equipe} — S${numeroSemaineISO(lundi)}\nAucune tâche active`;
+      html += `<div class="cell-charge${classeVide}${classeAuj}" style="background:${bg};color:${couleurTexte}" data-tooltip="${escapeHtml(tip)}">
+        ${cellule.count>0 ? cellule.count : ""}
+      </div>`;
+    });
+  });
+
+  html += `</div></div></div>`;
+  content.innerHTML = html;
+  attacherTooltips(content);
+}
+
+function allerAujourdhui(){
+  if(SEMAINE_AUJOURDHUI_IDX < 0) return;
+  const wrap = document.querySelector(".grille-scrollable");
+  const col = document.querySelector(`.cell-semaine-header[data-col="${SEMAINE_AUJOURDHUI_IDX}"]`);
+  if(wrap && col){
+    wrap.scrollLeft = col.offsetLeft - wrap.clientWidth/2 + col.clientWidth/2;
+  }
+  // La tooltip flottante est positionnée au survol ; un scroll pendant qu'elle
+  // est affichée la laisserait décrochée de sa case d'origine.
+  masquerTooltip();
+}
+
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+document.getElementById("btn-today").addEventListener("click", allerAujourdhui);
+document.addEventListener("scroll", masquerTooltip, true);
+initTooltip();
+grist.onRecords(()=>init());
+init().then(()=>setTimeout(allerAujourdhui, 50));
+</script>
+</body>
+</html>
