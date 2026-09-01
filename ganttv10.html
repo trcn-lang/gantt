@@ -840,13 +840,14 @@ function zoomVueEnsemble(){
 
 // Centre la vue sur la date du jour, sans changer le niveau de zoom.
 function allerAujourdhui(){
-  console.log("🔵 Bouton Aujourd'hui cliqué");
-  console.log("  ZOOM_CENTER_DAY avant:", ZOOM_CENTER_DAY);
-  ZOOM_CENTER_DAY = Math.floor(Date.now()/86400000);
-  console.log("  ZOOM_CENTER_DAY après:", ZOOM_CENTER_DAY);
-  console.log("  Appel construire()...");
-  construire();
-  console.log("  construire() terminé");
+  const scrollDiv = document.getElementById("scroll");
+  if(!scrollDiv || !allData || allData.todayOffset === undefined) return;
+  // Une seule formule de positionnement, réutilisée partout : plus de double
+  // calcul (ZOOM_CENTER_DAY + rebuild complet du Gantt) qui pouvait diverger
+  // ou se baser sur un clientWidth mesuré trop tôt quand le DOM est volumineux
+  // (beaucoup de projets/tâches → reflow plus lent).
+  const cible = allData.todayOffset*JOUR_PX - Math.max(0, (scrollDiv.clientWidth - LABEL_W)) / 2;
+  scrollDiv.scrollTo({left: Math.max(0, cible), behavior: "smooth"});
 }
 
 grist.ready({requiredAccess:"full"});
@@ -3049,13 +3050,6 @@ function construire(){
   document.getElementById("meta").textContent=`${DB.projets.length} projet(s) · ${DB.taches.length} tâche(s)`;
   rendreLegende();
   
-  // Attacher le listener du bouton Aujourd'hui (le bouton est créé lors du rendu)
-  const btnToday = document.getElementById("btn-today");
-  if(btnToday){
-    btnToday.removeEventListener("click", allerAujourdhui);
-    btnToday.addEventListener("click", allerAujourdhui);
-  }
-  
   setTimeout(()=>{
     const scrollDiv = document.getElementById("scroll");
     if(ZOOM_CENTER_DAY !== null){
@@ -3131,7 +3125,8 @@ document.getElementById("btn-zoom-in").addEventListener("click", zoomAvant);
 document.getElementById("btn-zoom-out").addEventListener("click", zoomArriere);
 document.getElementById("btn-zoom-reset").addEventListener("click", zoomReinitialiser);
 document.getElementById("btn-zoom-fit").addEventListener("click", zoomVueEnsemble);
-// btn-today est attaché dans construire() quand le bouton est rendu
+document.getElementById("btn-today").addEventListener("click", allerAujourdhui);
+document.getElementById("btn-today").onclick = allerAujourdhui;
 document.getElementById("field-dupli-nom").addEventListener("input", majApercuDuplication);
 document.getElementById("field-dupli-date-fin").addEventListener("input", majApercuDuplication);
 document.getElementById("field-dupli-date-fin").addEventListener("change", majApercuDuplication);
