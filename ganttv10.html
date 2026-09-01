@@ -473,6 +473,7 @@
       <button class="btn-zoom" id="btn-zoom-in" title="Zoom avant" aria-label="Zoom avant">+</button>
       <button class="btn-zoom-reset" id="btn-zoom-reset" title="Réinitialiser le zoom">100%</button>
       <button class="btn-zoom-fit" id="btn-zoom-fit" title="Voir tout le projet">⊡ Vue d'ensemble</button>
+      <button class="btn-zoom-fit" id="btn-debut" title="Aller à la première date">⏮ Début</button>
       <button class="btn-zoom-fit" id="btn-today" title="Centrer sur la date du jour">📍 Aujourd'hui</button>
     </div>
     <span style="margin-left:auto;font-size:12px;color:var(--texte-mention)" id="status"></span>
@@ -850,6 +851,47 @@ function allerAujourdhui(){
   scrollDiv.scrollTo({left: Math.max(0, cible), behavior: "smooth"});
 }
 
+function allerDebut(){
+  const scrollDiv = document.getElementById("timeline-scroll");
+  if(!scrollDiv || !allData) return;
+  const minVisible = calculerPremiereDateVisible();
+  if(minVisible === null) return;
+  // Contrairement à "Aujourd'hui", on ne centre pas : on amène la première
+  // date visible juste après le bord gauche, avec une petite marge de confort.
+  const offsetDebut = (minVisible - allData.minI) * JOUR_PX;
+  scrollDiv.scrollTo({left: Math.max(0, offsetDebut - 20), behavior: "smooth"});
+}
+
+// Première date parmi les tâches/jalons des projets NON pliés uniquement.
+// Distinct de allData.minI (qui lui reste stable, calculé sur tous les
+// projets, pour ne jamais faire bouger l'échelle horizontale au pli/dépli —
+// voir le fix "plier un projet décale toute la frise").
+function calculerPremiereDateVisible(){
+  const dates = [];
+  DB.taches.forEach(t => {
+    if(COLLAPSED_PROJETS.has(refId(t.Projet))) return;
+    const dIdx = dayIndex(t.Date_debut);
+    if(dIdx !== null) dates.push(dIdx);
+  });
+  DB.jalons.forEach(j => {
+    if(COLLAPSED_PROJETS.has(refId(j.Projet))) return;
+    const dIdx = dayIndex(j.Date);
+    if(dIdx !== null) dates.push(dIdx);
+  });
+  return dates.length > 0 ? Math.min(...dates) : null;
+}
+
+// Scroll auto (alignement à gauche, pas de centrage) vers la première date
+// visible : déclenché à l'ouverture du Gantt et au dépli d'un projet.
+function scrollVersDebutVisible(smooth){
+  const scrollDiv = document.getElementById("timeline-scroll");
+  if(!scrollDiv || !allData) return;
+  const minVisible = calculerPremiereDateVisible();
+  if(minVisible === null) return;
+  const offsetDebut = (minVisible - allData.minI) * JOUR_PX;
+  scrollDiv.scrollTo({left: Math.max(0, offsetDebut - 20), behavior: smooth ? "smooth" : "auto"});
+}
+
 grist.ready({requiredAccess:"full"});
 
 function columnarToRows(data){
@@ -1039,6 +1081,7 @@ let RETARDS_STRUCTURELS = {provoque:{}, subit:{}};
 
 let INIT_EN_COURS = false;
 let NON_ATTRIBUE_VERIFIE = false;
+let PREMIER_CHARGEMENT = true; // le scroll vers la 1ère date visible ne se déclenche qu'à l'ouverture, pas à chaque reload de données
 
 async function init(){
   if(INIT_EN_COURS) return; // évite les appels concurrents (ex: cascade déclenchée par onRecords)
@@ -1069,6 +1112,10 @@ async function init(){
 
     populateSelects();
     construire();
+    if(PREMIER_CHARGEMENT){
+      PREMIER_CHARGEMENT = false;
+      setTimeout(()=>scrollVersDebutVisible(false), 350); // false = pas d'animation, positionnement direct à l'ouverture
+    }
     document.getElementById("status").textContent="✓ Données chargées";
   }catch(e){
     console.error("❌", e);
@@ -1187,7 +1234,8 @@ function openModal(id){ document.getElementById(id).classList.add("active"); }
 function closeModal(id){ document.getElementById(id).classList.remove("active"); }
 
 function toggleProjetCollapse(projId){
-  if(COLLAPSED_PROJETS.has(projId)){
+  const etaitPlie = COLLAPSED_PROJETS.has(projId);
+  if(etaitPlie){
     COLLAPSED_PROJETS.delete(projId);
   } else {
     COLLAPSED_PROJETS.add(projId);
@@ -1204,6 +1252,12 @@ function toggleProjetCollapse(projId){
       label.classList.remove("hidden");
     }
   });
+
+  // Dépli (etaitPlie=true → le projet redevient visible) : recentrer sur la
+  // 1ère date parmi les projets désormais visibles. Pas de scroll au pli.
+  if(etaitPlie){
+    setTimeout(()=>scrollVersDebutVisible(true), 50);
+  }
 }
 
 function datePaques(annee){
@@ -3052,16 +3106,20 @@ function construire(){
   document.getElementById("meta").textContent=`${DB.projets.length} projet(s) · ${DB.taches.length} tâche(s)`;
   rendreLegende();
   
-  setTimeout(()=>{
-    const scrollDiv = document.getElementById("timeline-scroll");
-    if(ZOOM_CENTER_DAY !== null){
+  // Le recentrage automatique (ZOOM_CENTER_DAY) ne sert qu'à préserver le point
+  // de vue lors d'un zoom avant/arrière/reset — ce n'est PAS un scroll "au
+  // hasard" à chaque rendu. En dehors du zoom, on ne touche plus au scroll ici :
+  // le saut systématique vers aujourd'hui à chaque sauvegarde/édition a été
+  // retiré. Le scroll volontaire vers la 1ère date visible se déclenche
+  // uniquement à l'ouverture du Gantt et au dépli d'un projet (scrollVersDebutVisible()).
+  if(ZOOM_CENTER_DAY !== null){
+    setTimeout(()=>{
+      const scrollDiv = document.getElementById("timeline-scroll");
       const cible = (ZOOM_CENTER_DAY - minI) * JOUR_PX - Math.max(0, (scrollDiv.clientWidth - LABEL_W)) / 2;
       scrollDiv.scrollLeft = Math.max(0, cible);
       ZOOM_CENTER_DAY = null;
-    } else {
-      scrollDiv.scrollLeft = Math.max(0, allData.todayOffset*JOUR_PX - 300);
-    }
-  }, 300);
+    }, 300);
+  }
 }
 
 function getWeekNumber(d){
@@ -3127,6 +3185,8 @@ document.getElementById("btn-zoom-in").addEventListener("click", zoomAvant);
 document.getElementById("btn-zoom-out").addEventListener("click", zoomArriere);
 document.getElementById("btn-zoom-reset").addEventListener("click", zoomReinitialiser);
 document.getElementById("btn-zoom-fit").addEventListener("click", zoomVueEnsemble);
+document.getElementById("btn-debut").addEventListener("click", allerDebut);
+document.getElementById("btn-debut").onclick = allerDebut;
 document.getElementById("btn-today").addEventListener("click", allerAujourdhui);
 document.getElementById("btn-today").onclick = allerAujourdhui;
 document.getElementById("field-dupli-nom").addEventListener("input", majApercuDuplication);
