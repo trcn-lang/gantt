@@ -167,7 +167,7 @@
     transition:background 0.15s;
   }
   .label.tache .nom:hover{background:var(--bleu-975);color:var(--bleu-france)}
-  .label.tache .porteur{font-size:11px;color:var(--texte-mention);flex:0 0 auto}
+  .label.tache .equipe{font-size:11px;color:var(--texte-mention);flex:0 0 auto}
 
   .label-actions{position:absolute;right:8px;display:none;gap:4px;background:var(--fond);padding-left:6px}
   .label:hover .label-actions{display:flex}
@@ -406,7 +406,7 @@
     flex:1;font-size:12px;font-weight:500;
     overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
   }
-  .action-porteur{
+  .action-equipe{
     font-size:11px;color:var(--texte-mention);width:80px;
     overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:0;
   }
@@ -560,7 +560,7 @@
           <label class="incompressible-label"><input type="checkbox" id="field-tache-incompressible"> Incompressible</label>
         </div>
 
-        <div class="form-group"><label>Porteur</label><select id="field-tache-porteur"></select></div>
+        <div class="form-group"><label>Équipe</label><select id="field-tache-equipe"></select></div>
         <div class="form-group"><label>Statut</label><select id="field-tache-statut"></select></div>
 
         <div class="form-group">
@@ -635,8 +635,8 @@
       </div>
 
       <div class="sous-action-form-group">
-        <label>Porteur (optionnel)</label>
-        <select id="field-action-porteur">
+        <label>Équipe (optionnel)</label>
+        <select id="field-action-equipe">
           <option value="">-- Aucun --</option>
         </select>
       </div>
@@ -1086,8 +1086,8 @@ function populateSelects(){
   fillSelect("field-projet-section", uniq(DB.parametres.filter(p=>p.Section).map(p=>p.Section)), "-- Sélectionner --");
   fillSelect("field-projet-type",    uniq(DB.parametres.filter(p=>p.Type_Projet).map(p=>p.Type_Projet)), "-- Sélectionner --");
   fillSelect("field-tache-statut",     uniq(DB.parametres.filter(p=>p.Statut).map(p=>p.Statut)), "-- Sélectionner --");
-  fillSelect("field-tache-porteur",       DB.parametres.filter(p=>p.Equipe).map(r=>r.Equipe), "-- Aucun --");
-  fillSelect("field-action-porteur",      DB.parametres.filter(p=>p.Equipe).map(r=>r.Equipe), "-- Aucun --");
+  fillSelect("field-tache-equipe",       DB.parametres.filter(p=>p.Equipe).map(r=>r.Equipe), "-- Aucun --");
+  fillSelect("field-action-equipe",      DB.parametres.filter(p=>p.Equipe).map(r=>r.Equipe), "-- Aucun --");
 }
 
 function openModal(id){ document.getElementById(id).classList.add("active"); }
@@ -1532,7 +1532,7 @@ async function confirmerDuplicationProjet(){
 
     // 2. Nouvelles Tâches — ancrées sur leur Date_fin (la Date_debut est
     //    recalculée en arrière depuis la durée). Statut réinitialisé à
-    //    "À faire", Porteur conservé, Commentaires vidés ; Predecesseurs/
+    //    "À faire", Équipe conservée, Commentaires vidés ; Predecesseurs/
     //    Jalon_declencheur posés à vide pour l'instant (remappés à l'étape 4,
     //    une fois tous les nouveaux id connus).
     const tacheActions = taches.map(t=>{
@@ -1542,14 +1542,14 @@ async function confirmerDuplicationProjet(){
       const duree = t.Duree_jours || 1;
       const nouveauDebut = soustraireJoursOuvres(nouvelleFin, duree);
       return ["AddRecord","Taches",null,{
-        Equipe: refId(proj.Section),
+        Section: refId(proj.Section),
         Projet: nouveauProjetId,
         Tache: t.Tache,
         Date_debut: Math.floor(nouveauDebut.getTime()/1000),
         Date_fin: Math.floor(nouvelleFin.getTime()/1000),
         Duree_jours: duree,
         Statut: statutAFaireId,
-        Porteur: refId(t.Porteur) || NON_ATTRIBUE_ID,
+        Equipe: refId(t.Equipe) || NON_ATTRIBUE_ID,
         Commentaires: "",
         Predecesseurs: ['L'],
         Jalon_declencheur: ['L'],
@@ -1619,7 +1619,7 @@ async function confirmerDuplicationProjet(){
     if(updateJalonActions.length) await grist.docApi.applyUserActions(updateJalonActions);
 
     // 5. Sous-Actions (table ACTIONS) — rattachées aux nouvelles tâches,
-    //    Statut réinitialisé, Commentaires vidés, Porteur conservé.
+    //    Statut réinitialisé, Commentaires vidés, Équipe conservée.
     const actionsActions = [];
     taches.forEach(t=>{
       getActionsTache(t.id).forEach(a=>{
@@ -1628,7 +1628,7 @@ async function confirmerDuplicationProjet(){
           Nom: a.Nom,
           Ordre: a.Ordre || 0,
           Statut: statutAFaireId,
-          Porteur: refId(a.Porteur) || null,
+          Equipe: refId(a.Equipe) || null,
           Commentaires: ""
         }]);
       });
@@ -1813,7 +1813,7 @@ function displayActionsInModal(tacheId){
       item.className = "action-item";
 
       const statutTexte = resolveRef(DB.parametres, action.Statut, "Statut");
-      const porteurTexte = resolveRef(DB.parametres, action.Porteur, "Equipe") || "Non attribué";
+      const equipeTexte = resolveRef(DB.parametres, action.Equipe, "Equipe") || "Non attribué";
 
       const checkbox = document.createElement("input");
       checkbox.type = "checkbox";
@@ -1833,10 +1833,10 @@ function displayActionsInModal(tacheId){
       nomSpan.textContent = action.Nom;
       item.appendChild(nomSpan);
 
-      const porteurSpan = document.createElement("span");
-      porteurSpan.className = "action-porteur";
-      porteurSpan.textContent = porteurTexte;
-      item.appendChild(porteurSpan);
+      const equipeSpan = document.createElement("span");
+      equipeSpan.className = "action-equipe";
+      equipeSpan.textContent = equipeTexte;
+      item.appendChild(equipeSpan);
 
       const actionsDiv = document.createElement("div");
       actionsDiv.className = "action-actions";
@@ -1924,8 +1924,8 @@ function openActionModal(tacheId, actionId = null){
     document.getElementById("field-action-nom").value = action.Nom || "";
     document.getElementById("field-action-statut").value =
       resolveRef(DB.parametres, action.Statut, "Statut") || "À faire";
-    document.getElementById("field-action-porteur").value =
-      resolveRef(DB.parametres, action.Porteur, "Equipe") || "";
+    document.getElementById("field-action-equipe").value =
+      resolveRef(DB.parametres, action.Equipe, "Equipe") || "";
     document.getElementById("field-action-commentaires").value = action.Commentaires || "";
     document.getElementById("btn-delete-action").style.display = "inline-block";
     document.getElementById("btn-save-action").textContent = "Enregistrer";
@@ -1934,7 +1934,7 @@ function openActionModal(tacheId, actionId = null){
     document.getElementById("field-action-id").value = "";
     document.getElementById("field-action-nom").value = "";
     document.getElementById("field-action-statut").value = "À faire";
-    document.getElementById("field-action-porteur").value = "";
+    document.getElementById("field-action-equipe").value = "";
     document.getElementById("field-action-commentaires").value = "";
     document.getElementById("btn-delete-action").style.display = "none";
     document.getElementById("btn-save-action").textContent = "Créer";
@@ -1952,19 +1952,19 @@ async function saveAction(){
   const id = document.getElementById("field-action-id").value;
   const nom = document.getElementById("field-action-nom").value.trim();
   const statut = document.getElementById("field-action-statut").value;
-  const porteur = document.getElementById("field-action-porteur").value;
+  const equipe = document.getElementById("field-action-equipe").value;
   const commentaires = document.getElementById("field-action-commentaires").value.trim();
 
   if(!nom){ alert("Le nom est obligatoire"); return; }
 
   try {
     const statutId = findParamId("Statut", statut);
-    const porteurId = porteur ? findAgentId(porteur) : null;
+    const equipeId = equipe ? findAgentId(equipe) : null;
 
     const values = {
       Nom: nom,
       Statut: statutId,
-      Porteur: porteurId,
+      Equipe: equipeId,
       Commentaires: commentaires
     };
 
@@ -2011,7 +2011,7 @@ function openTacheCreate(projetId){
   document.getElementById("field-tache-debut").value="";
   document.getElementById("field-tache-fin").value="";
   document.getElementById("field-tache-duree").value="";
-  document.getElementById("field-tache-porteur").value="";
+  document.getElementById("field-tache-equipe").value="";
   document.getElementById("field-tache-statut").value="";
   document.getElementById("field-tache-comments").value="";
   document.getElementById("modal-tache-title").textContent="Nouvelle Tâche";
@@ -2042,7 +2042,7 @@ function openTacheEdit(t){
   document.getElementById("field-tache-debut").value=toDateInput(t.Date_debut);
   document.getElementById("field-tache-fin").value=finValue?toDateInput(finValue):"";
   document.getElementById("field-tache-duree").value=duree;
-  document.getElementById("field-tache-porteur").value=resolveRef(DB.parametres, t.Porteur, "Equipe")||"";
+  document.getElementById("field-tache-equipe").value=resolveRef(DB.parametres, t.Equipe, "Equipe")||"";
   document.getElementById("field-tache-statut").value=resolveRef(DB.parametres, t.Statut, "Statut")||"";
   document.getElementById("field-tache-comments").value=t.Commentaires||"";
   document.getElementById("modal-tache-title").textContent="Modifier la tâche";
@@ -2157,7 +2157,7 @@ async function saveTache(){
   const nom=document.getElementById("field-tache-nom").value.trim();
   const debut=document.getElementById("field-tache-debut").value;
   const fin=document.getElementById("field-tache-fin").value;
-  const porteur=document.getElementById("field-tache-porteur").value;
+  const equipe=document.getElementById("field-tache-equipe").value;
   const statut=document.getElementById("field-tache-statut").value;
   const comments=document.getElementById("field-tache-comments").value.trim();
   const incompressible=document.getElementById("field-tache-incompressible").checked;
@@ -2171,9 +2171,9 @@ async function saveTache(){
     const proj=DB.projets.find(c=>c.id===projet_id);
     if(!proj){ alert("Projet non trouvé"); return; }
     const statutId=findParamId("Statut", statut);
-    const porteurId=findAgentId(porteur) || NON_ATTRIBUE_ID;
-    const equipeId = refId(proj.Section);
-    if(!equipeId){ alert("Section invalide"); return; }
+    const equipeId=findAgentId(equipe) || NON_ATTRIBUE_ID;
+    const sectionId = refId(proj.Section);
+    if(!sectionId){ alert("Section invalide"); return; }
     const checkboxes = document.querySelectorAll("#field-tache-predecesseurs input[type='checkbox']:checked");
     const predecessorIds = Array.from(checkboxes).map(cb => parseInt(cb.value));
     if(id){
@@ -2202,10 +2202,10 @@ async function saveTache(){
     const dateFinChangee = ancienneTache && ancienneTache.Date_fin !== nouvelleDateFin;
 
     const values={
-      Equipe:equipeId, Projet:projet_id, Tache:nom,
+      Section:sectionId, Projet:projet_id, Tache:nom,
       Date_debut:Math.floor(new Date(debut).getTime()/1000),
       Date_fin: nouvelleDateFin,
-      Duree_jours:duree, Statut:statutId, Porteur:porteurId,
+      Duree_jours:duree, Statut:statutId, Equipe:equipeId,
       Commentaires:comments, Predecesseurs:['L',...predecessorIds],
       Jalon_declencheur:['L',...jalonDeclencheurIds],
       Incompressible: incompressible
@@ -2746,7 +2746,7 @@ function construire(){
     const taskPositions = {};
     tachesProj.forEach((t, idx)=>{
       const statutTexte=resolveRef(DB.parametres, t.Statut, "Statut");
-      const porteurTexte=resolveRef(DB.parametres, t.Porteur, "Equipe");
+      const equipeTexte=resolveRef(DB.parametres, t.Equipe, "Equipe");
       const labTask=el("div","label tache");
       labTask.setAttribute("data-projet", proj.id);
       if(COLLAPSED_PROJETS.has(proj.id)) labTask.classList.add("hidden");
@@ -2765,7 +2765,7 @@ function construire(){
         icoSubit.title = "En retard (bloquée par " + retardT.subit.join(", ") + ")";
         labTask.appendChild(icoSubit);
       }
-      if(porteurTexte) labTask.appendChild(el("span","porteur",porteurTexte));
+      if(equipeTexte) labTask.appendChild(el("span","equipe",equipeTexte));
       labelsDiv.appendChild(labTask);
       const track=el("div","track tache");
       const dIdx=dayIndex(t.Date_debut);
