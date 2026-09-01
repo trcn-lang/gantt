@@ -76,7 +76,7 @@
   /* Deux blocs flex indépendants plutôt qu'une grille unique avec colonne
      sticky : "position:sticky" combiné à "display:grid" décroche près de la
      limite de scroll (bug constaté des moteurs Chromium/WebKit). En sortant
-     la colonne Porteur du conteneur qui scrolle, elle n'est simplement plus
+     la colonne Équipe du conteneur qui scrolle, elle n'est simplement plus
      concernée — plus robuste qu'un correctif sticky. Les hauteurs de ligne
      (HAUT_ENTETE / HAUT_LIGNE) sont fixées en dur des deux côtés pour garder
      les deux blocs pixel-alignés puisqu'ils ne partagent plus une grille commune. */
@@ -125,7 +125,7 @@
     display: inline-block;
   }
 
-  .cell-porteur {
+  .cell-equipe {
     height: 48px;
     border-bottom: 1px solid var(--bordure);
     padding: 8px 12px;
@@ -294,26 +294,26 @@ function calculerPlageSemaines(){
   return semaines;
 }
 
-// Charge = nb de tâches du porteur dont [Date_debut, Date_fin] recouvre la
+// Charge = nb de tâches de l'équipe dont [Date_debut, Date_fin] recouvre la
 // semaine, hors tâches Terminées. Volontairement indépendant du Statut
 // "En cours" au sens strict : sur une timeline complète, une tâche future
 // n'est jamais "En cours" aujourd'hui, mais elle pèse bien sur la charge
 // planifiée de sa semaine.
-function calculerGrille(semaines, porteurs){
+function calculerGrille(semaines, equipes){
   const grille = {};
-  porteurs.forEach(p=>{ grille[p.id] = semaines.map(()=>({count:0, taches:[]})); });
+  equipes.forEach(e=>{ grille[e.id] = semaines.map(()=>({count:0, taches:[]})); });
 
   DB.taches.forEach(t=>{
     if(getStatutTache(t)==="Terminé") return;
-    const porteurId = refId(t.Porteur);
-    if(!grille[porteurId]) return;
+    const equipeId = refId(t.Equipe);
+    if(!grille[equipeId]) return;
     const debut = parseDate(t.Date_debut), fin = parseDate(t.Date_fin);
     if(!debut || !fin) return;
     semaines.forEach((lundi, idx)=>{
       const dimanche = ajouterJours(lundi, 6);
       if(debut <= dimanche && fin >= lundi){
-        grille[porteurId][idx].count++;
-        grille[porteurId][idx].taches.push(t.Tache);
+        grille[equipeId][idx].count++;
+        grille[equipeId][idx].taches.push(t.Tache);
       }
     });
   });
@@ -336,7 +336,7 @@ grist.ready({requiredAccess:"full"});
 
 // ── Tooltip flottant positionné en JS (remplace le hover CSS pur) ──────────
 // Nécessaire pour basculer sous la case quand il n'y a pas la place au-dessus
-// (ex: porteur en surcharge avec 10 tâches simultanées dans une case proche
+// (ex: équipe en surcharge avec 10 tâches simultanées dans une case proche
 // du haut du widget — la bulle CSS pure ne peut pas se réadapter dynamiquement).
 let tooltipEl = null;
 function initTooltip(){
@@ -407,7 +407,7 @@ async function init(){
     DB.parametres = columnarToRows(await grist.docApi.fetchTable("PARAMETRES"));
 
     const nbActives = DB.taches.filter(t=>getStatutTache(t)!=="Terminé").length;
-    document.getElementById("meta").textContent = `${nbActives} tâche(s) active(s) réparties sur les porteurs`;
+    document.getElementById("meta").textContent = `${nbActives} tâche(s) active(s) réparties sur les équipes`;
     document.getElementById("status").textContent = "✓ Chargé";
 
     construire();
@@ -421,28 +421,28 @@ let SEMAINE_AUJOURDHUI_IDX = -1;
 
 function construire(){
   const content = document.getElementById("content");
-  // Lignes = Porteurs (agents), et non plus les 4 Sections organisationnelles.
+  // Lignes = Équipes (agents), et non plus les 4 Sections organisationnelles.
   // "Non attribué" est poussé en fin de liste (entrée système), le reste trié
   // alphabétiquement pour rester repérable sur ~35 lignes.
-  const porteurs = DB.parametres.filter(p=>p.Equipe).sort((a,b)=>{
+  const equipes = DB.parametres.filter(p=>p.Equipe).sort((a,b)=>{
     const aNA = norm(a.Equipe)===norm("Non attribué"), bNA = norm(b.Equipe)===norm("Non attribué");
     if(aNA !== bNA) return aNA ? 1 : -1;
     return String(a.Equipe).localeCompare(String(b.Equipe));
   });
   const semaines = calculerPlageSemaines();
 
-  if(!porteurs.length || !semaines.length){
+  if(!equipes.length || !semaines.length){
     content.className = "empty-state";
-    content.innerHTML = "Aucun porteur ou aucune donnée datée à afficher.";
+    content.innerHTML = "Aucune équipe ou aucune donnée datée à afficher.";
     return;
   }
   content.className = "";
 
-  const grille = calculerGrille(semaines, porteurs);
+  const grille = calculerGrille(semaines, equipes);
   const jalonsParSemaine = calculerJalonsParSemaine(semaines);
 
   let maxCount = 0;
-  porteurs.forEach(p=> semaines.forEach((_,idx)=>{ maxCount = Math.max(maxCount, grille[p.id][idx].count); }));
+  equipes.forEach(e=> semaines.forEach((_,idx)=>{ maxCount = Math.max(maxCount, grille[e.id][idx].count); }));
   maxCount = Math.max(maxCount, 1);
 
   const aujourdhui = new Date(); aujourdhui.setUTCHours(0,0,0,0);
@@ -450,8 +450,8 @@ function construire(){
   SEMAINE_AUJOURDHUI_IDX = semaines.findIndex(s=>s.getTime()===lundiAujourdhui.getTime());
 
   let colonneFixe = `<div class="colonne-fixe"><div class="cell-coin"></div>`;
-  porteurs.forEach(p=>{
-    colonneFixe += `<div class="cell-porteur">${escapeHtml(p.Equipe)}</div>`;
+  equipes.forEach(e=>{
+    colonneFixe += `<div class="cell-equipe">${escapeHtml(e.Equipe)}</div>`;
   });
   colonneFixe += `</div>`;
 
@@ -474,10 +474,10 @@ function construire(){
     </div>`;
   });
 
-  // Lignes de charge (la colonne porteur est déjà posée dans colonneFixe, à part)
-  porteurs.forEach(p=>{
+  // Lignes de charge (la colonne équipe est déjà posée dans colonneFixe, à part)
+  equipes.forEach(e=>{
     semaines.forEach((lundi, idx)=>{
-      const cellule = grille[p.id][idx];
+      const cellule = grille[e.id][idx];
       const alpha = cellule.count===0 ? 0 : 0.15 + 0.75*(cellule.count/maxCount);
       const bg = cellule.count===0 ? "#fff" : `rgba(var(--heat),${alpha.toFixed(2)})`;
       // Au-delà de ~0.4 d'opacité, le bleu France est assez sombre pour que
@@ -486,8 +486,8 @@ function construire(){
       const classeVide = cellule.count===0 ? " vide" : "";
       const classeAuj = idx===SEMAINE_AUJOURDHUI_IDX ? " colonne-aujourdhui" : "";
       const tip = cellule.count>0
-        ? `${p.Equipe} — S${numeroSemaineISO(lundi)}\n` + cellule.taches.map(n=>"• "+n).join("\n")
-        : `${p.Equipe} — S${numeroSemaineISO(lundi)}\nAucune tâche active`;
+        ? `${e.Equipe} — S${numeroSemaineISO(lundi)}\n` + cellule.taches.map(n=>"• "+n).join("\n")
+        : `${e.Equipe} — S${numeroSemaineISO(lundi)}\nAucune tâche active`;
       html += `<div class="cell-charge${classeVide}${classeAuj}" style="background:${bg};color:${couleurTexte}" data-tooltip="${escapeHtml(tip)}">
         ${cellule.count>0 ? cellule.count : ""}
       </div>`;
