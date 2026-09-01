@@ -840,8 +840,13 @@ function zoomVueEnsemble(){
 
 // Centre la vue sur la date du jour, sans changer le niveau de zoom.
 function allerAujourdhui(){
+  console.log("🔵 Bouton Aujourd'hui cliqué");
+  console.log("  ZOOM_CENTER_DAY avant:", ZOOM_CENTER_DAY);
   ZOOM_CENTER_DAY = Math.floor(Date.now()/86400000);
+  console.log("  ZOOM_CENTER_DAY après:", ZOOM_CENTER_DAY);
+  console.log("  Appel construire()...");
   construire();
+  console.log("  construire() terminé");
 }
 
 grist.ready({requiredAccess:"full"});
@@ -1087,43 +1092,76 @@ function fillSelect(id, values, placeholder){
 let SCHEMA_PARAMETRES = { section: null, type: null, statut: null, equipe: null };
 
 function detectParametresSchema(){
-  if(!DB.parametres || DB.parametres.length === 0) return;
+  if(!DB.parametres || DB.parametres.length === 0) {
+    console.log("❌ DB.parametres vide ou non chargée");
+    return;
+  }
   
   const firstRow = DB.parametres[0];
   console.log("=== DÉTECTION SCHÉMA PARAMETRES ===");
-  console.log("Première ligne:", JSON.stringify(firstRow, null, 2));
+  console.log("Nombre de lignes dans PARAMETRES:", DB.parametres.length);
+  console.log("Première ligne complète (JSON):", JSON.stringify(firstRow, null, 2));
+  console.log("Clés de la première ligne:", Object.keys(firstRow));
+  console.log();
   
   // Chercher les champs par leur contenu (valeurs caractéristiques)
   for(const field of Object.keys(firstRow)){
     if(field === 'id') continue;
     const val = firstRow[field];
     
+    console.log(`  Champ "${field}":`, val);
+    
     // Section : contient PS, Officiers, CPIP, ou vide
-    if(!SCHEMA_PARAMETRES.section && DB.parametres.some(p => p[field] === "PS" || p[field] === "Officiers" || p[field] === "CPIP")){
-      SCHEMA_PARAMETRES.section = field;
-      console.log("✓ Section trouvée:", field);
+    if(!SCHEMA_PARAMETRES.section){
+      const hasSection = DB.parametres.some(p => {
+        const v = p[field];
+        return v === "PS" || v === "Officiers" || v === "CPIP";
+      });
+      if(hasSection){
+        SCHEMA_PARAMETRES.section = field;
+        console.log("    ✓ C'est la colonne Section ! (trouvée via PS/Officiers/CPIP)");
+      }
     }
     
     // Type_Projet : contient Mobilité, Avancement, CAP, ou vide
-    if(!SCHEMA_PARAMETRES.type && DB.parametres.some(p => p[field] === "Mobilité" || p[field] === "Avancement" || p[field] === "CAP")){
-      SCHEMA_PARAMETRES.type = field;
-      console.log("✓ Type trouvé:", field);
+    if(!SCHEMA_PARAMETRES.type){
+      const hasType = DB.parametres.some(p => {
+        const v = p[field];
+        return v === "Mobilité" || v === "Avancement" || v === "CAP";
+      });
+      if(hasType){
+        SCHEMA_PARAMETRES.type = field;
+        console.log("    ✓ C'est la colonne Type_Projet ! (trouvée via Mobilité/Avancement/CAP)");
+      }
     }
     
     // Statut : contient À faire, En cours, Terminé, ou vide
-    if(!SCHEMA_PARAMETRES.statut && DB.parametres.some(p => p[field] === "À faire" || p[field] === "En cours" || p[field] === "Terminé")){
-      SCHEMA_PARAMETRES.statut = field;
-      console.log("✓ Statut trouvé:", field);
+    if(!SCHEMA_PARAMETRES.statut){
+      const hasStatut = DB.parametres.some(p => {
+        const v = p[field];
+        return v === "À faire" || v === "En cours" || v === "Terminé";
+      });
+      if(hasStatut){
+        SCHEMA_PARAMETRES.statut = field;
+        console.log("    ✓ C'est la colonne Statut ! (trouvée via À faire/En cours/Terminé)");
+      }
     }
     
     // Equipe : contient CEA - MOB, CEA - POSAD, CPIP, CC, Non attribué, ou vide
-    if(!SCHEMA_PARAMETRES.equipe && DB.parametres.some(p => p[field] === "CEA - MOB" || p[field] === "CEA - POSAD" || p[field] === "CPIP" || p[field] === "CC" || p[field] === "Non attribué")){
-      SCHEMA_PARAMETRES.equipe = field;
-      console.log("✓ Equipe trouvée:", field);
+    if(!SCHEMA_PARAMETRES.equipe){
+      const hasEquipe = DB.parametres.some(p => {
+        const v = p[field];
+        return v === "CEA - MOB" || v === "CEA - POSAD" || v === "CPIP" || v === "CC" || v === "Non attribué";
+      });
+      if(hasEquipe){
+        SCHEMA_PARAMETRES.equipe = field;
+        console.log("    ✓ C'est la colonne Equipe ! (trouvée via CEA - MOB/CEA - POSAD/etc)");
+      }
     }
   }
   
-  console.log("Schéma final:", SCHEMA_PARAMETRES);
+  console.log();
+  console.log("Schéma final détecté:", SCHEMA_PARAMETRES);
   console.log("=====================================");
 }
 
@@ -3010,6 +3048,14 @@ function construire(){
   document.getElementById("kanban").appendChild(grid);
   document.getElementById("meta").textContent=`${DB.projets.length} projet(s) · ${DB.taches.length} tâche(s)`;
   rendreLegende();
+  
+  // Attacher le listener du bouton Aujourd'hui (le bouton est créé lors du rendu)
+  const btnToday = document.getElementById("btn-today");
+  if(btnToday){
+    btnToday.removeEventListener("click", allerAujourdhui);
+    btnToday.addEventListener("click", allerAujourdhui);
+  }
+  
   setTimeout(()=>{
     const scrollDiv = document.getElementById("scroll");
     if(ZOOM_CENTER_DAY !== null){
@@ -3085,7 +3131,7 @@ document.getElementById("btn-zoom-in").addEventListener("click", zoomAvant);
 document.getElementById("btn-zoom-out").addEventListener("click", zoomArriere);
 document.getElementById("btn-zoom-reset").addEventListener("click", zoomReinitialiser);
 document.getElementById("btn-zoom-fit").addEventListener("click", zoomVueEnsemble);
-document.getElementById("btn-today").addEventListener("click", allerAujourdhui);
+// btn-today est attaché dans construire() quand le bouton est rendu
 document.getElementById("field-dupli-nom").addEventListener("input", majApercuDuplication);
 document.getElementById("field-dupli-date-fin").addEventListener("input", majApercuDuplication);
 document.getElementById("field-dupli-date-fin").addEventListener("change", majApercuDuplication);
