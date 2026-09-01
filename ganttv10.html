@@ -1139,6 +1139,10 @@ function fillSelect(id, values, placeholder){
 // ============================================================================
 let SCHEMA_PARAMETRES = { section: null, type: null, statut: null, equipe: null };
 
+// Déterminer les vrais noms des champs dans PARAMETRES (Grist renomme les colonnes
+// dupliquées, ex: "Section" → "Section" et "Section" → "$Section2"). Plutôt que de
+// chercher par le CONTENU (signatures ambiguës), on cherche par le NOM de la colonne
+// lui-même — c'est simple, explicite, et s'adapte à n'importe quelles données.
 function detectParametresSchema(){
   if(!DB.parametres || DB.parametres.length === 0) {
     console.log("❌ DB.parametres vide ou non chargée");
@@ -1146,79 +1150,38 @@ function detectParametresSchema(){
   }
   
   const firstRow = DB.parametres[0];
-  console.log("=== DÉTECTION SCHÉMA PARAMETRES ===");
-  console.log("Nombre de lignes dans PARAMETRES:", DB.parametres.length);
-  console.log("Première ligne complète (JSON):", JSON.stringify(firstRow, null, 2));
-  console.log("Clés de la première ligne:", Object.keys(firstRow));
-  console.log();
+  console.log("=== DÉTECTION SCHÉMA PARAMETRES (par nom de colonne) ===");
+  console.log("Première ligne:", JSON.stringify(firstRow, null, 2));
+  console.log("Clés disponibles:", Object.keys(firstRow));
   
-  // Chercher les champs par leur contenu (valeurs caractéristiques)
+  // Chercher les colonnes par leur nom (pas par contenu)
   for(const field of Object.keys(firstRow)){
     if(field === 'id') continue;
-    const val = firstRow[field];
     
-    console.log(`  Champ "${field}":`, val);
+    // Grist peut renommer une colonne "Section" en "$Section2" si doublon
+    // Donc chercher tous les champs qui ressemblent à "Section" (case-insensitive, tolère $ et chiffres)
+    const fieldLower = field.toLowerCase();
     
-    // Section : contient PS, Officiers, CPIP, ou vide
-    if(!SCHEMA_PARAMETRES.section){
-      const hasSection = DB.parametres.some(p => {
-        const v = p[field];
-        // Signature : cherche au moins 2 valeurs section distinctes (ps, officiers, cpip)
-        // pour ne pas confondre avec equipe qui contient aussi "cpip" mais pas "ps"
-        const valeurs = DB.parametres
-          .map(r => r[field])
-          .filter(x => x && x !== "");
-        return valeurs.includes("PS") || valeurs.includes("Officiers");
-      });
-      if(hasSection){
-        SCHEMA_PARAMETRES.section = field;
-        console.log("    ✓ C'est la colonne Section ! (trouvée via PS/Officiers)");
-      }
+    if(!SCHEMA_PARAMETRES.section && (fieldLower === 'section' || field === '$Section2')){
+      SCHEMA_PARAMETRES.section = field;
+      console.log(`  ✓ Section → "${field}"`);
     }
-    
-    // Type_Projet : contient Mobilité, Avancement, CAP, ou vide
-    if(!SCHEMA_PARAMETRES.type){
-      const hasType = DB.parametres.some(p => {
-        const v = p[field];
-        return v === "Mobilité" || v === "Avancement" || v === "CAP";
-      });
-      if(hasType){
-        SCHEMA_PARAMETRES.type = field;
-        console.log("    ✓ C'est la colonne Type_Projet ! (trouvée via Mobilité/Avancement/CAP)");
-      }
+    if(!SCHEMA_PARAMETRES.type && (fieldLower === 'type_projet' || fieldLower === 'type projet')){
+      SCHEMA_PARAMETRES.type = field;
+      console.log(`  ✓ Type_Projet → "${field}"`);
     }
-    
-    // Statut : contient À faire, En cours, Terminé, ou vide
-    if(!SCHEMA_PARAMETRES.statut){
-      const hasStatut = DB.parametres.some(p => {
-        const v = p[field];
-        return v === "À faire" || v === "En cours" || v === "Terminé";
-      });
-      if(hasStatut){
-        SCHEMA_PARAMETRES.statut = field;
-        console.log("    ✓ C'est la colonne Statut ! (trouvée via À faire/En cours/Terminé)");
-      }
+    if(!SCHEMA_PARAMETRES.statut && fieldLower === 'statut'){
+      SCHEMA_PARAMETRES.statut = field;
+      console.log(`  ✓ Statut → "${field}"`);
     }
-    
-    // Equipe : contient CEA - MOB, CEA - POSAD, CC, Non attribué (+ possiblement CPIP)
-    // mais distinguer de Section qui contient PS, Officiers, CPIP
-    if(!SCHEMA_PARAMETRES.equipe){
-      const hasEquipe = DB.parametres.some(p => {
-        const v = p[field];
-        // Signature : cherche des valeurs "CEA - " (format agent unique à Equipe)
-        // ou "Non attribué" (aussi unique à Equipe)
-        return v && (v.startsWith("CEA - ") || v === "Non attribué");
-      });
-      if(hasEquipe){
-        SCHEMA_PARAMETRES.equipe = field;
-        console.log("    ✓ C'est la colonne Equipe ! (trouvée via CEA - MOB/Non attribué)");
-      }
+    if(!SCHEMA_PARAMETRES.equipe && (fieldLower === 'equipe' || fieldLower === 'équipe')){
+      SCHEMA_PARAMETRES.equipe = field;
+      console.log(`  ✓ Equipe → "${field}"`);
     }
   }
   
-  console.log();
-  console.log("Schéma final détecté:", SCHEMA_PARAMETRES);
-  console.log("=====================================");
+  console.log("Schéma final:", SCHEMA_PARAMETRES);
+  console.log("==========================================================");
 }
 
 function uniq(arr){ return arr.filter((v,i,a)=>a.indexOf(v)===i); }
