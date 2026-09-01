@@ -1163,11 +1163,16 @@ function detectParametresSchema(){
     if(!SCHEMA_PARAMETRES.section){
       const hasSection = DB.parametres.some(p => {
         const v = p[field];
-        return v === "PS" || v === "Officiers" || v === "CPIP";
+        // Signature : cherche au moins 2 valeurs section distinctes (ps, officiers, cpip)
+        // pour ne pas confondre avec equipe qui contient aussi "cpip" mais pas "ps"
+        const valeurs = DB.parametres
+          .map(r => r[field])
+          .filter(x => x && x !== "");
+        return valeurs.includes("PS") || valeurs.includes("Officiers");
       });
       if(hasSection){
         SCHEMA_PARAMETRES.section = field;
-        console.log("    ✓ C'est la colonne Section ! (trouvée via PS/Officiers/CPIP)");
+        console.log("    ✓ C'est la colonne Section ! (trouvée via PS/Officiers)");
       }
     }
     
@@ -1195,15 +1200,18 @@ function detectParametresSchema(){
       }
     }
     
-    // Equipe : contient CEA - MOB, CEA - POSAD, CPIP, CC, Non attribué, ou vide
+    // Equipe : contient CEA - MOB, CEA - POSAD, CC, Non attribué (+ possiblement CPIP)
+    // mais distinguer de Section qui contient PS, Officiers, CPIP
     if(!SCHEMA_PARAMETRES.equipe){
       const hasEquipe = DB.parametres.some(p => {
         const v = p[field];
-        return v === "CEA - MOB" || v === "CEA - POSAD" || v === "CPIP" || v === "CC" || v === "Non attribué";
+        // Signature : cherche des valeurs "CEA - " (format agent unique à Equipe)
+        // ou "Non attribué" (aussi unique à Equipe)
+        return v && (v.startsWith("CEA - ") || v === "Non attribué");
       });
       if(hasEquipe){
         SCHEMA_PARAMETRES.equipe = field;
-        console.log("    ✓ C'est la colonne Equipe ! (trouvée via CEA - MOB/CEA - POSAD/etc)");
+        console.log("    ✓ C'est la colonne Equipe ! (trouvée via CEA - MOB/Non attribué)");
       }
     }
   }
