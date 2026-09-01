@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Kanban par Porteur</title>
+<title>Kanban par Équipe</title>
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
 <style>
   :root{
@@ -334,7 +334,7 @@
     white-space:nowrap;
   }
 
-  .sous-action-porteur{
+  .sous-action-equipe{
     font-size:11px;
     color:var(--texte-mention);
     max-width:90px;
@@ -408,7 +408,7 @@
 <body>
 <div class="app">
   <div class="topbar">
-    <h1>Kanban par Porteur</h1>
+    <h1>Kanban par Équipe</h1>
     <div style="display:flex;gap:20px;align-items:center;flex:1;">
       <div class="legende" id="legende"></div>
       <div class="meta" id="meta">Chargement…</div>
@@ -450,7 +450,7 @@
           <div><label>Durée (j. ouvrés)</label><input type="number" id="field-tache-duree" min="1"></div>
           <label class="incompressible-label"><input type="checkbox" id="field-tache-incompressible"> Incompressible</label>
         </div>
-        <div class="form-group"><label>Porteur</label><select id="field-tache-porteur"></select></div>
+        <div class="form-group"><label>Équipe</label><select id="field-tache-equipe"></select></div>
         <div class="form-group"><label>Statut</label><select id="field-tache-statut"></select></div>
 
         <div class="form-group">
@@ -527,8 +527,8 @@
     </div>
 
     <div class="form-group">
-      <label>Porteur</label>
-      <select id="field-sous-action-porteur">
+      <label>Équipe</label>
+      <select id="field-sous-action-equipe">
         <option value="">-- Aucun --</option>
       </select>
     </div>
@@ -977,8 +977,8 @@ function populateSelects(){
   fillSelect("field-tache-projet", DB.projets.map(c=>({value:c.id, label:c.Projet})), "-- Sélectionner --");
   fillSelect("field-tache-statut", STATUTS.map(s=>({value:s.nom, label:s.nom})), "-- Sélectionner --");
   const agents = DB.parametres.filter(p=>p.Equipe);
-  fillSelect("field-tache-porteur", agents.map(r=>({value:r.Equipe, label:r.Equipe})), "-- Aucun --");
-  fillSelect("field-sous-action-porteur", agents.map(r=>({value:r.Equipe, label:r.Equipe})), "-- Aucun --");
+  fillSelect("field-tache-equipe", agents.map(r=>({value:r.Equipe, label:r.Equipe})), "-- Aucun --");
+  fillSelect("field-sous-action-equipe", agents.map(r=>({value:r.Equipe, label:r.Equipe})), "-- Aucun --");
 
   const filtreSel=document.getElementById("filtre-projet");
   const prev=filtreSel.value;
@@ -1036,14 +1036,14 @@ function findAgentId(nom){
   return r?r.id:null;
 }
 
-function openTacheCreate(statutNom, porteurNom){
+function openTacheCreate(statutNom, equipeNom){
   document.getElementById("field-tache-id").value="";
   document.getElementById("field-tache-nom").value="";
   document.getElementById("field-tache-projet").value="";
   document.getElementById("field-tache-debut").value="";
   document.getElementById("field-tache-fin").value="";
   document.getElementById("field-tache-duree").value="";
-  document.getElementById("field-tache-porteur").value=porteurNom||"";
+  document.getElementById("field-tache-equipe").value=equipeNom||"";
   document.getElementById("field-tache-statut").value=statutNom||"À faire";
   document.getElementById("field-tache-comments").value="";
   document.getElementById("modal-tache-title").textContent="Nouvelle Tâche";
@@ -1087,7 +1087,7 @@ function openTacheEdit(t){
   document.getElementById("field-tache-debut").value=toDateInput(t.Date_debut);
   document.getElementById("field-tache-fin").value=finValue?toDateInput(finValue):"";
   document.getElementById("field-tache-duree").value=duree;
-  document.getElementById("field-tache-porteur").value=resolveRef(DB.parametres, t.Porteur, "Equipe")||"";
+  document.getElementById("field-tache-equipe").value=resolveRef(DB.parametres, t.Equipe, "Equipe")||"";
   document.getElementById("field-tache-statut").value=resolveRef(DB.parametres, t.Statut, "Statut")||"";
   document.getElementById("field-tache-comments").value=t.Commentaires||"";
   document.getElementById("modal-tache-title").textContent="Modifier la tâche";
@@ -1202,7 +1202,7 @@ async function saveTache(){
   const projet_id=parseInt(document.getElementById("field-tache-projet").value);
   const debut=document.getElementById("field-tache-debut").value;
   const fin=document.getElementById("field-tache-fin").value;
-  const porteur=document.getElementById("field-tache-porteur").value;
+  const equipe=document.getElementById("field-tache-equipe").value;
   const statut=document.getElementById("field-tache-statut").value;
   const comments=document.getElementById("field-tache-comments").value.trim();
   const incompressible=document.getElementById("field-tache-incompressible").checked;
@@ -1215,9 +1215,9 @@ async function saveTache(){
     const proj=DB.projets.find(c=>c.id===projet_id);
     if(!proj){ alert("Projet non trouvé"); return; }
     const statutId=findParamId("Statut", statut);
-    const porteurId=findAgentId(porteur) || NON_ATTRIBUE_ID;
-    const equipeId = refId(proj.Equipe);
-    if(!equipeId){ alert("Équipe invalide"); return; }
+    const equipeId=findAgentId(equipe) || NON_ATTRIBUE_ID;
+    const sectionId = refId(proj.Section);
+    if(!sectionId){ alert("Section invalide"); return; }
 
     const checkboxes = document.querySelectorAll("#field-tache-predecesseurs input[type='checkbox']:checked");
     const predecessorIds = Array.from(checkboxes).map(cb => parseInt(cb.value));
@@ -1248,10 +1248,10 @@ async function saveTache(){
     const dateFinChangee = ancienneTache && ancienneTache.Date_fin !== nouvelleDateFin;
 
     const values={
-      Equipe:equipeId, Projet:projet_id, Tache:nom,
+      Section:sectionId, Projet:projet_id, Tache:nom,
       Date_debut:Math.floor(new Date(debut).getTime()/1000),
       Date_fin:nouvelleDateFin,
-      Duree_jours:duree, Statut:statutId, Porteur:porteurId,
+      Duree_jours:duree, Statut:statutId, Equipe:equipeId,
       Commentaires:comments,
       Predecesseurs:['L',...predecessorIds],
       Jalon_declencheur:['L',...jalonDeclencheurIds],
@@ -1497,11 +1497,11 @@ async function deleteTache(){
   }catch(e){ alert("Erreur: "+e.message); console.error(e); }
 }
 
-async function deplacerTache(taskId, statutNom, porteurId){
+async function deplacerTache(taskId, statutNom, equipeId){
   try{
     const statutId=findParamId("Statut", statutNom);
     await grist.docApi.applyUserActions([
-      ["UpdateRecord","Taches",taskId,{Statut:statutId, Porteur:porteurId}]
+      ["UpdateRecord","Taches",taskId,{Statut:statutId, Equipe:equipeId}]
     ]);
     init();
   }catch(e){ alert("Erreur: "+e.message); console.error(e); }
@@ -1521,7 +1521,7 @@ function displaySousActionsInModal(tacheId){
 
   sousActions.forEach(sa=>{
     const statutTexte = resolveRef(DB.parametres, sa.Statut, "Statut");
-    const porteurTexte = resolveRef(DB.parametres, sa.Porteur, "Equipe") || "Non attribué";
+    const equipeTexte = resolveRef(DB.parametres, sa.Equipe, "Equipe") || "Non attribué";
 
     const item = document.createElement("div");
     item.className = "sous-action-item";
@@ -1550,12 +1550,12 @@ function displaySousActionsInModal(tacheId){
     nomSpan.title = sa.Nom;
     item.appendChild(nomSpan);
 
-    // Porteur ("Non attribué" si vide)
-    const porteurSpan = document.createElement("span");
-    porteurSpan.className = "sous-action-porteur";
-    porteurSpan.textContent = porteurTexte;
-    porteurSpan.title = porteurTexte;
-    item.appendChild(porteurSpan);
+    // Équipe ("Non attribué" si vide)
+    const equipeSpan = document.createElement("span");
+    equipeSpan.className = "sous-action-equipe";
+    equipeSpan.textContent = equipeTexte;
+    equipeSpan.title = equipeTexte;
+    item.appendChild(equipeSpan);
 
     // Boutons édition / suppression
     const actionsDiv = document.createElement("div");
@@ -1671,8 +1671,8 @@ function openSousActionModal(tacheId, sousActionId){
   document.getElementById("field-sous-action-nom").value = sa.Nom || "";
   document.getElementById("field-sous-action-statut").value =
     resolveRef(DB.parametres, sa.Statut, "Statut") || "À faire";
-  document.getElementById("field-sous-action-porteur").value =
-    resolveRef(DB.parametres, sa.Porteur, "Equipe") || "";
+  document.getElementById("field-sous-action-equipe").value =
+    resolveRef(DB.parametres, sa.Equipe, "Equipe") || "";
   document.getElementById("field-sous-action-commentaires").value = sa.Commentaires || "";
   document.getElementById("btn-delete-sous-action").style.display = "inline-block";
   document.getElementById("btn-save-sous-action").textContent = "Enregistrer";
@@ -1685,19 +1685,19 @@ async function saveSousAction(){
   const tacheId = parseInt(document.getElementById("field-sous-action-tache").value);
   const nom = document.getElementById("field-sous-action-nom").value.trim();
   const statut = document.getElementById("field-sous-action-statut").value;
-  const porteur = document.getElementById("field-sous-action-porteur").value;
+  const equipe = document.getElementById("field-sous-action-equipe").value;
   const commentaires = document.getElementById("field-sous-action-commentaires").value.trim();
 
   if(!nom){ alert("Le nom de la sous-action est obligatoire"); return; }
 
   try{
     const statutId = findParamId("Statut", statut);
-    const porteurId = porteur ? findAgentId(porteur) : null;
+    const equipeId = equipe ? findAgentId(equipe) : null;
 
     const values = {
       Nom: nom,
       Statut: statutId,
-      Porteur: porteurId,
+      Equipe: equipeId,
       Commentaires: commentaires
     };
 
@@ -1754,7 +1754,7 @@ function construire(){
   matrix.style.setProperty("--n-cols", STATUTS.length);
 
   // Coin haut-gauche
-  matrix.appendChild(el("div", "corner", "Porteur"));
+  matrix.appendChild(el("div", "corner", "Équipe"));
 
   // En-têtes de colonnes (statuts)
   STATUTS.forEach(s=>{
@@ -1767,20 +1767,20 @@ function construire(){
 
   let tachesVisibles = 0;
 
-  lignes.forEach(porteur=>{
-    const isNonAssigne = norm(porteur.Equipe) === norm("Non attribué");
+  lignes.forEach(equipe=>{
+    const isNonAssigne = norm(equipe.Equipe) === norm("Non attribué");
 
     // Tâches de cette ligne, filtrées par projet si besoin
     const tachesLigne = DB.taches.filter(t=>{
-      const rid = refId(t.Porteur);
-      const matchPorteur = (rid === porteur.id) || (isNonAssigne && (rid===null || rid===undefined || rid===""));
+      const rid = refId(t.Equipe);
+      const matchEquipe = (rid === equipe.id) || (isNonAssigne && (rid===null || rid===undefined || rid===""));
       const matchProjet = !filtreProjet || refId(t.Projet)===parseInt(filtreProjet);
-      return matchPorteur && matchProjet;
+      return matchEquipe && matchProjet;
     });
 
     // Label de ligne
     const label = el("div", "row-label"+(isNonAssigne?" non-assigne":""));
-    label.appendChild(el("span", "nom", porteur.Equipe));
+    label.appendChild(el("span", "nom", equipe.Equipe));
     label.appendChild(el("span", "count", `${tachesLigne.length} tâche${tachesLigne.length>1?"s":""}`));
     matrix.appendChild(label);
 
@@ -1788,7 +1788,7 @@ function construire(){
     STATUTS.forEach(s=>{
       const cell = el("div", "cell");
       cell.dataset.statut = s.nom;
-      cell.dataset.porteurId = porteur.id;
+      cell.dataset.equipeId = equipe.id;
 
       const tachesCell = tachesLigne.filter(t=>{
         const statutTexte = resolveRef(DB.parametres, t.Statut, "Statut");
@@ -1935,7 +1935,7 @@ function construire(){
       });
 
       const btnAdd = el("button", "btn-add-cell", "+ Ajouter");
-      btnAdd.onclick = () => openTacheCreate(s.nom, isNonAssigne ? "" : porteur.Equipe);
+      btnAdd.onclick = () => openTacheCreate(s.nom, isNonAssigne ? "" : equipe.Equipe);
       cell.appendChild(btnAdd);
 
       cell.addEventListener("dragover", (e)=>{
@@ -1950,15 +1950,15 @@ function construire(){
         e.preventDefault();
         cell.classList.remove("drag-over");
         if(draggedTaskId===null) return;
-        const porteurId = parseInt(cell.dataset.porteurId);
-        deplacerTache(draggedTaskId, cell.dataset.statut, porteurId);
+        const equipeId = parseInt(cell.dataset.equipeId);
+        deplacerTache(draggedTaskId, cell.dataset.statut, equipeId);
       });
 
       matrix.appendChild(cell);
     });
   });
 
-  document.getElementById("meta").textContent = `${tachesVisibles} tâche(s) affichée(s) · ${DB.parametres.length} porteur(s)`;
+  document.getElementById("meta").textContent = `${tachesVisibles} tâche(s) affichée(s) · ${DB.parametres.filter(p=>p.Equipe).length} équipe(s)`;
   rendreLegende();
 }
 
