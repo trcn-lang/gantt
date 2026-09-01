@@ -1083,6 +1083,15 @@ function fillSelect(id, values, placeholder){
 function uniq(arr){ return arr.filter((v,i,a)=>a.indexOf(v)===i); }
 
 function populateSelects(){
+  // DEBUG : afficher la structure de DB.parametres pour diagnostic
+  console.log("=== DEBUG populateSelects ===");
+  console.log("DB.parametres:", DB.parametres);
+  console.log("Lignes avec Section:", DB.parametres.filter(p=>p.Section));
+  console.log("Lignes avec Type_Projet:", DB.parametres.filter(p=>p.Type_Projet));
+  console.log("Lignes avec Statut:", DB.parametres.filter(p=>p.Statut));
+  console.log("Lignes avec Equipe:", DB.parametres.filter(p=>p.Equipe));
+  console.log("============================");
+  
   fillSelect("field-projet-section", uniq(DB.parametres.filter(p=>p.Section).map(p=>p.Section)), "-- Sélectionner --");
   fillSelect("field-projet-type",    uniq(DB.parametres.filter(p=>p.Type_Projet).map(p=>p.Type_Projet)), "-- Sélectionner --");
   fillSelect("field-tache-statut",     uniq(DB.parametres.filter(p=>p.Statut).map(p=>p.Statut)), "-- Sélectionner --");
@@ -1251,6 +1260,8 @@ function findAgentId(nom){
 }
 
 function openProjetCreate(){
+  populateSelects();
+  
   document.getElementById("field-projet-id").value="";
   document.getElementById("field-projet-nom").value="";
   document.getElementById("field-projet-section").value="";
@@ -1263,6 +1274,9 @@ function openProjetCreate(){
 }
 
 function openProjetEdit(proj){
+  // Repeupler les selects au moment de l'ouverture (en cas de rechargement async)
+  populateSelects();
+  
   document.getElementById("field-projet-id").value=proj.id;
   document.getElementById("field-projet-nom").value=proj.Projet||"";
   document.getElementById("field-projet-section").value=resolveRef(DB.parametres, proj.Section, "Section")||"";
