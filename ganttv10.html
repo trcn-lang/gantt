@@ -1043,6 +1043,7 @@ async function init(){
     DB.jalons       = columnarToRows(await grist.docApi.fetchTable("Jalons"));
     DB.taches       = columnarToRows(await grist.docApi.fetchTable("Taches"));
     DB.parametres   = columnarToRows(await grist.docApi.fetchTable("PARAMETRES"));
+    detectParametresSchema();  // ← Déterminer les vrais noms des champs
     DB.actions      = columnarToRows(await grist.docApi.fetchTable("ACTIONS"));
 
     // ✅ S'assurer qu'un agent "Non attribué" existe dans PARAMETRES.Equipe
@@ -1080,23 +1081,67 @@ function fillSelect(id, values, placeholder){
     sel.appendChild(opt);
   });
 }
+// ============================================================================
+// DÉTECTION AUTO DU SCHÉMA PARAMETRES (en cas de renommage par Grist)
+// ============================================================================
+let SCHEMA_PARAMETRES = { section: null, type: null, statut: null, equipe: null };
+
+function detectParametresSchema(){
+  if(!DB.parametres || DB.parametres.length === 0) return;
+  
+  const firstRow = DB.parametres[0];
+  console.log("=== DÉTECTION SCHÉMA PARAMETRES ===");
+  console.log("Première ligne:", JSON.stringify(firstRow, null, 2));
+  
+  // Chercher les champs par leur contenu (valeurs caractéristiques)
+  for(const field of Object.keys(firstRow)){
+    if(field === 'id') continue;
+    const val = firstRow[field];
+    
+    // Section : contient PS, Officiers, CPIP, ou vide
+    if(!SCHEMA_PARAMETRES.section && DB.parametres.some(p => p[field] === "PS" || p[field] === "Officiers" || p[field] === "CPIP")){
+      SCHEMA_PARAMETRES.section = field;
+      console.log("✓ Section trouvée:", field);
+    }
+    
+    // Type_Projet : contient Mobilité, Avancement, CAP, ou vide
+    if(!SCHEMA_PARAMETRES.type && DB.parametres.some(p => p[field] === "Mobilité" || p[field] === "Avancement" || p[field] === "CAP")){
+      SCHEMA_PARAMETRES.type = field;
+      console.log("✓ Type trouvé:", field);
+    }
+    
+    // Statut : contient À faire, En cours, Terminé, ou vide
+    if(!SCHEMA_PARAMETRES.statut && DB.parametres.some(p => p[field] === "À faire" || p[field] === "En cours" || p[field] === "Terminé")){
+      SCHEMA_PARAMETRES.statut = field;
+      console.log("✓ Statut trouvé:", field);
+    }
+    
+    // Equipe : contient CEA - MOB, CEA - POSAD, CPIP, CC, Non attribué, ou vide
+    if(!SCHEMA_PARAMETRES.equipe && DB.parametres.some(p => p[field] === "CEA - MOB" || p[field] === "CEA - POSAD" || p[field] === "CPIP" || p[field] === "CC" || p[field] === "Non attribué")){
+      SCHEMA_PARAMETRES.equipe = field;
+      console.log("✓ Equipe trouvée:", field);
+    }
+  }
+  
+  console.log("Schéma final:", SCHEMA_PARAMETRES);
+  console.log("=====================================");
+}
+
 function uniq(arr){ return arr.filter((v,i,a)=>a.indexOf(v)===i); }
 
 function populateSelects(){
-  // DEBUG : afficher la structure de DB.parametres pour diagnostic
-  console.log("=== DEBUG populateSelects ===");
-  console.log("DB.parametres:", DB.parametres);
-  console.log("Lignes avec Section:", DB.parametres.filter(p=>p.Section));
-  console.log("Lignes avec Type_Projet:", DB.parametres.filter(p=>p.Type_Projet));
-  console.log("Lignes avec Statut:", DB.parametres.filter(p=>p.Statut));
-  console.log("Lignes avec Equipe:", DB.parametres.filter(p=>p.Equipe));
-  console.log("============================");
+  if(!SCHEMA_PARAMETRES.section) detectParametresSchema();
   
-  fillSelect("field-projet-section", uniq(DB.parametres.filter(p=>p.Section).map(p=>p.Section)), "-- Sélectionner --");
-  fillSelect("field-projet-type",    uniq(DB.parametres.filter(p=>p.Type_Projet).map(p=>p.Type_Projet)), "-- Sélectionner --");
-  fillSelect("field-tache-statut",     uniq(DB.parametres.filter(p=>p.Statut).map(p=>p.Statut)), "-- Sélectionner --");
-  fillSelect("field-tache-equipe",       DB.parametres.filter(p=>p.Equipe).map(r=>r.Equipe), "-- Aucun --");
-  fillSelect("field-action-equipe",      DB.parametres.filter(p=>p.Equipe).map(r=>r.Equipe), "-- Aucun --");
+  if(SCHEMA_PARAMETRES.section) 
+    fillSelect("field-projet-section", uniq(DB.parametres.filter(p=>p[SCHEMA_PARAMETRES.section]).map(p=>p[SCHEMA_PARAMETRES.section])), "-- Sélectionner --");
+  if(SCHEMA_PARAMETRES.type) 
+    fillSelect("field-projet-type", uniq(DB.parametres.filter(p=>p[SCHEMA_PARAMETRES.type]).map(p=>p[SCHEMA_PARAMETRES.type])), "-- Sélectionner --");
+  if(SCHEMA_PARAMETRES.statut) 
+    fillSelect("field-tache-statut", uniq(DB.parametres.filter(p=>p[SCHEMA_PARAMETRES.statut]).map(p=>p[SCHEMA_PARAMETRES.statut])), "-- Sélectionner --");
+  if(SCHEMA_PARAMETRES.equipe) {
+    fillSelect("field-tache-equipe", DB.parametres.filter(p=>p[SCHEMA_PARAMETRES.equipe]).map(r=>r[SCHEMA_PARAMETRES.equipe]), "-- Aucun --");
+    fillSelect("field-action-equipe", DB.parametres.filter(p=>p[SCHEMA_PARAMETRES.equipe]).map(r=>r[SCHEMA_PARAMETRES.equipe]), "-- Aucun --");
+  }
 }
 
 function openModal(id){ document.getElementById(id).classList.add("active"); }
@@ -1279,8 +1324,8 @@ function openProjetEdit(proj){
   
   document.getElementById("field-projet-id").value=proj.id;
   document.getElementById("field-projet-nom").value=proj.Projet||"";
-  document.getElementById("field-projet-section").value=resolveRef(DB.parametres, proj.Section, "Section")||"";
-  document.getElementById("field-projet-type").value=resolveRef(DB.parametres, proj.Type_Projet, "Type_Projet")||proj.Type_Projet||"";
+  document.getElementById("field-projet-section").value=resolveRef(DB.parametres, proj[SCHEMA_PARAMETRES.section], SCHEMA_PARAMETRES.section)||"";
+  document.getElementById("field-projet-type").value=resolveRef(DB.parametres, proj[SCHEMA_PARAMETRES.type], SCHEMA_PARAMETRES.type)||proj[SCHEMA_PARAMETRES.type]||"";
   document.getElementById("field-projet-desc").value=proj.Description||"";
   document.getElementById("modal-projet-title").textContent="Modifier le projet";
   document.getElementById("btn-save-projet").textContent="Enregistrer";
@@ -1296,8 +1341,8 @@ async function saveProjet(){
   const desc=document.getElementById("field-projet-desc").value.trim();
   if(!nom || !section || !type){ alert("Champs obligatoires"); return; }
   try{
-    const sectionId = DB.parametres.find(p => p.Section === section)?.id;
-    const typeId = DB.parametres.find(p => p.Type_Projet === type)?.id;
+    const sectionId = DB.parametres.find(p => p[SCHEMA_PARAMETRES.section] === section)?.id;
+    const typeId = DB.parametres.find(p => p[SCHEMA_PARAMETRES.type] === type)?.id;
     if(!sectionId || !typeId){ alert("Section ou Type invalide"); return; }
     if(id){
       await grist.docApi.applyUserActions([["UpdateRecord","Projets",parseInt(id),{Projet:nom, Section:sectionId, Type_Projet:typeId, Description:desc}]]);
