@@ -484,7 +484,7 @@
         <div class="corner">Projet / Tâche</div>
         <div id="labels"></div>
       </div>
-      <div class="timeline-scroll" style="flex:1;position:relative;">
+      <div class="timeline-scroll" id="timeline-scroll" style="flex:1;position:relative;">
         <div id="kanban" class="grid"></div>
       </div>
     </div>
@@ -802,7 +802,7 @@ function setJourPx(px){
 }
 
 function capturerCentreJour(){
-  const scrollDiv = document.getElementById("scroll");
+  const scrollDiv = document.getElementById("timeline-scroll");
   if(!scrollDiv || !allData || allData.minI === undefined) return null;
   const centreX = scrollDiv.scrollLeft + Math.max(0, (scrollDiv.clientWidth - LABEL_W)) / 2;
   const centreJourOffset = centreX / JOUR_PX;
@@ -825,7 +825,7 @@ function zoomReinitialiser(){
   construire();
 }
 function zoomVueEnsemble(){
-  const scrollDiv = document.getElementById("scroll");
+  const scrollDiv = document.getElementById("timeline-scroll");
   if(!scrollDiv || !allData || !allData.totalJours) return;
   const largeurDispo = Math.max(100, scrollDiv.clientWidth - LABEL_W - 24);
   // Petite marge de sécurité (3%) pour absorber les arrondis de rendu
@@ -840,7 +840,7 @@ function zoomVueEnsemble(){
 
 // Centre la vue sur la date du jour, sans changer le niveau de zoom.
 function allerAujourdhui(){
-  const scrollDiv = document.getElementById("scroll");
+  const scrollDiv = document.getElementById("timeline-scroll");
   if(!scrollDiv || !allData || allData.todayOffset === undefined) return;
   // Une seule formule de positionnement, réutilisée partout : plus de double
   // calcul (ZOOM_CENTER_DAY + rebuild complet du Gantt) qui pouvait diverger
@@ -2733,8 +2733,11 @@ function calculerNiveauxJalons(jalonsProj, minI){
 function construire(){
   RETARDS_STRUCTURELS = calculerRetardsStructurels();
   const allDates = [];
+  // La plage de dates (donc toute l'échelle horizontale du Gantt) se base sur
+  // TOUTES les tâches/jalons, projets repliés inclus. Plier/déplier un projet
+  // est une action verticale (masquer des lignes) : ça ne doit jamais décaler
+  // le repère "jour zéro" ni la position de la ligne/bouton "Aujourd'hui".
   DB.taches.forEach(t => {
-    if(COLLAPSED_PROJETS.has(refId(t.Projet))) return; // projet masqué : ne compte pas dans la plage visible
     const dIdx = dayIndex(t.Date_debut);
     if(dIdx !== null) {
       allDates.push(dIdx);
@@ -2743,7 +2746,6 @@ function construire(){
     }
   });
   DB.jalons.forEach(j => {
-    if(COLLAPSED_PROJETS.has(refId(j.Projet))) return; // projet masqué : ne compte pas dans la plage visible
     const dIdx = dayIndex(j.Date);
     if(dIdx !== null) allDates.push(dIdx);
   });
@@ -3051,7 +3053,7 @@ function construire(){
   rendreLegende();
   
   setTimeout(()=>{
-    const scrollDiv = document.getElementById("scroll");
+    const scrollDiv = document.getElementById("timeline-scroll");
     if(ZOOM_CENTER_DAY !== null){
       const cible = (ZOOM_CENTER_DAY - minI) * JOUR_PX - Math.max(0, (scrollDiv.clientWidth - LABEL_W)) / 2;
       scrollDiv.scrollLeft = Math.max(0, cible);
