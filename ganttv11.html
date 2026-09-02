@@ -1305,43 +1305,46 @@ let SCHEMA_PARAMETRES = { section: null, type: null, statut: null, equipe: null 
 // dupliquées, ex: "Section" → "Section" et "Section" → "$Section2"). Plutôt que de
 // chercher par le CONTENU (signatures ambiguës), on cherche par le NOM de la colonne
 // lui-même — c'est simple, explicite, et s'adapte à n'importe quelles données.
+//
+// PIÈGE CORRIGÉ : si PLUSIEURS colonnes matchent un même motif (ex: une colonne
+// "Section" fantôme/vide ET "$Section2" qui contient les vraies valeurs), on ne
+// peut pas se contenter de prendre la première trouvée — il faut vérifier laquelle
+// contient réellement des données, sur TOUTES les lignes (pas juste la première).
 function detectParametresSchema(){
   if(!DB.parametres || DB.parametres.length === 0) {
     console.log("❌ DB.parametres vide ou non chargée");
     return;
   }
-  
-  const firstRow = DB.parametres[0];
-  console.log("=== DÉTECTION SCHÉMA PARAMETRES (par nom de colonne) ===");
-  console.log("Première ligne:", JSON.stringify(firstRow, null, 2));
-  console.log("Clés disponibles:", Object.keys(firstRow));
-  
-  // Chercher les colonnes par leur nom (pas par contenu)
-  for(const field of Object.keys(firstRow)){
-    if(field === 'id') continue;
-    
-    // Grist peut renommer une colonne "Section" en "$Section2" si doublon
-    // Donc chercher tous les champs qui ressemblent à "Section" (case-insensitive, tolère $ et chiffres)
-    const fieldLower = field.toLowerCase();
-    
-    if(!SCHEMA_PARAMETRES.section && (fieldLower === 'section' || field === '$Section2')){
-      SCHEMA_PARAMETRES.section = field;
-      console.log(`  ✓ Section → "${field}"`);
-    }
-    if(!SCHEMA_PARAMETRES.type && (fieldLower === 'type_projet' || fieldLower === 'type projet')){
-      SCHEMA_PARAMETRES.type = field;
-      console.log(`  ✓ Type_Projet → "${field}"`);
-    }
-    if(!SCHEMA_PARAMETRES.statut && fieldLower === 'statut'){
-      SCHEMA_PARAMETRES.statut = field;
-      console.log(`  ✓ Statut → "${field}"`);
-    }
-    if(!SCHEMA_PARAMETRES.equipe && (fieldLower === 'equipe' || fieldLower === 'équipe')){
-      SCHEMA_PARAMETRES.equipe = field;
-      console.log(`  ✓ Equipe → "${field}"`);
-    }
+
+  // Compte le nombre de valeurs non-vides pour une colonne donnée, sur toutes les lignes
+  function nbValeursRemplies(field){
+    return DB.parametres.filter(row => row[field] !== null && row[field] !== undefined && row[field] !== "").length;
   }
-  
+
+  const toutesLesColonnes = new Set();
+  DB.parametres.forEach(row => Object.keys(row).forEach(k => toutesLesColonnes.add(k)));
+
+  function trouverMeilleureColonne(predicat){
+    // Parmi toutes les colonnes qui matchent le prédicat, retourne celle
+    // avec le plus de valeurs remplies (la "vraie" colonne de données).
+    const candidats = [...toutesLesColonnes].filter(f => f !== 'id' && predicat(f));
+    if(candidats.length === 0) return null;
+    if(candidats.length === 1) return candidats[0];
+    let meilleur = candidats[0], meilleurScore = nbValeursRemplies(candidats[0]);
+    for(const c of candidats.slice(1)){
+      const score = nbValeursRemplies(c);
+      if(score > meilleurScore){ meilleur = c; meilleurScore = score; }
+    }
+    return meilleur;
+  }
+
+  SCHEMA_PARAMETRES.section = trouverMeilleureColonne(f => /^\$?section\d*$/i.test(f));
+  SCHEMA_PARAMETRES.type    = trouverMeilleureColonne(f => /^type[_ ]?projet$/i.test(f) || /^\$?type_?projet\d*$/i.test(f));
+  SCHEMA_PARAMETRES.statut  = trouverMeilleureColonne(f => /^\$?statut\d*$/i.test(f));
+  SCHEMA_PARAMETRES.equipe  = trouverMeilleureColonne(f => /^\$?(equipe|équipe)\d*$/i.test(f));
+
+  console.log("=== DÉTECTION SCHÉMA PARAMETRES (colonne avec le plus de données) ===");
+  console.log("Colonnes disponibles:", [...toutesLesColonnes]);
   console.log("Schéma final:", SCHEMA_PARAMETRES);
   console.log("==========================================================");
 }
