@@ -1,0 +1,911 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Récap — Vue synthétique</title>
+<script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
+<style>
+  :root{
+    --bleu-france:#000091;
+    --bleu-975:#ECECFE;
+    --texte:#161616;
+    --texte-mention:#666666;
+    --bordure:#DDDDDD;
+    --fond:#FFFFFF;
+    --fond-alt:#F6F6F6;
+    --st-faire:#929292;
+    --st-encours:#0063CB;
+    --st-termine:#18753C;
+    --jalon-livrable:#FF6B35;
+    --jalon-info:#6B6B6B;
+    --critique:#CE0500;
+  }
+
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    font-family:"Marianne",-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;
+    color:var(--texte);background:var(--fond-alt);font-size:13px;
+  }
+  .app{display:flex;flex-direction:column;height:100vh}
+
+  /* ========== TOPBAR / TOOLBAR ========== */
+  .topbar{
+    display:flex;align-items:center;justify-content:space-between;gap:16px;
+    padding:12px 16px;border-bottom:1px solid var(--bordure);background:var(--fond);flex-wrap:wrap;
+  }
+  .topbar h1{font-size:18px;font-weight:700;color:var(--bleu-france)}
+  .meta{font-size:11px;color:var(--texte-mention)}
+
+  .toolbar{
+    padding:12px 16px;border-bottom:1px solid var(--bordure);background:var(--fond);
+    display:flex;gap:12px;flex-wrap:wrap;align-items:center;
+  }
+  .btn{
+    padding:8px 16px;background:var(--bleu-france);color:#fff;border:none;border-radius:4px;
+    cursor:pointer;font-size:13px;font-weight:600;transition:background .2s;
+  }
+  .btn:hover{background:#1212a8}
+  .toggle-label{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--texte-mention);font-weight:600;cursor:pointer}
+
+  /* ========== FILTRES CHIPS ========== */
+  .filter-section{
+    padding:12px 16px;border-bottom:1px solid var(--bordure);background:var(--fond);
+    display:flex;flex-direction:column;gap:10px;
+  }
+  .filter-row{display:flex;gap:10px;align-items:flex-start}
+  .filter-row-label{font-size:12px;font-weight:700;color:var(--texte);white-space:nowrap;padding-top:6px;flex-shrink:0;min-width:52px}
+  .filter-chips{display:flex;flex-wrap:wrap;gap:6px;flex:1}
+  .filter-chip{
+    display:inline-flex;align-items:center;padding:5px 12px;border-radius:16px;
+    border:1px solid var(--bordure);background:#fff;color:var(--texte);
+    font-size:12px;font-weight:500;cursor:pointer;transition:background .15s,color .15s,border-color .15s;white-space:nowrap;
+  }
+  .filter-chip:hover{border-color:var(--bleu-france);background:var(--bleu-975)}
+  .filter-chip.active{background:var(--bleu-france);border-color:var(--bleu-france);color:#fff;font-weight:600}
+  .filter-chip.active:hover{background:#1212a8}
+  .filter-chips-empty{font-size:12px;color:var(--texte-mention);font-style:italic;padding-top:6px}
+
+  /* ========== SCROLL / CONTENU ========== */
+  .scroll{flex:1;overflow:auto;padding:20px}
+  .empty-state{padding:60px 20px;text-align:center;color:var(--texte-mention);font-size:14px}
+
+  /* ========== PAGE RÉCAP (une par projet) ========== */
+  .recap-page{
+    background:var(--fond);border:1px solid var(--bordure);border-radius:6px;
+    box-shadow:0 1px 4px rgba(0,0,0,0.08);
+    padding:24px 28px;margin:0 auto 24px auto;max-width:1120px;
+  }
+  .recap-page-header{margin-bottom:18px;border-bottom:2px solid var(--bleu-france);padding-bottom:10px}
+  .recap-page-header h2{font-size:19px;font-weight:700;color:var(--bleu-france);margin-bottom:2px}
+  .recap-page-sub{font-size:11px;color:var(--texte-mention)}
+
+  /* ========== FRISE RÉTROPLANNING (positionnement en %) ========== */
+  /* ========== FRISE RÉTROPLANNING (positionnement en %, hauteur dynamique) ========== */
+  .frise-segment{margin-bottom:14px}
+  .frise{position:relative;margin:0}
+  .frise-bar{position:absolute;left:0;top:0;width:100%;height:10px;background:var(--bleu-france);border-radius:3px}
+  .frise-tick{position:absolute;top:0;bottom:0;width:1px;background:var(--bordure)}
+  .frise-tick-label{position:absolute;font-size:9px;color:var(--texte-mention);white-space:nowrap}
+  .frise-today-line{position:absolute;top:0;width:2px;background:rgba(206,5,0,.55);z-index:1}
+  .frise-today-label{position:absolute;font-size:9px;font-weight:700;color:var(--critique);white-space:nowrap}
+  .frise-jalon-diamond{
+    position:absolute;top:5px;width:12px;height:12px;
+    margin-top:-6px;margin-left:-6px;transform:rotate(45deg);
+    border:1.5px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.3);z-index:2;
+  }
+  .frise-jalon-diamond.retard-subit{box-shadow:0 1px 3px rgba(0,0,0,.3),0 0 0 2px var(--critique)}
+  .frise-jalon-label{position:absolute;white-space:nowrap;pointer-events:none}
+  .frise-jalon-label .nom{font-size:9px;font-weight:700;color:var(--texte);line-height:1.25}
+  .frise-jalon-label .date{font-size:8px;color:var(--texte-mention);line-height:1.25}
+
+  .legend{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:18px;font-size:11px;color:var(--texte-mention)}
+  .legend-item{display:flex;align-items:center;gap:6px}
+  .legend-puce{width:11px;height:11px;border-radius:1px}
+  .legend-puce.diamond{transform:rotate(45deg);width:9px;height:9px}
+
+  /* ========== TABLEAU ÉCHÉANCES ========== */
+  .echeances-title{font-size:14px;font-weight:700;color:var(--bleu-france);margin:20px 0 10px 0;padding-top:14px;border-top:1px solid var(--bordure)}
+  .echeances-table{width:100%;border-collapse:collapse;font-size:11.5px}
+  .echeances-table th{
+    background:var(--bleu-975);color:var(--bleu-france);font-weight:700;
+    padding:7px 8px;text-align:left;border-bottom:1px solid var(--bordure);white-space:nowrap;
+  }
+  .echeances-table td{padding:7px 8px;border-bottom:1px solid var(--bordure);vertical-align:top}
+  .echeances-table tr:nth-child(even){background:var(--fond-alt)}
+  .echeances-table tr.row-jalon{background:#FFF7F0}
+  .echeances-table tr.row-jalon:nth-child(even){background:#FDEFE3}
+  .col-nom{font-weight:600;min-width:180px}
+  .col-nom .type-jalon{font-weight:500;color:var(--texte-mention);font-size:10.5px}
+  .col-equipe{white-space:nowrap;color:var(--texte-mention);font-size:11px}
+  .col-dates{white-space:nowrap;color:var(--texte-mention)}
+  .col-relations{font-size:10.5px;color:var(--texte-mention);line-height:1.5}
+  .col-statut{white-space:nowrap}
+  .statut-puce{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px}
+  .alerte-line{display:block;font-size:10px;margin-top:2px}
+  .alerte-subit{color:var(--critique)}
+  .alerte-provoque{color:#B34000}
+  .cell-vide{color:var(--texte-mention)}
+
+  /* ========== IMPRESSION A4 PAYSAGE ========== */
+  @page{ size:A4 landscape; margin:10mm; }
+  @media print{
+    .toolbar,.topbar,.filter-section{display:none !important}
+    .scroll{padding:0 !important;overflow:visible !important;height:auto}
+    body{background:#fff}
+    .recap-page{
+      box-shadow:none !important;border:none !important;max-width:none;margin:0;
+      page-break-after:always;
+    }
+    .recap-page:last-child{page-break-after:auto}
+  }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <div class="topbar">
+    <h1>📋 Récap — Rétroplanning &amp; échéances</h1>
+    <div class="meta" id="meta">Chargement…</div>
+  </div>
+
+  <div class="toolbar">
+    <button class="btn" id="btn-print">🖨️ Imprimer</button>
+    <label class="toggle-label">
+      <input type="checkbox" id="toggle-pour-info" checked>
+      Afficher les jalons "Pour information" sur la frise
+    </label>
+  </div>
+
+  <div class="filter-section">
+    <div class="filter-row">
+      <span class="filter-row-label">Section :</span>
+      <div class="filter-chips" id="filter-sections-chips"></div>
+    </div>
+    <div class="filter-row">
+      <span class="filter-row-label">Projet :</span>
+      <div class="filter-chips" id="filter-projets-chips"></div>
+    </div>
+  </div>
+
+  <div class="scroll">
+    <div id="content" class="empty-state">Chargement…</div>
+  </div>
+
+</div>
+
+<script>
+// ============================================================================
+// UTILITAIRES DE BASE (repris à l'identique de ganttv11 / kanbanv11)
+// ============================================================================
+function norm(s){
+  return String(s||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").trim();
+}
+function parseDate(v){
+  if(v===null||v===undefined||v==="") return null;
+  if(typeof v==="number") return new Date(v*1000);
+  const d=new Date(String(v).trim());
+  return isNaN(d.getTime())?null:d;
+}
+function refId(v){
+  if(Array.isArray(v)) return v[1];
+  return v;
+}
+function resolveRef(table, id, col){
+  const rid=refId(id);
+  if(rid===null||rid===undefined) return null;
+  const ligne=table.find(row=>row.id===rid);
+  return ligne?ligne[col]:null;
+}
+function fmtDateCourt(v){
+  const d=parseDate(v);
+  if(!d) return "";
+  const jj=String(d.getUTCDate()).padStart(2,"0");
+  const mm=String(d.getUTCMonth()+1).padStart(2,"0");
+  return `${jj}/${mm}`;
+}
+function fmtDate(v){
+  const d=parseDate(v);
+  if(!d) return "";
+  const jj=String(d.getUTCDate()).padStart(2,"0");
+  const mm=String(d.getUTCMonth()+1).padStart(2,"0");
+  return `${jj}/${mm}/${d.getUTCFullYear()}`;
+}
+function columnarToRows(data){
+  if(!data || typeof data!=="object") return [];
+  if(Array.isArray(data)) return data;
+  const keys=Object.keys(data);
+  if(keys.length===0) return [];
+  const firstCol=data[keys[0]];
+  if(!Array.isArray(firstCol)) return [];
+  const rows=[];
+  for(let i=0;i<firstCol.length;i++){
+    const row={};
+    keys.forEach(k=>row[k]=data[k][i]);
+    rows.push(row);
+  }
+  return rows;
+}
+
+// Retire des données en mémoire tout projet archivé (colonne Projets.$Archive
+// cochée) ainsi que ses tâches et jalons. Identique à ganttv11.html/kanbanv11.html
+// (le Récap ne charge pas ACTIONS, pas de sous-actions à filtrer ici).
+function exclureProjetsArchives(){
+  DB.projets = DB.projets.filter(p => p['$Archive'] !== true);
+  const projetsVisiblesIds = new Set(DB.projets.map(p => p.id));
+  DB.taches = (DB.taches || []).filter(t => projetsVisiblesIds.has(refId(t.Projet)));
+  DB.jalons = (DB.jalons || []).filter(j => projetsVisiblesIds.has(refId(j.Projet)));
+}
+
+// ============================================================================
+// RELATIONS TÂCHES / JALONS (repris à l'identique de ganttv11)
+// ============================================================================
+function parseListeReference(raw, table){
+  if(!raw) return [];
+  if(!Array.isArray(raw)) return [];
+  if(raw[0] === 'L'){
+    return raw.slice(1).map(id => table.find(x => x.id === id)).filter(Boolean);
+  }
+  if(raw[0] === 'E') return [];
+  return raw.map(id => (typeof id === 'object' ? id : table.find(x => x.id === id))).filter(Boolean);
+}
+function getPredecessorTasks(task){
+  return parseListeReference(task.Predecesseurs, DB.taches);
+}
+function getJalonTachesRequises(jalon){
+  return parseListeReference(jalon.Taches_requises, DB.taches);
+}
+function getTacheJalonsDeclencheurs(task){
+  return parseListeReference(task.Jalon_declencheur, DB.jalons);
+}
+function getJalonTypeTexte(jalon){
+  const raw = jalon.Type;
+  if(!raw) return "";
+  if(Array.isArray(raw)){
+    if(raw[0]==='L') return raw[1] || "";
+    if(raw[0]==='E') return "";
+    return "";
+  }
+  return raw;
+}
+
+// ============================================================================
+// RETARD STRUCTUREL — moteur canonique repris à l'identique de ganttv11
+// (même logique que Gantt/Kanban : garantit des alertes cohérentes partout)
+// ============================================================================
+function calculerRetardsStructurels(){
+  const provoque = {};
+  const subit    = {};
+  function ajouterProvoque(cleSource, genre, nom){ (provoque[cleSource]=provoque[cleSource]||[]).push({genre,nom}); }
+  function ajouterSubit(cleCible, nomResponsable){ (subit[cleCible]=subit[cleCible]||[]).push(nomResponsable); }
+
+  DB.taches.forEach(t=>{
+    const finT = parseDate(t.Date_fin);
+    if(!finT) return;
+
+    DB.taches.forEach(s=>{
+      if(s.id===t.id) return;
+      const estSuccesseur = getPredecessorTasks(s).some(p=>refId(p.id||p)===t.id);
+      if(!estSuccesseur) return;
+      const debutS = parseDate(s.Date_debut);
+      if(debutS && finT > debutS){
+        ajouterProvoque(`T:${t.id}`, "tache", s.Tache);
+        ajouterSubit(`T:${s.id}`, t.Tache);
+      }
+    });
+
+    DB.jalons.forEach(j=>{
+      if(norm(getJalonTypeTexte(j))!==norm("Livrable")) return;
+      const estRequise = getJalonTachesRequises(j).some(rt=>rt.id===t.id);
+      if(!estRequise) return;
+      const dateJ = parseDate(j.Date);
+      if(dateJ && finT > dateJ){
+        ajouterProvoque(`T:${t.id}`, "jalon", j.Nom);
+        ajouterSubit(`J:${j.id}`, t.Tache);
+      }
+    });
+  });
+
+  return { provoque, subit };
+}
+function getRetardStructurel(genre, id){
+  const cle = (genre==="tache"?"T:":"J:")+id;
+  const r = RETARDS_STRUCTURELS || {provoque:{},subit:{}};
+  return { provoque: r.provoque[cle] || [], subit: r.subit[cle] || [] };
+}
+let RETARDS_STRUCTURELS = {provoque:{}, subit:{}};
+
+// ============================================================================
+// STATUTS / COULEURS JALONS
+// ============================================================================
+const STATUTS = [
+  {nom:"À faire",  couleur:"var(--st-faire)"},
+  {nom:"En cours", couleur:"var(--st-encours)"},
+  {nom:"Terminé",  couleur:"var(--st-termine)"},
+];
+function couleurStatut(nom){
+  return (STATUTS.find(s=>norm(s.nom)===norm(nom))||{}).couleur || "var(--st-faire)";
+}
+// Livrable + Important=true => rouge critique ("Livrable Fixe"), sinon couleur du type
+function jalonCouleur(type, important){
+  if(norm(type)===norm("Livrable") && important===true) return "var(--critique)";
+  if(norm(type)===norm("Livrable")) return "var(--jalon-livrable)";
+  return "var(--jalon-info)";
+}
+function jalonLibelleType(jalon){
+  const type = getJalonTypeTexte(jalon);
+  if(norm(type)===norm("Livrable") && jalon.Important===true) return "Livrable Fixe";
+  return type || "—";
+}
+
+// ============================================================================
+// DÉTECTION SCHÉMA PARAMETRES — identique à ganttv11/kanbanv11
+// (Grist peut renommer une colonne dupliquée-puis-supprimée, ex: Section -> $Section2)
+// ============================================================================
+let SCHEMA_PARAMETRES = { section: null, type: null, statut: null, equipe: null };
+
+function detectParametresSchema(){
+  if(!DB.parametres || DB.parametres.length === 0) return;
+
+  function nbValeursRemplies(field){
+    return DB.parametres.filter(row => row[field] !== null && row[field] !== undefined && row[field] !== "").length;
+  }
+  const toutesLesColonnes = new Set();
+  DB.parametres.forEach(row => Object.keys(row).forEach(k => toutesLesColonnes.add(k)));
+
+  function trouverMeilleureColonne(predicat){
+    const candidats = [...toutesLesColonnes].filter(f => f !== 'id' && predicat(f));
+    if(candidats.length === 0) return null;
+    if(candidats.length === 1) return candidats[0];
+    let meilleur = candidats[0], meilleurScore = nbValeursRemplies(candidats[0]);
+    for(const c of candidats.slice(1)){
+      const score = nbValeursRemplies(c);
+      if(score > meilleurScore){ meilleur = c; meilleurScore = score; }
+    }
+    return meilleur;
+  }
+
+  SCHEMA_PARAMETRES.section = trouverMeilleureColonne(f => /^\$?section\d*$/i.test(f));
+  SCHEMA_PARAMETRES.type    = trouverMeilleureColonne(f => /^type[_ ]?projet$/i.test(f) || /^\$?type_?projet\d*$/i.test(f));
+  SCHEMA_PARAMETRES.statut  = trouverMeilleureColonne(f => /^\$?statut\d*$/i.test(f));
+  SCHEMA_PARAMETRES.equipe  = trouverMeilleureColonne(f => /^\$?(equipe|équipe)\d*$/i.test(f));
+
+  if(!SCHEMA_PARAMETRES.section && [...toutesLesColonnes].includes('$Section2')){
+    SCHEMA_PARAMETRES.section = '$Section2';
+  }
+
+  console.log("=== DÉTECTION SCHÉMA PARAMETRES (Récap) ===", SCHEMA_PARAMETRES);
+}
+
+// ============================================================================
+// FILTRES SECTION / PROJET (chips) — identique à ganttv11/kanbanv11
+// ============================================================================
+let FILTRES_ACTIFS = { sections: new Set(), projets: new Set() };
+
+function obtenirSectionsUniques(){
+  const colSection = SCHEMA_PARAMETRES.section || "Section";
+  const vues = new Set();
+  const sections = [];
+  DB.projets.forEach(proj=>{
+    const sid = refId(proj.Section);
+    if(sid !== null && sid !== undefined && !vues.has(sid)){
+      const nom = resolveRef(DB.parametres, proj.Section, colSection);
+      if(nom){ vues.add(sid); sections.push({id:sid, nom}); }
+    }
+  });
+  return sections;
+}
+function obtenirProjetsParSection(sectionIds){
+  if(sectionIds.size === 0) return [];
+  return DB.projets.filter(proj=>sectionIds.has(refId(proj.Section)));
+}
+function creerChip(label, isActive, onClick){
+  const chip = document.createElement("button");
+  chip.type = "button";
+  chip.className = "filter-chip" + (isActive ? " active" : "");
+  chip.textContent = label;
+  chip.onclick = onClick;
+  return chip;
+}
+function populerFiltresSection(){
+  const container = document.getElementById("filter-sections-chips");
+  container.innerHTML = "";
+  const sections = obtenirSectionsUniques();
+  if(sections.length === 0){
+    container.innerHTML = '<span class="filter-chips-empty">Aucune section trouvée</span>';
+    return;
+  }
+  sections.forEach(section=>{
+    const isActive = FILTRES_ACTIFS.sections.has(section.id);
+    const chip = creerChip(section.nom, isActive, ()=>{
+      if(FILTRES_ACTIFS.sections.has(section.id)) FILTRES_ACTIFS.sections.delete(section.id);
+      else FILTRES_ACTIFS.sections.add(section.id);
+      FILTRES_ACTIFS.projets.clear();
+      populerFiltresSection();
+      populerFiltresProjets();
+      construire();
+    });
+    container.appendChild(chip);
+  });
+}
+function populerFiltresProjets(){
+  const container = document.getElementById("filter-projets-chips");
+  container.innerHTML = "";
+  const projetsDisponibles = obtenirProjetsParSection(FILTRES_ACTIFS.sections);
+  if(FILTRES_ACTIFS.sections.size === 0){
+    container.innerHTML = '<span class="filter-chips-empty">Sélectionnez une section</span>';
+    return;
+  }
+  if(projetsDisponibles.length === 0){
+    container.innerHTML = '<span class="filter-chips-empty">Aucun projet dans cette section</span>';
+    return;
+  }
+  projetsDisponibles.forEach(proj=>{
+    const isActive = FILTRES_ACTIFS.projets.has(proj.id);
+    const chip = creerChip(proj.Projet, isActive, ()=>{
+      if(FILTRES_ACTIFS.projets.has(proj.id)) FILTRES_ACTIFS.projets.delete(proj.id);
+      else FILTRES_ACTIFS.projets.add(proj.id);
+      populerFiltresProjets();
+      construire();
+    });
+    container.appendChild(chip);
+  });
+}
+
+// ============================================================================
+// CHARGEMENT DES DONNÉES
+// ============================================================================
+let DB = {};
+grist.ready({requiredAccess:"full"});
+
+async function init(){
+  try{
+    document.getElementById("meta").textContent = "Chargement…";
+    DB.projets    = columnarToRows(await grist.docApi.fetchTable("Projets"));
+    DB.taches     = columnarToRows(await grist.docApi.fetchTable("Taches"));
+    DB.jalons     = columnarToRows(await grist.docApi.fetchTable("Jalons"));
+    DB.parametres = columnarToRows(await grist.docApi.fetchTable("PARAMETRES"));
+    exclureProjetsArchives();  // ← Retirer les projets archivés + leurs tâches/jalons
+
+    detectParametresSchema();
+    populerFiltresSection();
+    populerFiltresProjets();
+    construire();
+
+    document.getElementById("meta").textContent =
+      `${DB.projets.length} projet(s) · ${DB.taches.length} tâche(s) · ${DB.jalons.length} jalon(s)`;
+  }catch(e){
+    console.error("❌", e);
+    document.getElementById("meta").textContent = "❌ " + e.message;
+  }
+}
+
+// ============================================================================
+// CONSTRUCTION DU RÉCAP
+// ============================================================================
+function el(tag, cls, txt){
+  const e = document.createElement(tag);
+  if(cls) e.className = cls;
+  if(txt !== undefined) e.textContent = txt;
+  return e;
+}
+
+function construire(){
+  RETARDS_STRUCTURELS = calculerRetardsStructurels();
+
+  const content = document.getElementById("content");
+  content.innerHTML = "";
+
+  // Projets à afficher : mêmes règles de cascade que Gantt/Kanban, mais SANS
+  // repli "tout afficher" si rien n'est coché — un récap imprimable doit être
+  // une sélection volontaire, pas un dump de tous les projets par défaut.
+  let projetsAffichage = [];
+  if(FILTRES_ACTIFS.projets.size > 0){
+    projetsAffichage = DB.projets.filter(p=>FILTRES_ACTIFS.projets.has(p.id));
+  } else if(FILTRES_ACTIFS.sections.size > 0){
+    projetsAffichage = DB.projets.filter(p=>FILTRES_ACTIFS.sections.has(refId(p.Section)));
+  }
+
+  if(projetsAffichage.length === 0){
+    content.className = "empty-state";
+    content.textContent = "Sélectionnez au moins une section ou un projet ci-dessus pour générer le récapitulatif.";
+    return;
+  }
+  content.className = "";
+
+  projetsAffichage.forEach(proj=>{
+    content.appendChild(construireProjetPage(proj));
+  });
+}
+
+// Mesure précise de la largeur d'un texte avec la police réelle du widget
+// (identique à ganttv11 : nécessaire pour savoir si deux labels de jalons
+// se chevaucheraient réellement, pas juste une estimation grossière)
+let _canvasCtx = null;
+function mesurerLargeurTexte(texte){
+  if(!_canvasCtx){
+    const canvas = document.createElement("canvas");
+    _canvasCtx = canvas.getContext("2d");
+    _canvasCtx.font = '700 9px "Marianne", -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif';
+  }
+  return _canvasCtx.measureText(texte).width;
+}
+
+// Largeur de référence utilisée UNIQUEMENT pour décider si deux labels de
+// jalons se chevauchent (pas pour le positionnement final, qui reste en %
+// donc indépendant de la largeur réelle de la page/l'écran). 1000px est une
+// largeur représentative d'une page A4 paysage imprimée — suffisant pour une
+// décision d'anti-chevauchement fiable dans l'immense majorité des cas.
+const FRISE_LARGEUR_REFERENCE = 1000;
+
+// Calcule le niveau vertical de chaque jalon pour éviter que leurs labels se
+// chevauchent horizontalement — même principe que calculerNiveauxJalons() du
+// Gantt (empilement niveau par niveau tant qu'il y a collision), adapté à un
+// positionnement en % plutôt qu'en pixels JOUR_PX.
+function calculerNiveauxJalonsRecap(jalonsAffiches){
+  const JALON_MARGE = 10;
+  const finOccupeeParNiveau = [];
+  jalonsAffiches.forEach(item=>{
+    const xDiamant = (item.pct/100) * FRISE_LARGEUR_REFERENCE;
+    const largeurTexte = Math.max(mesurerLargeurTexte(item.jalon.Nom), mesurerLargeurTexte(item.dateStr));
+    const xDebut = xDiamant - (largeurTexte/2) - 6;
+    const xFin   = xDiamant + (largeurTexte/2) + 6;
+    let niveau = 0;
+    while(finOccupeeParNiveau[niveau] !== undefined && xDebut < finOccupeeParNiveau[niveau] + JALON_MARGE){
+      niveau++;
+    }
+    finOccupeeParNiveau[niveau] = xFin;
+    item.niveau = niveau;
+  });
+  return finOccupeeParNiveau.length || 1;
+}
+
+function construireProjetPage(proj){
+  const page = el("div", "recap-page");
+
+  const pTaches = DB.taches.filter(t => refId(t.Projet) === proj.id);
+  const pJalons = DB.jalons.filter(j => refId(j.Projet) === proj.id);
+
+  // --- En-tête ---
+  const header = el("div", "recap-page-header");
+  header.appendChild(el("h2", null, proj.Projet || "—"));
+  const sectionNom = resolveRef(DB.parametres, proj.Section, SCHEMA_PARAMETRES.section || "Section");
+  const typeNom = resolveRef(DB.parametres, proj.Type_Projet, SCHEMA_PARAMETRES.type || "Type_Projet");
+  const subParts = [];
+  if(sectionNom) subParts.push("Section : " + sectionNom);
+  if(typeNom) subParts.push("Type : " + typeNom);
+  header.appendChild(el("div", "recap-page-sub", subParts.join(" · ") || "\u00A0"));
+  page.appendChild(header);
+
+  // --- Bornes temporelles du projet (tâches + jalons) ---
+  const dates = [];
+  pTaches.forEach(t=>{
+    const d1 = parseDate(t.Date_debut); if(d1) dates.push(d1);
+    const d2 = parseDate(t.Date_fin);   if(d2) dates.push(d2);
+  });
+  pJalons.forEach(j=>{
+    const d = parseDate(j.Date); if(d) dates.push(d);
+  });
+
+  if(dates.length === 0){
+    page.appendChild(el("div", "empty-state", "Aucune tâche ni jalon daté sur ce projet."));
+    return page;
+  }
+
+  const projMin = new Date(Math.min(...dates.map(d=>d.getTime())));
+  const projMax = new Date(Math.max(...dates.map(d=>d.getTime())));
+  page.appendChild(construireFrise(proj, pTaches, pJalons, projMin, projMax));
+  page.appendChild(construireTableauEcheances(pTaches, pJalons));
+
+  return page;
+}
+
+// --- Frise rétroplanning : positionnement en % (voir explication donnée à l'utilisateur) ---
+// Géométrie verticale (calculée en JS, pas en CSS fixe, car le nombre de
+// niveaux de jalons varie d'un projet à l'autre) :
+//   0px                    : haut de la barre de durée
+//   BAR_H                  : bas de la barre
+//   + GAP_APRES_BARRE      : début de la zone des labels de jalons
+//   + niveau * NIVEAU_H    : chaque niveau de jalon empilé
+//   + GAP_AVANT_TICKS      : marge avant la ligne de graduations
+//   = hauteur totale de la frise
+const BAR_H = 10;
+const GAP_APRES_BARRE = 8;
+const NIVEAU_H = 24;       // hauteur d'un niveau de label jalon (nom + date sur 2 lignes)
+const NB_NIVEAUX_MIN = 2;  // confort visuel : toujours au moins 2 niveaux réservés, même si 0-1 jalon
+const GAP_AVANT_TICKS = 10;
+const TICK_LABEL_H = 12;
+
+function construireFrise(proj, pTaches, pJalons, projMin, projMax){
+  const wrap = el("div");
+
+  // Légende (unique, commune aux deux segments)
+  const legend = el("div", "legend");
+  function addLegendDiamond(couleur, label){
+    const item = el("div", "legend-item");
+    const puce = el("span", "legend-puce diamond");
+    puce.style.background = couleur;
+    item.appendChild(puce);
+    item.appendChild(document.createTextNode(label));
+    legend.appendChild(item);
+  }
+  addLegendDiamond("var(--critique)", "Livrable Fixe");
+  addLegendDiamond("var(--jalon-livrable)", "Livrable");
+  if(document.getElementById("toggle-pour-info").checked){
+    addLegendDiamond("var(--jalon-info)", "Pour information");
+  }
+  const itemBar = el("div", "legend-item");
+  const puceBar = el("span", "legend-puce"); puceBar.style.background = "var(--bleu-france)";
+  itemBar.appendChild(puceBar); itemBar.appendChild(document.createTextNode("Durée du projet"));
+  legend.appendChild(itemBar);
+  wrap.appendChild(legend);
+
+  // Jalons à afficher : Livrables toujours, "Pour information" selon le toggle
+  const afficherPourInfo = document.getElementById("toggle-pour-info").checked;
+  const jalonsAffiches = pJalons.filter(j=>{
+    const type = norm(getJalonTypeTexte(j));
+    if(type === norm("Pour information")) return afficherPourInfo;
+    return true; // Livrable (et Livrable Fixe) toujours affiché
+  }).filter(j => parseDate(j.Date) !== null)
+    .map(j=>({ jalon:j, jDate: parseDate(j.Date) }));
+
+  // Toujours 2 parties, réparties sur la durée totale (confort visuel demandé :
+  // une frise trop longue tassée sur une seule ligne est moins lisible qu'en A4).
+  // Cas dégénéré (projet ponctuel, durée nulle) : on n'affiche qu'une seule partie.
+  const dureeMsTotal = projMax - projMin;
+  const segments = [];
+  if(dureeMsTotal > 0){
+    const milieu = new Date(projMin.getTime() + dureeMsTotal/2);
+    segments.push({start: projMin, end: milieu});
+    segments.push({start: milieu,  end: projMax});
+  } else {
+    segments.push({start: projMin, end: projMax});
+  }
+
+  segments.forEach(seg=>{
+    const jalonsSegment = jalonsAffiches.filter(item => item.jDate >= seg.start && item.jDate <= seg.end);
+    wrap.appendChild(construireFriseSegment(seg, jalonsSegment));
+  });
+
+  return wrap;
+}
+
+// Ancrage horizontal adaptatif d'un label positionné en % : centré au milieu
+// de la frise, mais collé à gauche/droite près des extrémités pour ne jamais
+// déborder hors du cadre (texte tronqué illisible sinon en bord de page).
+const ANCRAGE_SEUIL = 6; // % de marge avant de basculer l'ancrage
+function appliquerAncrage(elLabel, p){
+  if(p <= ANCRAGE_SEUIL){
+    elLabel.style.left = "0%";
+    elLabel.style.textAlign = "left";
+  } else if(p >= 100 - ANCRAGE_SEUIL){
+    elLabel.style.left = "100%";
+    elLabel.style.transform = "translateX(-100%)";
+    elLabel.style.textAlign = "right";
+  } else {
+    elLabel.style.left = p + "%";
+    elLabel.style.transform = "translateX(-50%)";
+    elLabel.style.textAlign = "center";
+  }
+}
+
+// Construit UNE ligne de frise (une moitié temporelle du projet), avec sa
+// propre barre, ses propres graduations et son propre anti-chevauchement de
+// jalons — chaque segment est indépendant, comme s'il s'agissait d'un mini-projet.
+function construireFriseSegment(seg, jalonsSegment){
+  const segWrap = el("div", "frise-segment");
+
+  const frise = el("div", "frise");
+  const dureeMs = seg.end - seg.start;
+  const pct = (d) => dureeMs > 0 ? ((d - seg.start) / dureeMs) * 100 : 0;
+
+  const items = jalonsSegment
+    .map(item => ({ jalon: item.jalon, jDate: item.jDate, pct: pct(item.jDate), dateStr: fmtDateCourt(item.jDate) }))
+    .sort((a,b) => a.pct - b.pct);
+
+  // Anti-chevauchement : calcule le niveau de chaque jalon DE CE SEGMENT, avec
+  // un minimum de NB_NIVEAUX_MIN niveaux réservés systématiquement (confort visuel).
+  const nbNiveauxCalcule = calculerNiveauxJalonsRecap(items);
+  const nbNiveaux = Math.max(NB_NIVEAUX_MIN, nbNiveauxCalcule);
+
+  const zoneJalonsH = GAP_APRES_BARRE + nbNiveaux * NIVEAU_H;
+  const tickTop = BAR_H + zoneJalonsH + GAP_AVANT_TICKS;
+  const friseHauteur = tickTop + TICK_LABEL_H;
+  frise.style.height = friseHauteur + "px";
+
+  // Barre de durée
+  const bar = el("div", "frise-bar");
+  frise.appendChild(bar);
+
+  // Graduations légères (6 repères répartis, dates dd/mm), alignées tout en bas
+  const NB_TICKS = 6;
+  for(let i=0; i<NB_TICKS; i++){
+    const t = i/(NB_TICKS-1);
+    const d = new Date(seg.start.getTime() + t*dureeMs);
+    const p = t*100;
+    const tick = el("div", "frise-tick");
+    tick.style.left = p + "%";
+    tick.style.top = "0";
+    tick.style.height = tickTop + "px";
+    frise.appendChild(tick);
+    const label = el("div", "frise-tick-label", fmtDateCourt(d));
+    label.style.top = tickTop + "px";
+    appliquerAncrage(label, p);
+    frise.appendChild(label);
+  }
+
+  // Ligne "aujourd'hui" si dans la plage de ce segment
+  const today = new Date();
+  today.setUTCHours(0,0,0,0);
+  if(today >= seg.start && today <= seg.end){
+    const p = pct(today);
+    const ligne = el("div", "frise-today-line");
+    ligne.style.left = p + "%";
+    ligne.style.height = tickTop + "px";
+    frise.appendChild(ligne);
+    const label = el("div", "frise-today-label", "Aujourd'hui");
+    label.style.top = tickTop + "px";
+    appliquerAncrage(label, p);
+    frise.appendChild(label);
+  }
+
+  // Diamants + labels des jalons, empilés selon leur niveau anti-chevauchement
+  items.forEach(item=>{
+    const { jalon: j, jDate, pct: p, dateStr } = item;
+    const retardJ = getRetardStructurel("jalon", j.id);
+    const type = getJalonTypeTexte(j);
+    const couleur = jalonCouleur(type, j.Important === true);
+
+    const diamond = el("div", "frise-jalon-diamond" + (retardJ.subit.length>0 ? " retard-subit" : ""));
+    diamond.style.left = p + "%";
+    diamond.style.background = couleur;
+    diamond.title = `${j.Nom} (${jalonLibelleType(j)}) — ${fmtDate(jDate)}` +
+      (retardJ.subit.length>0 ? ` — EN RETARD (${retardJ.subit.join(", ")})` : "");
+    frise.appendChild(diamond);
+
+    const label = el("div", "frise-jalon-label");
+    label.style.top = (BAR_H + GAP_APRES_BARRE + item.niveau * NIVEAU_H) + "px";
+    appliquerAncrage(label, p);
+    label.appendChild(el("div", "nom", j.Nom));
+    label.appendChild(el("div", "date", dateStr));
+    frise.appendChild(label);
+  });
+
+  segWrap.appendChild(frise);
+  return segWrap;
+}
+
+// --- Tableau des échéances : tâches + jalons fusionnés, triés chronologiquement ---
+function construireTableauEcheances(pTaches, pJalons){
+  const wrap = el("div");
+  wrap.appendChild(el("div", "echeances-title", "Tableau des échéances"));
+
+  const lignes = [];
+
+  pTaches.forEach(t=>{
+    lignes.push({ genre:"tache", data:t, dateTri: parseDate(t.Date_fin) });
+  });
+  pJalons.forEach(j=>{
+    lignes.push({ genre:"jalon", data:j, dateTri: parseDate(j.Date) });
+  });
+
+  // Tri chronologique (date de fin pour tâche, date pour jalon) — non datées en dernier
+  lignes.sort((a,b)=>{
+    if(!a.dateTri && !b.dateTri) return 0;
+    if(!a.dateTri) return 1;
+    if(!b.dateTri) return -1;
+    return a.dateTri - b.dateTri;
+  });
+
+  if(lignes.length === 0){
+    wrap.appendChild(el("div", "empty-state", "Aucune tâche ni jalon sur ce projet."));
+    return wrap;
+  }
+
+  const table = el("table", "echeances-table");
+  const thead = el("thead");
+  const trHead = el("tr");
+  ["Nom", "Équipe", "Début", "Fin", "Relations", "Statut"].forEach(h => trHead.appendChild(el("th", null, h)));
+  thead.appendChild(trHead);
+  table.appendChild(thead);
+
+  const tbody = el("tbody");
+  lignes.forEach(ligne=>{
+    tbody.appendChild(ligne.genre === "tache" ? ligneTache(ligne.data) : ligneJalon(ligne.data));
+  });
+  table.appendChild(tbody);
+
+  wrap.appendChild(table);
+  return wrap;
+}
+
+function ligneTache(t){
+  const tr = el("tr");
+
+  // Nom
+  const tdNom = el("td", "col-nom");
+  tdNom.textContent = t.Tache || "—";
+  tr.appendChild(tdNom);
+
+  // Équipe assignée
+  const equipeNom = resolveRef(DB.parametres, t.Equipe, SCHEMA_PARAMETRES.equipe || "Equipe");
+  tr.appendChild(el("td", "col-equipe", equipeNom || "—"));
+
+  // Début / Fin
+  tr.appendChild(el("td", "col-dates", fmtDate(t.Date_debut) || "—"));
+  tr.appendChild(el("td", "col-dates", fmtDate(t.Date_fin) || "—"));
+
+  // Relations : "Suit :" regroupe tout ce qui précède cette tâche
+  // (prédécesseurs ET jalon(s) déclencheur(s) — même logique de dépendance amont)
+  const tdRel = el("td", "col-relations");
+  const preds = getPredecessorTasks(t);
+  const jalonsDecl = getTacheJalonsDeclencheurs(t);
+  const suitItems = [...preds.map(p=>p.Tache), ...jalonsDecl.map(j=>j.Nom)];
+  tdRel.innerHTML = suitItems.length>0
+    ? "Nécessite : " + suitItems.join(", ")
+    : '<span class="cell-vide">—</span>';
+  tr.appendChild(tdRel);
+
+  // Statut + alertes (même moteur/messages que le Kanban)
+  const tdStatut = el("td", "col-statut");
+  const statutTexte = resolveRef(DB.parametres, t.Statut, SCHEMA_PARAMETRES.statut || "Statut") || "—";
+  let html = `<span class="statut-puce" style="background:${couleurStatut(statutTexte)}"></span>${statutTexte}`;
+  const retardT = getRetardStructurel("tache", t.id);
+  if(retardT.subit.length>0){
+    html += `<span class="alerte-line alerte-subit">🔴 Bloquée par ${retardT.subit.join(", ")}</span>`;
+  }
+  if(retardT.provoque.length>0){
+    html += `<span class="alerte-line alerte-provoque">⚠️ Met en retard ${retardT.provoque.map(x=>x.nom).join(", ")}</span>`;
+  }
+  tdStatut.innerHTML = html;
+  tr.appendChild(tdStatut);
+
+  return tr;
+}
+
+function ligneJalon(j){
+  const tr = el("tr", "row-jalon");
+
+  // Nom + type
+  const tdNom = el("td", "col-nom");
+  tdNom.innerHTML = `${j.Nom || "—"} <span class="type-jalon">(${jalonLibelleType(j)})</span>`;
+  tr.appendChild(tdNom);
+
+  // Équipe : non applicable à un jalon
+  tr.appendChild(el("td", "col-equipe cell-vide", "—"));
+
+  // Début (vide pour un jalon) / Fin (= date du jalon)
+  tr.appendChild(el("td", "col-dates", "—"));
+  tr.appendChild(el("td", "col-dates", fmtDate(j.Date) || "—"));
+
+  // Relations : "Suit :" = tâche(s) requise(s) pour ce jalon
+  const tdRel = el("td", "col-relations");
+  const requises = getJalonTachesRequises(j);
+  tdRel.innerHTML = requises.length>0
+    ? "Nécessite : " + requises.map(t=>t.Tache).join(", ")
+    : '<span class="cell-vide">—</span>';
+  tr.appendChild(tdRel);
+
+  // Statut : rien, ou alerte si retard structurel subi
+  const tdStatut = el("td", "col-statut");
+  const retardJ = getRetardStructurel("jalon", j.id);
+  tdStatut.innerHTML = retardJ.subit.length>0
+    ? `<span class="alerte-line alerte-subit">🔴 En retard (${retardJ.subit.join(", ")} terminée en retard)</span>`
+    : '<span class="cell-vide">—</span>';
+  tr.appendChild(tdStatut);
+
+  return tr;
+}
+
+// ============================================================================
+// ÉVÉNEMENTS
+// ============================================================================
+document.getElementById("btn-print").addEventListener("click", () => window.print());
+document.getElementById("toggle-pour-info").addEventListener("change", construire);
+
+grist.onRecords(() => init());
+init();
+</script>
+</body>
+</html>
