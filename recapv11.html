@@ -84,20 +84,19 @@
   /* ========== FRISE RÉTROPLANNING (positionnement en %) ========== */
   /* ========== FRISE RÉTROPLANNING (positionnement en %, hauteur dynamique) ========== */
   .frise-segment{margin-bottom:14px}
-  .frise-segment-label{font-size:11px;font-weight:600;color:var(--texte-mention);margin-bottom:6px}
   .frise{position:relative;margin:0}
   .frise-bar{position:absolute;left:0;top:0;width:100%;height:10px;background:var(--bleu-france);border-radius:3px}
   .frise-tick{position:absolute;top:0;bottom:0;width:1px;background:var(--bordure)}
-  .frise-tick-label{position:absolute;transform:translateX(-50%);font-size:9px;color:var(--texte-mention);white-space:nowrap}
+  .frise-tick-label{position:absolute;font-size:9px;color:var(--texte-mention);white-space:nowrap}
   .frise-today-line{position:absolute;top:0;width:2px;background:rgba(206,5,0,.55);z-index:1}
-  .frise-today-label{position:absolute;transform:translateX(-50%);font-size:9px;font-weight:700;color:var(--critique);white-space:nowrap}
+  .frise-today-label{position:absolute;font-size:9px;font-weight:700;color:var(--critique);white-space:nowrap}
   .frise-jalon-diamond{
     position:absolute;top:5px;width:12px;height:12px;
     margin-top:-6px;margin-left:-6px;transform:rotate(45deg);
     border:1.5px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.3);z-index:2;
   }
   .frise-jalon-diamond.retard-subit{box-shadow:0 1px 3px rgba(0,0,0,.3),0 0 0 2px var(--critique)}
-  .frise-jalon-label{position:absolute;transform:translateX(-50%);text-align:center;white-space:nowrap;pointer-events:none}
+  .frise-jalon-label{position:absolute;white-space:nowrap;pointer-events:none}
   .frise-jalon-label .nom{font-size:9px;font-weight:700;color:var(--texte);line-height:1.25}
   .frise-jalon-label .date{font-size:8px;color:var(--texte-mention);line-height:1.25}
 
@@ -647,10 +646,10 @@ function construireFrise(proj, pTaches, pJalons, projMin, projMax){
   const segments = [];
   if(dureeMsTotal > 0){
     const milieu = new Date(projMin.getTime() + dureeMsTotal/2);
-    segments.push({start: projMin, end: milieu, titre: "1ʳᵉ partie"});
-    segments.push({start: milieu,  end: projMax, titre: "2ᵉ partie"});
+    segments.push({start: projMin, end: milieu});
+    segments.push({start: milieu,  end: projMax});
   } else {
-    segments.push({start: projMin, end: projMax, titre: null});
+    segments.push({start: projMin, end: projMax});
   }
 
   segments.forEach(seg=>{
@@ -661,17 +660,30 @@ function construireFrise(proj, pTaches, pJalons, projMin, projMax){
   return wrap;
 }
 
+// Ancrage horizontal adaptatif d'un label positionné en % : centré au milieu
+// de la frise, mais collé à gauche/droite près des extrémités pour ne jamais
+// déborder hors du cadre (texte tronqué illisible sinon en bord de page).
+const ANCRAGE_SEUIL = 6; // % de marge avant de basculer l'ancrage
+function appliquerAncrage(elLabel, p){
+  if(p <= ANCRAGE_SEUIL){
+    elLabel.style.left = "0%";
+    elLabel.style.textAlign = "left";
+  } else if(p >= 100 - ANCRAGE_SEUIL){
+    elLabel.style.left = "100%";
+    elLabel.style.transform = "translateX(-100%)";
+    elLabel.style.textAlign = "right";
+  } else {
+    elLabel.style.left = p + "%";
+    elLabel.style.transform = "translateX(-50%)";
+    elLabel.style.textAlign = "center";
+  }
+}
+
 // Construit UNE ligne de frise (une moitié temporelle du projet), avec sa
 // propre barre, ses propres graduations et son propre anti-chevauchement de
 // jalons — chaque segment est indépendant, comme s'il s'agissait d'un mini-projet.
 function construireFriseSegment(seg, jalonsSegment){
   const segWrap = el("div", "frise-segment");
-
-  if(seg.titre){
-    const label = el("div", "frise-segment-label",
-      `${seg.titre} : ${fmtDate(seg.start)} → ${fmtDate(seg.end)}`);
-    segWrap.appendChild(label);
-  }
 
   const frise = el("div", "frise");
   const dureeMs = seg.end - seg.start;
@@ -707,8 +719,8 @@ function construireFriseSegment(seg, jalonsSegment){
     tick.style.height = tickTop + "px";
     frise.appendChild(tick);
     const label = el("div", "frise-tick-label", fmtDateCourt(d));
-    label.style.left = p + "%";
     label.style.top = tickTop + "px";
+    appliquerAncrage(label, p);
     frise.appendChild(label);
   }
 
@@ -722,8 +734,8 @@ function construireFriseSegment(seg, jalonsSegment){
     ligne.style.height = tickTop + "px";
     frise.appendChild(ligne);
     const label = el("div", "frise-today-label", "Aujourd'hui");
-    label.style.left = p + "%";
     label.style.top = tickTop + "px";
+    appliquerAncrage(label, p);
     frise.appendChild(label);
   }
 
@@ -742,8 +754,8 @@ function construireFriseSegment(seg, jalonsSegment){
     frise.appendChild(diamond);
 
     const label = el("div", "frise-jalon-label");
-    label.style.left = p + "%";
     label.style.top = (BAR_H + GAP_APRES_BARRE + item.niveau * NIVEAU_H) + "px";
+    appliquerAncrage(label, p);
     label.appendChild(el("div", "nom", j.Nom));
     label.appendChild(el("div", "date", dateStr));
     frise.appendChild(label);
@@ -813,7 +825,7 @@ function ligneTache(t){
   tr.appendChild(el("td", "col-dates", fmtDate(t.Date_debut) || "—"));
   tr.appendChild(el("td", "col-dates", fmtDate(t.Date_fin) || "—"));
 
-  // Relations : "Nécessite :" regroupe tout ce qui précède cette tâche
+  // Relations : "Suit :" regroupe tout ce qui précède cette tâche
   // (prédécesseurs ET jalon(s) déclencheur(s) — même logique de dépendance amont)
   const tdRel = el("td", "col-relations");
   const preds = getPredecessorTasks(t);
@@ -856,7 +868,7 @@ function ligneJalon(j){
   tr.appendChild(el("td", "col-dates", "—"));
   tr.appendChild(el("td", "col-dates", fmtDate(j.Date) || "—"));
 
-  // Relations : "Nécessite :" = tâche(s) requise(s) pour ce jalon
+  // Relations : "Suit :" = tâche(s) requise(s) pour ce jalon
   const tdRel = el("td", "col-relations");
   const requises = getJalonTachesRequises(j);
   tdRel.innerHTML = requises.length>0
