@@ -1343,9 +1343,28 @@ function detectParametresSchema(){
   SCHEMA_PARAMETRES.statut  = trouverMeilleureColonne(f => /^\$?statut\d*$/i.test(f));
   SCHEMA_PARAMETRES.equipe  = trouverMeilleureColonne(f => /^\$?(equipe|équipe)\d*$/i.test(f));
 
+  // FALLBACK: si la détection par regex a échoué, essayer les noms en dur connus
+  if(!SCHEMA_PARAMETRES.section && [...toutesLesColonnes].includes('$Section2')){
+    SCHEMA_PARAMETRES.section = '$Section2';
+    console.log("  ⚠️  Fallback: détection regex échouée, utilisant $Section2 directement");
+  }
+  if(!SCHEMA_PARAMETRES.type && [...toutesLesColonnes].includes('$Type_Projet2')){
+    SCHEMA_PARAMETRES.type = '$Type_Projet2';
+  }
+  if(!SCHEMA_PARAMETRES.statut && [...toutesLesColonnes].includes('$Statut2')){
+    SCHEMA_PARAMETRES.statut = '$Statut2';
+  }
+  if(!SCHEMA_PARAMETRES.equipe && [...toutesLesColonnes].includes('$Equipe2')){
+    SCHEMA_PARAMETRES.equipe = '$Equipe2';
+  }
+
   console.log("=== DÉTECTION SCHÉMA PARAMETRES (colonne avec le plus de données) ===");
-  console.log("Colonnes disponibles:", [...toutesLesColonnes]);
+  console.log("Colonnes disponibles:", [...toutesLesColonnes].sort());
   console.log("Schéma final:", SCHEMA_PARAMETRES);
+  console.log("  Section → ", SCHEMA_PARAMETRES.section || "❌ NON TROUVÉE");
+  console.log("  Type    → ", SCHEMA_PARAMETRES.type    || "❌ NON TROUVÉE");
+  console.log("  Statut  → ", SCHEMA_PARAMETRES.statut  || "❌ NON TROUVÉE");
+  console.log("  Equipe  → ", SCHEMA_PARAMETRES.equipe  || "❌ NON TROUVÉE");
   console.log("==========================================================");
 }
 
