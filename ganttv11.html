@@ -1147,12 +1147,17 @@ function obtenirSectionsUniques(){
   // Retourne les sections réellement utilisées par des projets,
   // dans l'ordre d'apparition des projets (qui reflète l'ordre PARAMETRES
   // via l'ordre naturel d'ajout des projets).
+  // IMPORTANT : on ne lit PAS la colonne "Section" en dur — Grist peut l'avoir
+  // renommée (ex: "$Section2" en cas de doublon détecté par detectParametresSchema()).
+  // Le reste du code (openProjetEdit, saveProjet) utilise déjà SCHEMA_PARAMETRES.section
+  // pour cette raison ; on fait pareil ici pour rester cohérent.
+  const colSection = SCHEMA_PARAMETRES.section || "Section";
   const vues = new Set();
   const sections = [];
   DB.projets.forEach(proj=>{
     const sid = refId(proj.Section);
     if(sid !== null && sid !== undefined && !vues.has(sid)){
-      const nom = resolveRef(DB.parametres, proj.Section, "Section");
+      const nom = resolveRef(DB.parametres, proj.Section, colSection);
       if(nom){
         vues.add(sid);
         sections.push({id:sid, nom});
