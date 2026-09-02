@@ -1186,16 +1186,6 @@ function populateSelects(){
   const agents = DB.parametres.filter(p=>p.Equipe);
   fillSelect("field-tache-equipe", agents.map(r=>({value:r.Equipe, label:r.Equipe})), "-- Aucun --");
   fillSelect("field-sous-action-equipe", agents.map(r=>({value:r.Equipe, label:r.Equipe})), "-- Aucun --");
-
-  const filtreSel=document.getElementById("filtre-projet");
-  const prev=filtreSel.value;
-  filtreSel.innerHTML='<option value="">Tous</option>';
-  DB.projets.forEach(c=>{
-    const opt=document.createElement("option");
-    opt.value=c.id; opt.textContent=c.Projet;
-    filtreSel.appendChild(opt);
-  });
-  filtreSel.value=prev;
 }
 
 function openModal(id){ document.getElementById(id).classList.add("active"); }
@@ -2203,16 +2193,33 @@ function el(tag,cls,txt){
 }
 
 document.getElementById("btn-add-tache").onclick = () => openTacheCreate();
-document.getElementById("field-tache-debut").addEventListener("input", majDepuisDebut);
-document.getElementById("field-tache-debut").addEventListener("change", majDepuisDebut);
-document.getElementById("field-tache-fin").addEventListener("input", majDepuisFin);
-document.getElementById("field-tache-fin").addEventListener("change", majDepuisFin);
-document.getElementById("field-tache-duree").addEventListener("input", majDepuisDuree);
-document.getElementById("field-tache-duree").addEventListener("change", majDepuisDuree);
-document.getElementById("field-tache-projet").addEventListener("change", (e)=>{
-  populatePredecessorsSelect(parseInt(e.target.value)||null, []);
-  populateJalonsDeclencheursSelect(parseInt(e.target.value)||null, []);
-});
+
+const fieldTacheDebut = document.getElementById("field-tache-debut");
+if(fieldTacheDebut){
+  fieldTacheDebut.addEventListener("input", majDepuisDebut);
+  fieldTacheDebut.addEventListener("change", majDepuisDebut);
+}
+
+const fieldTacheFin = document.getElementById("field-tache-fin");
+if(fieldTacheFin){
+  fieldTacheFin.addEventListener("input", majDepuisFin);
+  fieldTacheFin.addEventListener("change", majDepuisFin);
+}
+
+const fieldTacheDuree = document.getElementById("field-tache-duree");
+if(fieldTacheDuree){
+  fieldTacheDuree.addEventListener("input", majDepuisDuree);
+  fieldTacheDuree.addEventListener("change", majDepuisDuree);
+}
+
+const fieldTacheProjet = document.getElementById("field-tache-projet");
+if(fieldTacheProjet){
+  fieldTacheProjet.addEventListener("change", (e)=>{
+    populatePredecessorsSelect(parseInt(e.target.value)||null, []);
+    populateJalonsDeclencheursSelect(parseInt(e.target.value)||null, []);
+  });
+}
+
 grist.onRecords(()=>init());
 init();
 </script>
