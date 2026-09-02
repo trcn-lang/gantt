@@ -83,7 +83,9 @@
 
   /* ========== FRISE RÉTROPLANNING (positionnement en %) ========== */
   /* ========== FRISE RÉTROPLANNING (positionnement en %, hauteur dynamique) ========== */
-  .frise{position:relative;margin:24px 0 16px 0}
+  .frise-segment{margin-bottom:14px}
+  .frise-segment-label{font-size:11px;font-weight:600;color:var(--texte-mention);margin-bottom:6px}
+  .frise{position:relative;margin:0}
   .frise-bar{position:absolute;left:0;top:0;width:100%;height:10px;background:var(--bleu-france);border-radius:3px}
   .frise-tick{position:absolute;top:0;bottom:0;width:1px;background:var(--bordure)}
   .frise-tick-label{position:absolute;transform:translateX(-50%);font-size:9px;color:var(--texte-mention);white-space:nowrap}
@@ -117,6 +119,7 @@
   .echeances-table tr.row-jalon:nth-child(even){background:#FDEFE3}
   .col-nom{font-weight:600;min-width:180px}
   .col-nom .type-jalon{font-weight:500;color:var(--texte-mention);font-size:10.5px}
+  .col-equipe{white-space:nowrap;color:var(--texte-mention);font-size:11px}
   .col-dates{white-space:nowrap;color:var(--texte-mention)}
   .col-relations{font-size:10.5px;color:var(--texte-mention);line-height:1.5}
   .col-statut{white-space:nowrap}
@@ -607,7 +610,7 @@ const TICK_LABEL_H = 12;
 function construireFrise(proj, pTaches, pJalons, projMin, projMax){
   const wrap = el("div");
 
-  // Légende
+  // Légende (unique, commune aux deux segments)
   const legend = el("div", "legend");
   function addLegendDiamond(couleur, label){
     const item = el("div", "legend-item");
@@ -628,26 +631,59 @@ function construireFrise(proj, pTaches, pJalons, projMin, projMax){
   legend.appendChild(itemBar);
   wrap.appendChild(legend);
 
-  const frise = el("div", "frise");
-  const dureeMs = projMax - projMin;
-  const pct = (d) => dureeMs > 0 ? ((d - projMin) / dureeMs) * 100 : 0;
-
   // Jalons à afficher : Livrables toujours, "Pour information" selon le toggle
   const afficherPourInfo = document.getElementById("toggle-pour-info").checked;
-  let jalonsAffiches = pJalons.filter(j=>{
+  const jalonsAffiches = pJalons.filter(j=>{
     const type = norm(getJalonTypeTexte(j));
     if(type === norm("Pour information")) return afficherPourInfo;
     return true; // Livrable (et Livrable Fixe) toujours affiché
   }).filter(j => parseDate(j.Date) !== null)
-    .map(j=>{
-      const jDate = parseDate(j.Date);
-      return { jalon:j, jDate, pct: pct(jDate), dateStr: fmtDateCourt(jDate) };
-    })
+    .map(j=>({ jalon:j, jDate: parseDate(j.Date) }));
+
+  // Toujours 2 parties, réparties sur la durée totale (confort visuel demandé :
+  // une frise trop longue tassée sur une seule ligne est moins lisible qu'en A4).
+  // Cas dégénéré (projet ponctuel, durée nulle) : on n'affiche qu'une seule partie.
+  const dureeMsTotal = projMax - projMin;
+  const segments = [];
+  if(dureeMsTotal > 0){
+    const milieu = new Date(projMin.getTime() + dureeMsTotal/2);
+    segments.push({start: projMin, end: milieu, titre: "1ʳᵉ partie"});
+    segments.push({start: milieu,  end: projMax, titre: "2ᵉ partie"});
+  } else {
+    segments.push({start: projMin, end: projMax, titre: null});
+  }
+
+  segments.forEach(seg=>{
+    const jalonsSegment = jalonsAffiches.filter(item => item.jDate >= seg.start && item.jDate <= seg.end);
+    wrap.appendChild(construireFriseSegment(seg, jalonsSegment));
+  });
+
+  return wrap;
+}
+
+// Construit UNE ligne de frise (une moitié temporelle du projet), avec sa
+// propre barre, ses propres graduations et son propre anti-chevauchement de
+// jalons — chaque segment est indépendant, comme s'il s'agissait d'un mini-projet.
+function construireFriseSegment(seg, jalonsSegment){
+  const segWrap = el("div", "frise-segment");
+
+  if(seg.titre){
+    const label = el("div", "frise-segment-label",
+      `${seg.titre} : ${fmtDate(seg.start)} → ${fmtDate(seg.end)}`);
+    segWrap.appendChild(label);
+  }
+
+  const frise = el("div", "frise");
+  const dureeMs = seg.end - seg.start;
+  const pct = (d) => dureeMs > 0 ? ((d - seg.start) / dureeMs) * 100 : 0;
+
+  const items = jalonsSegment
+    .map(item => ({ jalon: item.jalon, jDate: item.jDate, pct: pct(item.jDate), dateStr: fmtDateCourt(item.jDate) }))
     .sort((a,b) => a.pct - b.pct);
 
-  // Anti-chevauchement : calcule le niveau de chaque jalon, avec un minimum
-  // de NB_NIVEAUX_MIN niveaux réservés systématiquement (confort visuel demandé).
-  const nbNiveauxCalcule = calculerNiveauxJalonsRecap(jalonsAffiches);
+  // Anti-chevauchement : calcule le niveau de chaque jalon DE CE SEGMENT, avec
+  // un minimum de NB_NIVEAUX_MIN niveaux réservés systématiquement (confort visuel).
+  const nbNiveauxCalcule = calculerNiveauxJalonsRecap(items);
   const nbNiveaux = Math.max(NB_NIVEAUX_MIN, nbNiveauxCalcule);
 
   const zoneJalonsH = GAP_APRES_BARRE + nbNiveaux * NIVEAU_H;
@@ -663,7 +699,7 @@ function construireFrise(proj, pTaches, pJalons, projMin, projMax){
   const NB_TICKS = 6;
   for(let i=0; i<NB_TICKS; i++){
     const t = i/(NB_TICKS-1);
-    const d = new Date(projMin.getTime() + t*dureeMs);
+    const d = new Date(seg.start.getTime() + t*dureeMs);
     const p = t*100;
     const tick = el("div", "frise-tick");
     tick.style.left = p + "%";
@@ -676,10 +712,10 @@ function construireFrise(proj, pTaches, pJalons, projMin, projMax){
     frise.appendChild(label);
   }
 
-  // Ligne "aujourd'hui" si dans la plage — alignée sur la même ligne que les graduations
+  // Ligne "aujourd'hui" si dans la plage de ce segment
   const today = new Date();
   today.setUTCHours(0,0,0,0);
-  if(today >= projMin && today <= projMax){
+  if(today >= seg.start && today <= seg.end){
     const p = pct(today);
     const ligne = el("div", "frise-today-line");
     ligne.style.left = p + "%";
@@ -692,7 +728,7 @@ function construireFrise(proj, pTaches, pJalons, projMin, projMax){
   }
 
   // Diamants + labels des jalons, empilés selon leur niveau anti-chevauchement
-  jalonsAffiches.forEach(item=>{
+  items.forEach(item=>{
     const { jalon: j, jDate, pct: p, dateStr } = item;
     const retardJ = getRetardStructurel("jalon", j.id);
     const type = getJalonTypeTexte(j);
@@ -713,8 +749,8 @@ function construireFrise(proj, pTaches, pJalons, projMin, projMax){
     frise.appendChild(label);
   });
 
-  wrap.appendChild(frise);
-  return wrap;
+  segWrap.appendChild(frise);
+  return segWrap;
 }
 
 // --- Tableau des échéances : tâches + jalons fusionnés, triés chronologiquement ---
@@ -747,7 +783,7 @@ function construireTableauEcheances(pTaches, pJalons){
   const table = el("table", "echeances-table");
   const thead = el("thead");
   const trHead = el("tr");
-  ["Nom", "Début", "Fin", "Relations", "Statut"].forEach(h => trHead.appendChild(el("th", null, h)));
+  ["Nom", "Équipe", "Début", "Fin", "Relations", "Statut"].forEach(h => trHead.appendChild(el("th", null, h)));
   thead.appendChild(trHead);
   table.appendChild(thead);
 
@@ -768,6 +804,10 @@ function ligneTache(t){
   const tdNom = el("td", "col-nom");
   tdNom.textContent = t.Tache || "—";
   tr.appendChild(tdNom);
+
+  // Équipe assignée
+  const equipeNom = resolveRef(DB.parametres, t.Equipe, SCHEMA_PARAMETRES.equipe || "Equipe");
+  tr.appendChild(el("td", "col-equipe", equipeNom || "—"));
 
   // Début / Fin
   tr.appendChild(el("td", "col-dates", fmtDate(t.Date_debut) || "—"));
@@ -808,6 +848,9 @@ function ligneJalon(j){
   const tdNom = el("td", "col-nom");
   tdNom.innerHTML = `${j.Nom || "—"} <span class="type-jalon">(${jalonLibelleType(j)})</span>`;
   tr.appendChild(tdNom);
+
+  // Équipe : non applicable à un jalon
+  tr.appendChild(el("td", "col-equipe cell-vide", "—"));
 
   // Début (vide pour un jalon) / Fin (= date du jalon)
   tr.appendChild(el("td", "col-dates", "—"));
