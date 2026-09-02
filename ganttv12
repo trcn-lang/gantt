@@ -1,0 +1,3517 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Rétroplanning</title>
+<script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
+<style>
+  :root{
+    --bleu-france:#000091;
+    --bleu-975:#ECECFE;
+    --texte:#161616;
+    --texte-mention:#666666;
+    --bordure:#DDDDDD;
+    --fond:#FFFFFF;
+    --fond-alt:#F6F6F6;
+    --st-faire:#929292;
+    --st-encours:#0063CB;
+    --st-termine:#18753C;
+    --jalon-majeur:#C41E3A;
+    --jalon-livrable:#FF6B35;
+    --jalon-info:#6B6B6B;
+    --critique:#CE0500;
+    --jour:16px;
+    --label-w:300px;
+    --row-h:44px;
+    --proj-h:46px;
+  }
+
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    font-family:"Marianne",-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;
+    color:var(--texte);
+    background:var(--fond);
+    font-size:14px;
+  }
+
+  .app{display:flex;flex-direction:column;height:100vh}
+
+  .topbar{
+    display:flex;align-items:center;justify-content:space-between;
+    gap:16px;padding:12px 16px;border-bottom:1px solid var(--bordure);
+    flex-wrap:wrap;
+  }
+  .topbar h1{font-size:18px;font-weight:700;color:var(--bleu-france);}
+  .meta{font-size:12px;color:var(--texte-mention)}
+
+  .legende{display:flex;gap:14px;flex-wrap:wrap;align-items:center}
+  .legende .item{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--texte-mention)}
+  .legende .puce{width:12px;height:12px;border-radius:3px;flex:0 0 auto}
+  .legende .puce.jalon-puce{border-radius:0;transform:rotate(45deg)}
+  .legende .puce.critique-puce{background:var(--st-faire);border:2px solid #CE0500;box-shadow:0 0 0 1px #fff inset}
+
+  .toolbar{
+    padding:12px 16px;border-bottom:1px solid var(--bordure);
+    display:flex;gap:8px;flex-wrap:wrap;
+  }
+
+  .btn{
+    padding:8px 16px;background:var(--bleu-france);color:#fff;border:none;
+    border-radius:4px;cursor:pointer;font-size:13px;font-weight:600;transition:background 0.2s;
+  }
+  .btn:hover{background:#0056b3}
+  .btn-danger{background:#CE0500}
+  .btn-danger:hover{background:#a80400}
+
+  /* ========== CONTRÔLES DE ZOOM ========== */
+  .zoom-controls{
+    display:flex;align-items:center;gap:4px;
+    padding-left:8px;border-left:1px solid var(--bordure);
+  }
+  .btn-zoom{
+    width:28px;height:28px;padding:0;
+    background:var(--fond);color:var(--bleu-france);
+    border:1px solid var(--bordure);border-radius:4px;
+    cursor:pointer;font-size:16px;font-weight:700;line-height:1;
+    display:flex;align-items:center;justify-content:center;
+    transition:background 0.15s;
+  }
+  .btn-zoom:hover{background:var(--bleu-975);border-color:var(--bleu-france)}
+  .zoom-level{
+    min-width:44px;text-align:center;font-size:12px;font-weight:600;
+    color:var(--texte-mention);
+  }
+  .btn-zoom-reset{
+    padding:5px 10px;background:var(--fond);color:var(--texte-mention);
+    border:1px solid var(--bordure);border-radius:4px;cursor:pointer;
+    font-size:11px;font-weight:600;margin-left:4px;
+  }
+  .btn-zoom-reset:hover{background:var(--fond-alt);color:var(--bleu-france);border-color:var(--bleu-france)}
+  .btn-zoom-fit{
+    padding:5px 12px;background:var(--fond);color:var(--bleu-france);
+    border:1px solid var(--bleu-france);border-radius:4px;cursor:pointer;
+    font-size:12px;font-weight:600;margin-left:8px;
+    display:flex;align-items:center;gap:4px;
+  }
+  .btn-zoom-fit:hover{background:var(--bleu-975)}
+
+  /* ========== FILTRES CHIPS (Section / Projet) ========== */
+  .filter-section{
+    padding:12px 16px;border-bottom:1px solid var(--bordure);
+    display:flex;flex-direction:column;gap:10px;
+  }
+  .filter-row{display:flex;gap:10px;align-items:flex-start}
+  .filter-row-label{
+    font-size:12px;font-weight:700;color:var(--texte);white-space:nowrap;
+    padding-top:6px;flex-shrink:0;min-width:52px;
+  }
+  .filter-chips{
+    display:flex;flex-wrap:wrap;gap:6px;flex:1;
+  }
+  .filter-chip{
+    display:inline-flex;align-items:center;
+    padding:5px 12px;border-radius:16px;
+    border:1px solid var(--bordure);background:#fff;color:var(--texte);
+    font-size:12px;font-weight:500;cursor:pointer;
+    transition:background 0.15s,color 0.15s,border-color 0.15s;
+    white-space:nowrap;
+  }
+  .filter-chip:hover{border-color:var(--bleu-france);background:var(--bleu-975)}
+  .filter-chip.active{
+    background:var(--bleu-france);border-color:var(--bleu-france);color:#fff;font-weight:600;
+  }
+  .filter-chip.active:hover{background:#1212a8}
+  .filter-chips-empty{font-size:12px;color:var(--texte-mention);font-style:italic;padding-top:6px}
+
+  .scroll{flex:1;overflow:auto;position:relative}
+  .timeline-scroll{overflow:auto;padding-bottom:28px}
+  .timeline-scroll::-webkit-scrollbar{height:10px;width:10px}
+  .timeline-scroll::-webkit-scrollbar-thumb{background:#B0B0B0;border-radius:5px}
+  .timeline-scroll::-webkit-scrollbar-track{background:transparent}
+  .timeline-scroll{scrollbar-width:thin}
+  .grid-wrapper{display:flex}
+
+  .labels-col{
+    width:var(--label-w);flex-shrink:0;border-right:1px solid var(--bordure);
+    display:flex;flex-direction:column;overflow:hidden;z-index:3;
+  }
+
+  .grid{display:grid;grid-template-columns:var(--tl-w,600px);align-content:start;flex:1}
+
+  .corner{
+    position:sticky;top:0;left:0;z-index:5;
+    background:var(--fond);border-right:1px solid var(--bordure);border-bottom:1px solid var(--bordure);
+    padding:0 12px;display:flex;align-items:center;font-size:12px;font-weight:700;
+    height:72px;flex-shrink:0;
+  }
+
+  .head-track{position:sticky;top:0;z-index:6;height:72px;background:var(--fond);border-bottom:1px solid var(--bordure)}
+  .head-inner{position:relative;height:100%}
+
+  .week-label{
+    position:absolute;top:0;bottom:0;
+    width:112px;padding:8px;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;text-align:center;font-size:11px;cursor:help;
+    border-left:1.5px solid rgba(0,0,0,0.12);
+    overflow:hidden;
+  }
+  .week-label:hover::after{
+    content:attr(data-tooltip);position:absolute;top:100%;left:50%;transform:translateX(-50%);
+    background:#222;color:#fff;padding:12px 16px;border-radius:6px;font-size:12px;
+    white-space:pre-line;line-height:1.4;z-index:200;box-shadow:0 4px 12px rgba(0,0,0,0.2);
+    margin-top:8px;min-width:220px;text-align:center;pointer-events:none;
+  }
+  .week-label:hover::before{
+    content:'';position:absolute;top:100%;left:50%;transform:translateX(-50%);
+    border:6px solid transparent;border-bottom-color:#222;z-index:200;
+    margin-top:2px;pointer-events:none;
+  }
+  .week-num{font-size:13px;font-weight:700;color:var(--bleu-france);margin-bottom:4px}
+  .week-date{font-weight:600;color:var(--texte);line-height:1.3}
+
+  .label{
+    background:var(--fond);border-bottom:1px solid var(--fond-alt);
+    display:flex;align-items:center;height:var(--row-h);padding:0 12px;overflow:hidden;position:relative;
+  }
+  .label.projet{
+    background:var(--bleu-975);color:var(--bleu-france);font-weight:700;
+    height:var(--proj-h);border-bottom:1px solid var(--bordure);
+  }
+  .label.projet .nom-projet{
+    cursor:pointer;border-radius:3px;padding:2px 4px;margin:-2px -4px;
+  }
+  .label.projet .nom-projet:hover{background:rgba(0,0,145,0.08);text-decoration:underline}
+  .label.projet .btn-collapse{
+    background:none;border:none;color:var(--bleu-france);cursor:pointer;font-size:16px;
+    padding:4px 8px;margin-right:8px;transition:transform 0.2s;font-weight:700;
+  }
+  .label.projet .btn-collapse.collapsed{transform:rotate(-90deg)}
+  .label.tache{padding-left:12px;font-size:13px;gap:8px}
+  .label.tache .nom{
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;
+    cursor:pointer;border-radius:3px;padding:2px 4px;margin:-2px -4px;
+    transition:background 0.15s;
+  }
+  .label.tache .nom:hover{background:var(--bleu-975);color:var(--bleu-france)}
+  .label.tache .equipe{font-size:11px;color:var(--texte-mention);flex:0 0 auto}
+
+  .label-actions{position:absolute;right:8px;display:none;gap:4px;background:var(--fond);padding-left:6px}
+  .label:hover .label-actions{display:flex}
+  .btn-tiny{padding:2px 6px;font-size:10px;background:#666;color:#fff;border:none;border-radius:3px;cursor:pointer}
+  .btn-tiny:hover{background:#333}
+  .btn-tiny.add{background:var(--bleu-france)}
+  .btn-tiny.add:hover{background:#0056b3}
+
+  .proj-group{position:relative}
+  .proj-group.collapsed .track.tache{display:none}
+  .proj-group.collapsed .dependencies-svg{display:none}
+
+  .label.tache.hidden{display:none !important}
+
+  .track{
+    position:relative;height:var(--row-h);border-bottom:1px solid var(--fond-alt);
+    background-image:
+      repeating-linear-gradient(to right, rgba(0,0,0,0.035) 0 1px, transparent 1px var(--jour)),
+      repeating-linear-gradient(to right, rgba(0,0,145,0.06) 0 1px, transparent 1px calc(7 * var(--jour)));
+  }
+  .track.projet{
+    height:var(--proj-h);background:var(--bleu-975);border-bottom:1px solid var(--bordure);
+  }
+
+  .track.tache::before{
+    content:"";position:absolute;top:0;bottom:0;left:calc(var(--today) * var(--jour));
+    width:2px;background:#6A6AF4;opacity:.55;z-index:0;
+  }
+
+  .barre{
+    position:absolute;top:20px;height:22px;border-radius:4px;z-index:1;
+    display:flex;align-items:center;padding:0 6px;font-size:11px;color:#fff;
+    white-space:nowrap;overflow:hidden;cursor:pointer;
+    transition:filter 0.15s;
+  }
+  .barre:hover{filter:brightness(0.9)}
+  .barre.critique{border:2px solid #fff;box-shadow:0 0 0 1px #CE0500}
+
+  .barre-nom-externe{
+    position:absolute;top:20px;height:22px;z-index:1;
+    display:flex;align-items:center;
+    font-size:11px;color:var(--texte);white-space:nowrap;cursor:pointer;
+  }
+  .barre-nom-externe:hover{color:var(--bleu-france)}
+
+  .date-label{
+    position:absolute;top:2px;z-index:2;
+    transform:translateX(-50%);
+    font-size:9px;font-weight:600;color:var(--texte-mention);
+    white-space:nowrap;pointer-events:none;line-height:1.2;
+    background:var(--fond);padding:0 2px;border-radius:2px;
+  }
+
+  .dependencies-svg{
+    position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:0;
+  }
+
+  .jalon-line{
+    position:absolute;bottom:0;width:2px;z-index:0;
+    opacity:0.55;pointer-events:none;
+  }
+
+  .jalon-name{
+    position:absolute;z-index:4;
+    font-size:10px;font-weight:700;
+    white-space:nowrap;cursor:pointer;
+    line-height:1;
+    transform:translateY(-50%);
+  }
+
+  .jalon-marker-wrap{
+    position:absolute;z-index:4;
+    width:0;height:0;
+    cursor:pointer;
+  }
+
+  .jalon-marker-diamond{
+    position:absolute;top:0;left:0;
+    width:11px;height:11px;
+    margin-top:-5.5px;margin-left:-5.5px;
+    transform:rotate(45deg);
+    border:1.5px solid #fff;
+    box-shadow:0 1px 3px rgba(0,0,0,0.3);
+    transition:filter 0.15s;
+  }
+  .jalon-marker-wrap:hover .jalon-marker-diamond{filter:brightness(0.85)}
+  .jalon-marker-diamond.retard-subit{
+    border:1.5px solid #fff;
+    box-shadow:0 1px 3px rgba(0,0,0,0.3), 0 0 0 2px var(--critique);
+  }
+  .jalon-marker-wrap:hover::after{
+    content:attr(data-tooltip);position:absolute;top:14px;left:0;transform:translateX(-50%);
+    background:#222;color:#fff;padding:8px 12px;border-radius:6px;font-size:12px;
+    white-space:nowrap;line-height:1.4;z-index:200;box-shadow:0 4px 12px rgba(0,0,0,0.2);
+    pointer-events:none;
+  }
+  .jalon-marker-wrap:hover::before{
+    content:'';position:absolute;top:6px;left:0;transform:translateX(-50%);
+    border:5px solid transparent;border-bottom-color:#222;z-index:200;pointer-events:none;
+  }
+
+  .pill-plan{
+    position:absolute;top:8px;left:6px;z-index:1;font-size:10px;color:var(--texte-mention);
+    background:#EEE;border:1px solid var(--bordure);border-radius:10px;padding:1px 8px;
+  }
+
+  .modal-overlay{
+    position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);
+    display:none;align-items:center;justify-content:center;z-index:1000;
+  }
+  .modal-overlay.active{display:flex}
+  .modal{
+    background:#fff;border-radius:8px;padding:24px;max-width:500px;width:90%;max-height:90vh;overflow-y:auto;
+    box-shadow:0 8px 32px rgba(0,0,0,0.2);
+  }
+  .modal h2{font-size:18px;margin-bottom:16px;color:var(--bleu-france)}
+  .form-group{margin-bottom:16px}
+  .form-group label{display:block;font-weight:600;margin-bottom:6px;font-size:13px}
+  .form-group input,.form-group textarea,.form-group select{
+    width:100%;padding:8px 12px;border:1px solid var(--bordure);border-radius:4px;font-size:13px;
+  }
+  .form-group input[readonly]{background:var(--fond-alt);color:var(--texte-mention)}
+  .form-group textarea{resize:vertical;min-height:80px}
+  .form-actions{display:flex;gap:8px;margin-top:24px;justify-content:flex-end}
+  .form-actions.with-delete{justify-content:space-between}
+  .btn-cancel{background:#ccc;color:#000}
+  .btn-cancel:hover{background:#aaa}
+
+  .dates-duree-row{display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap}
+  .dates-duree-row > div{flex:1;min-width:100px}
+  .incompressible-label{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;white-space:nowrap;padding-bottom:6px;cursor:pointer;color:var(--texte)}
+  .incompressible-label input{cursor:pointer;width:14px;height:14px}
+
+  .cascade-recap-line{display:flex;align-items:center;gap:8px;padding:8px 4px;border-bottom:1px solid var(--bordure);font-size:12px}
+  .cascade-recap-line:last-child{border-bottom:none}
+  .cascade-recap-line .nom-element{font-weight:600;flex:1}
+  .cascade-recap-line .dates-shift{color:var(--texte-mention);white-space:nowrap;font-size:11px}
+  .cascade-recap-line.dim{opacity:0.6}
+  .badge{font-size:10px;font-weight:700;padding:2px 7px;border-radius:3px;white-space:nowrap;color:#fff}
+  .badge.shift{background:var(--critique)}
+  .badge.absorbe{background:var(--st-termine)}
+  .badge.fixe{background:var(--texte-mention)}
+
+  .retard-icone{font-size:10px;margin-left:4px;cursor:help;flex-shrink:0}
+
+  .info-box{
+    background:#FFF3CD;border:1px solid #FFC107;border-radius:4px;padding:12px;margin-bottom:16px;font-size:12px;
+    color:#856404;line-height:1.4;
+  }
+  .info-box.warning{background:#F8D7DA;border-color:#F5C6CB;color:#721C24}
+  .info-box .dep-line{
+    display:flex;gap:6px;align-items:baseline;color:var(--texte);
+  }
+  .info-box .dep-line:not(:last-child){margin-bottom:4px}
+  .info-box .dep-line .puce{flex:0 0 auto;font-size:11px}
+
+  .multi-select{
+    border:1px solid var(--bordure);border-radius:4px;padding:8px;max-height:150px;
+    overflow-y:auto;overflow-x:hidden;width:100%;box-sizing:border-box;
+  }
+  .multi-select-item{
+    display:grid;
+    grid-template-columns:16px 1fr;
+    align-items:start;
+    gap:8px;
+    padding:6px 8px;
+    cursor:pointer;
+    border-radius:3px;
+    width:100%;
+    box-sizing:border-box;
+  }
+  .form-group .multi-select-item{display:grid}
+  .multi-select-item:hover{background:var(--fond-alt)}
+  .multi-select-item input[type="checkbox"]{cursor:pointer;width:16px;height:16px;margin:2px 0 0 0}
+  .multi-select-item-text{min-width:0;overflow-wrap:break-word;word-break:normal;line-height:1.35}
+
+  /* ========== MODALE TÂCHE 2 COLONNES (identique Kanban) ========== */
+  .modal.modal-2col{
+    max-width:90vw;width:90%;max-height:90vh;
+    display:flex;
+    flex-direction:column;
+    overflow:hidden;
+  }
+  .modal-columns-wrapper{
+    display:grid;
+    grid-template-columns:minmax(0,1fr) minmax(0,1fr);
+    gap:24px;
+    flex:1 1 auto;
+    min-height:0;
+    overflow:hidden;
+  }
+  .modal.modal-2col h2{margin-bottom:16px}
+  .modal-left-column{
+    overflow-y:auto;
+    overflow-x:hidden;
+    min-width:0;
+    min-height:0;
+  }
+  .modal-right-column{
+    display:flex;
+    flex-direction:column;
+    border-left:1px solid var(--bordure);
+    padding-left:24px;
+    min-width:0;
+    min-height:0;
+    overflow:hidden;
+  }
+  .modal-right-column h3{
+    margin:0 0 12px 0;
+    font-size:14px;
+    font-weight:700;
+    color:var(--bleu-france);
+    flex-shrink:0;
+  }
+  .sous-actions-list-wrapper{
+    flex:1 1 auto;
+    min-height:0;
+    overflow-y:auto;
+    margin-bottom:12px;
+    border:1px solid var(--bordure);
+    border-radius:4px;
+    background:var(--fond-alt);
+    padding:8px;
+  }
+  .sous-actions-list-wrapper::-webkit-scrollbar{width:8px}
+  .sous-actions-list-wrapper::-webkit-scrollbar-thumb{background:#B0B0B0;border-radius:4px}
+  #sous-action-create-area{flex-shrink:0}
+
+  .modal.modal-2col .form-actions{
+    flex-shrink:0;
+    margin-top:16px;
+  }
+
+  /* ========== ACTIONS (sous-tâches) ========== */
+  .action-item{
+    display:flex;align-items:center;gap:8px;padding:8px;
+    background:var(--fond);border-radius:4px;margin-bottom:6px;
+    border-left:3px solid var(--bleu-france);
+  }
+  .action-item:hover{background:var(--bleu-975)}
+  .action-item input[type="checkbox"]{cursor:pointer;width:18px;height:18px;flex-shrink:0}
+  .action-nom{
+    flex:1;font-size:12px;font-weight:500;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  }
+  .action-equipe{
+    font-size:11px;color:var(--texte-mention);width:80px;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:0;
+  }
+  .action-actions{display:flex;gap:4px;opacity:0;flex-shrink:0}
+  .action-item:hover .action-actions{opacity:1}
+  .btn-edit-action,.btn-delete-action{
+    background:none;border:none;color:var(--texte-mention);cursor:pointer;
+    padding:2px;font-size:12px;border-radius:3px;
+  }
+  .btn-edit-action:hover{background:var(--bordure);color:var(--bleu-france)}
+  .btn-delete-action:hover{background:#f5e6e6;color:#CE0500}
+  .action-input-create{
+    width:100%;padding:8px;border:1px solid var(--bordure);border-radius:4px;
+    font-size:12px;font-family:inherit;
+  }
+  .action-input-create:focus{
+    outline:none;border-color:var(--bleu-france);
+    box-shadow:0 0 0 3px rgba(0, 0, 145, 0.1);
+  }
+  .btn-add-action{
+    width:100%;padding:10px;background:var(--fond);border:1px dashed var(--bordure);
+    color:var(--texte-mention);border-radius:4px;cursor:pointer;
+    font-size:12px;font-weight:600;transition:all 0.15s;
+  }
+  .btn-add-action:hover{border-color:var(--bleu-france);color:var(--bleu-france);background:var(--bleu-975)}
+
+  .modal-sous-action{padding:20px}
+  .modal-sous-action h3{font-size:16px;color:var(--bleu-france);margin-bottom:12px;font-weight:700}
+  .sous-action-form-group{margin-bottom:12px}
+  .sous-action-form-group label{display:block;font-weight:600;margin-bottom:6px;font-size:12px}
+  .sous-action-form-group input,
+  .sous-action-form-group select,
+  .sous-action-form-group textarea{
+    width:100%;padding:8px 12px;border:1px solid var(--bordure);border-radius:4px;font-size:13px;
+  }
+  .sous-action-form-group textarea{resize:vertical;min-height:60px}
+  .sous-action-form-actions{display:flex;gap:8px;margin-top:16px;justify-content:flex-end}
+
+  @media (max-width: 768px) {
+    .modal.modal-2col{ max-width:95vw; }
+    .modal-columns-wrapper{ grid-template-columns:1fr; overflow-y:auto; }
+    .modal-right-column{
+      border-left:none;border-top:1px solid var(--bordure);
+      padding-left:0;padding-top:12px;
+    }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="topbar">
+    <h1>Rétroplanning</h1>
+    <div style="display:flex;gap:20px;align-items:center;flex:1;">
+      <div class="legende" id="legende"></div>
+      <div class="meta" id="meta">Chargement…</div>
+    </div>
+  </div>
+
+  <div class="toolbar">
+    <button class="btn" id="btn-add-projet">+ Projet</button>
+    <div class="zoom-controls">
+      <button class="btn-zoom" id="btn-zoom-out" title="Zoom arrière" aria-label="Zoom arrière">−</button>
+      <span class="zoom-level" id="zoom-level-label">100%</span>
+      <button class="btn-zoom" id="btn-zoom-in" title="Zoom avant" aria-label="Zoom avant">+</button>
+      <button class="btn-zoom-reset" id="btn-zoom-reset" title="Réinitialiser le zoom">100%</button>
+      <button class="btn-zoom-fit" id="btn-zoom-fit" title="Voir tout le projet">⊡ Vue d'ensemble</button>
+      <button class="btn-zoom-fit" id="btn-debut" title="Aller à la première date">⏮ Début</button>
+      <button class="btn-zoom-fit" id="btn-today" title="Centrer sur la date du jour">📍 Aujourd'hui</button>
+    </div>
+    <span style="margin-left:auto;font-size:12px;color:var(--texte-mention)" id="status"></span>
+  </div>
+
+  <!-- FILTRES SECTION ET PROJET -->
+  <div class="filter-section">
+    <div class="filter-row">
+      <span class="filter-row-label">Section :</span>
+      <div class="filter-chips" id="filter-sections-chips"></div>
+    </div>
+    <div class="filter-row">
+      <span class="filter-row-label">Projet :</span>
+      <div class="filter-chips" id="filter-projets-chips"></div>
+    </div>
+  </div>
+
+  <div class="scroll" id="scroll">
+    <div class="grid-wrapper">
+      <div class="labels-col" id="labels-col">
+        <div class="corner">Projet / Tâche</div>
+        <div id="labels"></div>
+      </div>
+      <div class="timeline-scroll" id="timeline-scroll" style="flex:1;position:relative;">
+        <div id="kanban" class="grid"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- MODALE PROJET -->
+<div class="modal-overlay" id="modal-projet">
+  <div class="modal">
+    <h2 id="modal-projet-title">Nouveau Projet</h2>
+    <input type="hidden" id="field-projet-id">
+    <div class="form-group"><label>Nom *</label><input type="text" id="field-projet-nom" placeholder="ex: Avancement de grade 2025"></div>
+    <div class="form-group"><label>Section *</label><select id="field-projet-section"></select></div>
+    <div class="form-group"><label>Type Projet *</label><select id="field-projet-type"></select></div>
+    <div class="form-group"><label>Description</label><textarea id="field-projet-desc" placeholder="Description optionnelle"></textarea></div>
+    <div class="form-actions" id="modal-projet-actions">
+      <button class="btn btn-danger" id="btn-delete-projet" style="display:none" onclick="deleteProjet()">Supprimer</button>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-cancel" onclick="closeModal('modal-projet')">Annuler</button>
+        <button class="btn" id="btn-save-projet" onclick="saveProjet()">Créer</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- MODALE JALON -->
+<div class="modal-overlay" id="modal-jalon">
+  <div class="modal">
+    <h2 id="modal-jalon-title">Nouveau Jalon</h2>
+    <input type="hidden" id="field-jalon-id">
+    <input type="hidden" id="field-jalon-projet">
+    <div class="form-group"><label>Nom du jalon *</label><input type="text" id="field-jalon-nom" placeholder="ex: Lancement"></div>
+    <div class="form-group"><label>Date *</label><input type="date" id="field-jalon-date"></div>
+    <div class="form-group"><label>Type</label>
+      <select id="field-jalon-type"><option value="">-- Choisir --</option><option>Livrable</option><option>Pour information</option></select>
+    </div>
+    <div id="group-jalon-fixe" style="display:none;margin:4px 0 8px 0;">
+      <label class="incompressible-label"><input type="checkbox" id="field-jalon-fixe"> Fixe (date imposée — ancrage dur)</label>
+    </div>
+    <div class="form-group" id="group-jalon-taches-requises" style="display:none;">
+      <label>Tâches requises (livrable atteint une fois ces tâches terminées)</label>
+      <div class="multi-select" id="field-jalon-taches-requises"></div>
+    </div>
+    <div class="form-group">
+      <label>Commentaires</label>
+      <textarea id="field-jalon-commentaires" placeholder="Notes optionnelles sur ce jalon"></textarea>
+    </div>
+    <div class="form-actions" id="modal-jalon-actions">
+      <button class="btn btn-danger" id="btn-delete-jalon" style="display:none" onclick="deleteJalon()">Supprimer</button>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-cancel" onclick="closeModal('modal-jalon')">Annuler</button>
+        <button class="btn" id="btn-save-jalon" onclick="saveJalon()">Créer</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- MODALE TACHE -->
+<div class="modal-overlay" id="modal-tache">
+  <div class="modal modal-2col">
+    <h2 id="modal-tache-title">Nouvelle Tâche</h2>
+
+    <div class="modal-columns-wrapper">
+
+      <!-- COLONNE GAUCHE: Champs -->
+      <div class="modal-left-column">
+        <input type="hidden" id="field-tache-id">
+        <input type="hidden" id="field-tache-projet">
+
+        <div id="info-dependances" class="info-box" style="display:none;"></div>
+
+        <div class="form-group"><label>Tâche *</label><input type="text" id="field-tache-nom" placeholder="ex: Publication liste"></div>
+        <div class="form-group"><label>Date début *</label><input type="date" id="field-tache-debut"></div>
+        <div class="form-group dates-duree-row">
+          <div><label>Date fin</label><input type="date" id="field-tache-fin"></div>
+          <div><label>Durée (j. ouvrés)</label><input type="number" id="field-tache-duree" min="1"></div>
+          <label class="incompressible-label"><input type="checkbox" id="field-tache-incompressible"> Incompressible</label>
+        </div>
+
+        <div class="form-group"><label>Équipe</label><select id="field-tache-equipe"></select></div>
+        <div class="form-group"><label>Statut</label><select id="field-tache-statut"></select></div>
+
+        <div class="form-group">
+          <label>Prédécesseurs (tâches dont dépend celle-ci)</label>
+          <div class="multi-select" id="field-tache-predecesseurs"></div>
+        </div>
+
+        <div class="form-group">
+          <label>Livrable(s) déclencheur(s) (jalons dont dépend cette tâche)</label>
+          <div class="multi-select" id="field-tache-jalons-declencheurs"></div>
+        </div>
+
+        <div class="form-group"><label>Commentaires</label><textarea id="field-tache-comments" placeholder="Notes optionnelles"></textarea></div>
+      </div>
+
+      <!-- COLONNE DROITE: Sous-Actions -->
+      <div class="modal-right-column">
+        <h3>Sous-Actions</h3>
+        <div class="sous-actions-list-wrapper" id="sous-actions-list"></div>
+        <div id="sous-action-create-area">
+          <button type="button" class="btn-add-action" id="btn-add-action">
+            + Ajouter une sous-action
+          </button>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="form-actions" id="modal-tache-actions">
+      <button class="btn btn-danger" id="btn-delete-tache" style="display:none" onclick="deleteTache()">Supprimer</button>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-cancel" onclick="closeModal('modal-tache')">Annuler</button>
+        <button class="btn" id="btn-save-tache" onclick="saveTache()">Créer</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- MODALE CASCADE -->
+<div class="modal-overlay" id="modal-cascade">
+  <div class="modal" style="max-width:520px;">
+    <h2 id="cascade-titre">Impacts calendaires</h2>
+    <div id="cascade-recap"></div>
+    <div class="form-actions" style="margin-top:16px;">
+      <button class="btn btn-cancel" onclick="annulerCascade()">Annuler</button>
+      <button class="btn" id="btn-confirmer-cascade" onclick="confirmerCascade()">Confirmer</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODALE ACTION (édition sous-action) -->
+<div class="modal-overlay" id="modal-action-overlay">
+  <div class="modal" style="max-width:500px;">
+    <div class="modal-sous-action">
+      <h3 id="modal-action-title">Modifier une sous-action</h3>
+
+      <input type="hidden" id="field-action-id">
+      <input type="hidden" id="field-action-tache">
+
+      <div class="sous-action-form-group">
+        <label>Nom *</label>
+        <input type="text" id="field-action-nom" maxlength="100">
+      </div>
+
+      <div class="sous-action-form-group">
+        <label>Statut</label>
+        <select id="field-action-statut">
+          <option>À faire</option>
+          <option>En cours</option>
+          <option>Terminé</option>
+        </select>
+      </div>
+
+      <div class="sous-action-form-group">
+        <label>Équipe (optionnel)</label>
+        <select id="field-action-equipe">
+          <option value="">-- Aucun --</option>
+        </select>
+      </div>
+
+      <div class="sous-action-form-group">
+        <label>Commentaires</label>
+        <textarea id="field-action-commentaires" placeholder="Notes spécifiques..."></textarea>
+      </div>
+
+      <div class="sous-action-form-actions">
+        <button type="button" class="btn btn-danger" id="btn-delete-action" style="display:none" onclick="deleteAction()">
+          Supprimer
+        </button>
+        <div style="display:flex;gap:8px;margin-left:auto;">
+          <button type="button" class="btn btn-cancel" onclick="closeActionModal()">
+            Annuler
+          </button>
+          <button type="button" class="btn" id="btn-save-action" onclick="saveAction()">
+            Créer
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- MODALE DUPLICATION PROJET -->
+<div class="modal-overlay" id="modal-dupliquer-projet">
+  <div class="modal" style="max-width:560px;">
+    <h2>Dupliquer un projet</h2>
+    <input type="hidden" id="field-dupli-projet-source">
+    <div class="form-group">
+      <label>Projet source</label>
+      <input type="text" id="field-dupli-source-nom" disabled>
+    </div>
+    <div class="form-group">
+      <label>Nom du nouveau projet *</label>
+      <input type="text" id="field-dupli-nom" placeholder="ex: Mobilité SVT S2 2026">
+    </div>
+    <div class="form-group">
+      <label>Nouvelle date d'échéance *</label>
+      <input type="date" id="field-dupli-date-fin">
+      <div style="font-size:11px;color:var(--texte-mention);margin-top:4px;" id="dupli-ancrage-info"></div>
+    </div>
+    <div class="info-box" id="dupli-info" style="display:none;"></div>
+    <div id="dupli-apercu" style="display:none;margin-top:8px;">
+      <label style="font-weight:600;font-size:12px;display:block;margin-bottom:6px;">Aperçu du décalage</label>
+      <div class="sous-actions-list-wrapper" id="dupli-apercu-list" style="max-height:220px;"></div>
+    </div>
+    <div class="form-actions">
+      <div></div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-cancel" onclick="closeModal('modal-dupliquer-projet')">Annuler</button>
+        <button class="btn" id="btn-confirmer-dupliquer" onclick="confirmerDuplicationProjet()" disabled>Dupliquer</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const STATUTS = [
+  {nom:"À faire",   cls:"st-faire",    couleur:"var(--st-faire)"},
+  {nom:"En cours",  cls:"st-encours",  couleur:"var(--st-encours)"},
+  {nom:"Terminé",   cls:"st-termine",  couleur:"var(--st-termine)"},
+];
+
+const JALON_COULEURS = {
+  "jalon majeur": "var(--jalon-majeur)",
+  "livrable":     "var(--jalon-livrable)",
+  "pour information": "var(--jalon-info)",
+};
+// jalonCouleur retourne la couleur du jalon selon son type ET son flag Important.
+// Si Important=true ET Type="Livrable" → rouge critique (ancien "Jalon majeur")
+// Sinon → couleur standard du type
+function jalonCouleur(type, important){
+  if(norm(type) === norm("Livrable") && important === true){
+    return "var(--critique)";  // Rouge pour les Livrables Important
+  }
+  return JALON_COULEURS[norm(type)] || "var(--jalon-info)";
+}
+
+function norm(s){
+  return String(s||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").trim();
+}
+function statutInfo(s){
+  return STATUTS.find(x=>norm(x.nom)===norm(s)) || {nom:s||"—",cls:"st-faire",couleur:"var(--st-faire)"};
+}
+function cssVarValue(v){
+  return getComputedStyle(document.documentElement).getPropertyValue(v.replace("var(","").replace(")","").trim())||v;
+}
+
+function parseDate(v){
+  if(v===null||v===undefined||v==="") return null;
+  if(typeof v==="number") return new Date(v*1000);
+  const d=new Date(String(v).trim());
+  return isNaN(d.getTime())?null:d;
+}
+function dayIndex(v){
+  const d=parseDate(v);
+  return d?Math.floor(d.getTime()/86400000):null;
+}
+function refId(v){
+  if(Array.isArray(v)) return v[1];
+  return v;
+}
+function resolveRef(table, id, col){
+  const rid=refId(id);
+  if(rid===null||rid===undefined) return null;
+  const ligne=table.find(row=>row.id===rid);
+  return ligne?ligne[col]:null;
+}
+function fmtJourComplet(v){
+  const d=parseDate(v);
+  if(!d) return "";
+  const jours=['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi'];
+  const jj=String(d.getUTCDate()).padStart(2,"0");
+  const mm=String(d.getUTCMonth()+1).padStart(2,"0");
+  return `${jours[d.getUTCDay()]} ${jj}/${mm}`;
+}
+function fmtDateCourt(v){
+  const d=parseDate(v);
+  if(!d) return "";
+  const jj=String(d.getUTCDate()).padStart(2,"0");
+  const mm=String(d.getUTCMonth()+1).padStart(2,"0");
+  return `${jj}/${mm}`;
+}
+function toDateInput(v){
+  const d=parseDate(v);
+  if(!d) return "";
+  const jj=String(d.getUTCDate()).padStart(2,"0");
+  const mm=String(d.getUTCMonth()+1).padStart(2,"0");
+  return `${d.getUTCFullYear()}-${mm}-${jj}`;
+}
+
+let DB={};
+let NON_ATTRIBUE_ID = null;
+let allData={};
+
+let COLLAPSED_PROJETS = new Set();
+
+// ========== FILTRES SECTION / PROJET ==========
+let FILTRES_ACTIFS = {
+  sections: new Set(),  // IDs de sections cochées
+  projets: new Set()    // IDs de projets cochés
+};
+
+// ========== ZOOM ==========
+let JOUR_PX = 16;
+const ZOOM_DEFAUT = 16;
+// Limite de conception : un projet peut s'étaler jusqu'à 2*365 = 730 jours.
+// ZOOM_MIN doit être assez bas pour que "Vue d'ensemble" puisse faire tenir
+// 730 jours même sur une fenêtre de widget relativement étroite (~800px).
+const LIMITE_PROJET_JOURS = 730;
+const ZOOM_MIN = 0.5;
+const ZOOM_MAX = 32;
+const ZOOM_STEP = 4;
+const LABEL_W = 300; // doit correspondre à --label-w
+let ZOOM_CENTER_DAY = null; // jour absolu à recentrer après un zoom (null = comportement par défaut)
+
+function setJourPx(px){
+  // Pas d'arrondi ici : un arrondi vers le haut (ex: 1.9 -> 2) peut suffire
+  // à faire dépasser la largeur disponible et laisser une barre de scroll
+  // résiduelle après un calcul "Vue d'ensemble". Le CSS gère très bien les
+  // valeurs fractionnaires de pixels.
+  JOUR_PX = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, px));
+  document.documentElement.style.setProperty("--jour", JOUR_PX + "px");
+  const label = document.getElementById("zoom-level-label");
+  if(label) label.textContent = Math.round((JOUR_PX / ZOOM_DEFAUT) * 100) + "%";
+}
+
+function capturerCentreJour(){
+  const scrollDiv = document.getElementById("timeline-scroll");
+  if(!scrollDiv || !allData || allData.minI === undefined) return null;
+  const centreX = scrollDiv.scrollLeft + Math.max(0, (scrollDiv.clientWidth - LABEL_W)) / 2;
+  const centreJourOffset = centreX / JOUR_PX;
+  return allData.minI + centreJourOffset;
+}
+
+function zoomAvant(){
+  ZOOM_CENTER_DAY = capturerCentreJour();
+  setJourPx(JOUR_PX + ZOOM_STEP);
+  construire();
+}
+function zoomArriere(){
+  ZOOM_CENTER_DAY = capturerCentreJour();
+  setJourPx(JOUR_PX - ZOOM_STEP);
+  construire();
+}
+function zoomReinitialiser(){
+  ZOOM_CENTER_DAY = capturerCentreJour();
+  setJourPx(ZOOM_DEFAUT);
+  construire();
+}
+function zoomVueEnsemble(){
+  const scrollDiv = document.getElementById("timeline-scroll");
+  if(!scrollDiv || !allData || !allData.totalJours) return;
+  const largeurDispo = Math.max(100, scrollDiv.clientWidth - LABEL_W - 24);
+  // Petite marge de sécurité (3%) pour absorber les arrondis de rendu
+  // (bordures, paddings) et éviter qu'une barre de scroll résiduelle
+  // n'apparaisse malgré un calcul "pile poil".
+  const pxParJour = (largeurDispo / allData.totalJours) * 0.97;
+  ZOOM_CENTER_DAY = null; // on veut voir depuis le début, pas centré
+  setJourPx(pxParJour);
+  construire();
+  setTimeout(()=>{ scrollDiv.scrollLeft = 0; }, 320);
+}
+
+// Centre la vue sur la date du jour, sans changer le niveau de zoom.
+function allerAujourdhui(){
+  const scrollDiv = document.getElementById("timeline-scroll");
+  if(!scrollDiv || !allData || allData.todayOffset === undefined) return;
+  // Une seule formule de positionnement, réutilisée partout : plus de double
+  // calcul (ZOOM_CENTER_DAY + rebuild complet du Gantt) qui pouvait diverger
+  // ou se baser sur un clientWidth mesuré trop tôt quand le DOM est volumineux
+  // (beaucoup de projets/tâches → reflow plus lent).
+  const cible = allData.todayOffset*JOUR_PX - Math.max(0, (scrollDiv.clientWidth - LABEL_W)) / 2;
+  scrollDiv.scrollTo({left: Math.max(0, cible), behavior: "smooth"});
+}
+
+function allerDebut(){
+  const scrollDiv = document.getElementById("timeline-scroll");
+  if(!scrollDiv || !allData) return;
+  const minVisible = calculerPremiereDateVisible();
+  if(minVisible === null) return;
+  // Contrairement à "Aujourd'hui", on ne centre pas : on amène la première
+  // date visible juste après le bord gauche, avec une petite marge de confort.
+  const offsetDebut = (minVisible - allData.minI) * JOUR_PX;
+  scrollDiv.scrollTo({left: Math.max(0, offsetDebut - 20), behavior: "smooth"});
+}
+
+// Première date parmi les tâches/jalons des projets NON pliés uniquement.
+// Distinct de allData.minI (qui lui reste stable, calculé sur tous les
+// projets, pour ne jamais faire bouger l'échelle horizontale au pli/dépli —
+// voir le fix "plier un projet décale toute la frise").
+function calculerPremiereDateVisible(){
+  // "Visible" = ni replié (COLLAPSED_PROJETS) NI masqué par les filtres
+  // Section/Projet actifs (FILTRES_ACTIFS). Avant ce correctif, seul le pli
+  // était pris en compte : filtrer un projet spécifique le laissait quand
+  // même compter dans le calcul, et le bouton "Début" scrollait alors vers
+  // une date appartenant à un projet invisible à l'écran (semblait "ne rien faire").
+  const projetsAffichesIds = new Set(obtenirProjetsAffiches().map(p=>p.id));
+  const dates = [];
+  DB.taches.forEach(t => {
+    const pid = refId(t.Projet);
+    if(COLLAPSED_PROJETS.has(pid)) return;
+    if(!projetsAffichesIds.has(pid)) return;
+    const dIdx = dayIndex(t.Date_debut);
+    if(dIdx !== null) dates.push(dIdx);
+  });
+  DB.jalons.forEach(j => {
+    const pid = refId(j.Projet);
+    if(COLLAPSED_PROJETS.has(pid)) return;
+    if(!projetsAffichesIds.has(pid)) return;
+    const dIdx = dayIndex(j.Date);
+    if(dIdx !== null) dates.push(dIdx);
+  });
+  return dates.length > 0 ? Math.min(...dates) : null;
+}
+
+// Scroll auto (alignement à gauche, pas de centrage) vers la première date
+// visible : déclenché à l'ouverture du Gantt et au dépli d'un projet.
+function scrollVersDebutVisible(smooth){
+  const scrollDiv = document.getElementById("timeline-scroll");
+  if(!scrollDiv || !allData) return;
+  const minVisible = calculerPremiereDateVisible();
+  if(minVisible === null) return;
+  const offsetDebut = (minVisible - allData.minI) * JOUR_PX;
+  scrollDiv.scrollTo({left: Math.max(0, offsetDebut - 20), behavior: smooth ? "smooth" : "auto"});
+}
+
+grist.ready({requiredAccess:"full"});
+
+function columnarToRows(data){
+  if(!data || typeof data!=="object") return [];
+  if(Array.isArray(data)) return data;
+  const keys=Object.keys(data);
+  if(keys.length===0) return [];
+  const firstCol=data[keys[0]];
+  if(!Array.isArray(firstCol)) return [];
+  const rows=[];
+  for(let i=0;i<firstCol.length;i++){
+    const row={};
+    keys.forEach(k=>row[k]=data[k][i]);
+    rows.push(row);
+  }
+  return rows;
+}
+
+// Retire des données en mémoire tout projet archivé (colonne Projets.$Archive
+// cochée) ainsi que tout ce qui en dépend (tâches, jalons, sous-actions).
+// Appelée juste après le chargement, une seule fois : plus aucune fonction
+// du widget n'a ensuite connaissance des projets archivés — évite d'avoir à
+// ajouter une vérification "si Archive alors ignorer" dans chaque filtre,
+// chaque liste déroulante, chaque calcul (source d'oublis, cf. Kanban).
+function exclureProjetsArchives(){
+  DB.projets = DB.projets.filter(p => p['$Archive'] !== true);
+  const projetsVisiblesIds = new Set(DB.projets.map(p => p.id));
+  DB.taches = (DB.taches || []).filter(t => projetsVisiblesIds.has(refId(t.Projet)));
+  DB.jalons = (DB.jalons || []).filter(j => projetsVisiblesIds.has(refId(j.Projet)));
+  if(DB.actions){
+    const tachesVisiblesIds = new Set(DB.taches.map(t => t.id));
+    DB.actions = DB.actions.filter(a => tachesVisiblesIds.has(refId(a.Tache)));
+  }
+}
+
+function getPredecessorTasks(task){
+  const raw = task.Predecesseurs;
+  if(!raw) return [];
+  if(!Array.isArray(raw)) return [];
+  if(raw[0] === 'L'){
+    return raw.slice(1).map(id => DB.taches.find(t => t.id === id)).filter(Boolean);
+  }
+  if(raw[0] === 'E'){
+    console.warn("⚠️ Cellule Predecesseurs corrompue pour la tâche", task.id);
+    return [];
+  }
+  return raw.map(id => (typeof id === 'object' ? id : DB.taches.find(t => t.id === id))).filter(Boolean);
+}
+
+function getPredecessorsBlocked(task){
+  const preds = getPredecessorTasks(task);
+  return preds.filter(pred => {
+    const predStatut = resolveRef(DB.parametres, pred.Statut, "Statut");
+    return norm(predStatut) !== norm("Terminé");
+  });
+}
+
+// Liens Livrable : un jalon peut requérir des tâches, une tâche peut être déclenchée par des jalons
+function parseListeReference(raw, table){
+  if(!raw) return [];
+  if(!Array.isArray(raw)) return [];
+  if(raw[0] === 'L'){
+    return raw.slice(1).map(id => table.find(x => x.id === id)).filter(Boolean);
+  }
+  if(raw[0] === 'E') return [];
+  return raw.map(id => (typeof id === 'object' ? id : table.find(x => x.id === id))).filter(Boolean);
+}
+function getJalonTachesRequises(jalon){
+  return parseListeReference(jalon.Taches_requises, DB.taches);
+}
+// Décode le format "Choix multiple" de Grist (['L', 'Livrable']) en simple texte
+function getJalonTypeTexte(jalon){
+  const raw = jalon.Type;
+  if(!raw) return "";
+  if(Array.isArray(raw)){
+    if(raw[0]==='L') return raw[1] || "";
+    if(raw[0]==='E') return "";
+    return "";
+  }
+  return raw;
+}
+function getTacheJalonsDeclencheurs(task){
+  return parseListeReference(task.Jalon_declencheur, DB.jalons);
+}
+// Date_cible d'un projet = date du dernier Livrable Important.
+// Fallback : si aucun Livrable Important, date du dernier Livrable (tout court).
+// Calculée à la volée (pas de formule Grist), recalculée à chaque construire().
+function getJalonTachesRequisesNonTerminees(jalon){
+  return getJalonTachesRequises(jalon).filter(t=>{
+    const statutTexte = resolveRef(DB.parametres, t.Statut, "Statut");
+    return norm(statutTexte) !== norm("Terminé");
+  });
+}
+// Un jalon-livrable est "atteint" si toutes ses tâches requises sont Terminé
+// (à défaut de tâche requise liée, on se base sur sa date)
+function getJalonAtteint(jalon){
+  const requises = getJalonTachesRequises(jalon);
+  if(requises.length > 0){
+    return requises.every(t => norm(resolveRef(DB.parametres, t.Statut, "Statut")) === norm("Terminé"));
+  }
+  const d = parseDate(jalon.Date);
+  return d ? (Date.now() >= d.getTime()) : false;
+}
+// Jalons-livrables que CETTE tâche conditionne (elle fait partie de leurs Taches_requises)
+function getJalonsConditionnesParTache(task){
+  return DB.jalons.filter(j => norm(getJalonTypeTexte(j))===norm("Livrable") && getJalonTachesRequises(j).some(t=>t.id===task.id));
+}
+
+// Détection de cycle unifiée sur le graphe mixte Tâches + Jalons (liens Livrable)
+// nodeKey format : "T:<id>" pour une tâche, "J:<id>" pour un jalon
+function getSuccessorsUnifies(nodeKey){
+  const [type, idStr] = nodeKey.split(':');
+  const id = parseInt(idStr);
+  const succ = [];
+  if(type === 'T'){
+    DB.taches.forEach(t=>{ if(getPredecessorTasks(t).some(p=>refId(p.id||p)===id)) succ.push('T:'+t.id); });
+    DB.jalons.forEach(j=>{ if(getJalonTachesRequises(j).some(x=>x.id===id)) succ.push('J:'+j.id); });
+  } else {
+    DB.taches.forEach(t=>{ if(getTacheJalonsDeclencheurs(t).some(x=>x.id===id)) succ.push('T:'+t.id); });
+  }
+  return succ;
+}
+function isDescendantUnifie(startKey, candidateKey, visited){
+  visited = visited || new Set();
+  if(startKey === candidateKey) return true;
+  if(visited.has(startKey)) return false;
+  visited.add(startKey);
+  for(const succ of getSuccessorsUnifies(startKey)){
+    if(isDescendantUnifie(succ, candidateKey, visited)) return true;
+  }
+  return false;
+}
+
+function isDescendant(taskId, candidateId, visited){
+  visited = visited || new Set();
+  if(taskId === candidateId) return true;
+  if(visited.has(taskId)) return false;
+  visited.add(taskId);
+  const successeurs = DB.taches.filter(t => getPredecessorTasks(t).some(p => refId(p.id||p) === taskId));
+  for(const succ of successeurs){
+    if(isDescendant(succ.id, candidateId, visited)) return true;
+  }
+  return false;
+}
+
+// Calcule les tâches structurellement "en retard" : une tâche T2 est en retard
+// si l'un de ses prédécesseurs T1 a une Date_fin postérieure à la Date_debut de T2
+// (l'enchaînement logique des dates n'est plus respecté). Idem pour un jalon dont
+// une Taches_requises finit après la date du jalon.
+// Ne modifie aucune donnée Grist : recalculé à la volée à chaque construire().
+function calculerRetardsStructurels(){
+  const provoque = {}; // "T:id" ou "J:id" -> [ {genre,nom} ... ] (ce que cet élément met en retard)
+  const subit    = {}; // "T:id" ou "J:id" -> [ nom du/des responsable(s) ]
+
+  function ajouterProvoque(cleSource, genre, nom){
+    (provoque[cleSource] = provoque[cleSource]||[]).push({genre,nom});
+  }
+  function ajouterSubit(cleCible, nomResponsable){
+    (subit[cleCible] = subit[cleCible]||[]).push(nomResponsable);
+  }
+
+  DB.taches.forEach(t=>{
+    const finT = parseDate(t.Date_fin);
+    if(!finT) return;
+
+    // Successeurs tâches (Predecesseurs)
+    DB.taches.forEach(s=>{
+      if(s.id===t.id) return;
+      const estSuccesseur = getPredecessorTasks(s).some(p=>refId(p.id||p)===t.id);
+      if(!estSuccesseur) return;
+      const debutS = parseDate(s.Date_debut);
+      if(debutS && finT > debutS){
+        ajouterProvoque(`T:${t.id}`, "tache", s.Tache);
+        ajouterSubit(`T:${s.id}`, t.Tache);
+      }
+    });
+
+    // Successeurs jalons (Taches_requises)
+    DB.jalons.forEach(j=>{
+      if(norm(getJalonTypeTexte(j))!==norm("Livrable")) return;
+      const estRequise = getJalonTachesRequises(j).some(rt=>rt.id===t.id);
+      if(!estRequise) return;
+      const dateJ = parseDate(j.Date);
+      if(dateJ && finT > dateJ){
+        ajouterProvoque(`T:${t.id}`, "jalon", j.Nom);
+        ajouterSubit(`J:${j.id}`, t.Tache);
+      }
+    });
+  });
+
+  return { provoque, subit };
+}
+
+// Accès pratique : le badge "provoque" et "subit" d'un élément donné.
+function getRetardStructurel(genre, id){
+  const cle = (genre==="tache"?"T:":"J:")+id;
+  const r = RETARDS_STRUCTURELS || {provoque:{},subit:{}};
+  return {
+    provoque: r.provoque[cle] || [],
+    subit:    r.subit[cle]    || []
+  };
+}
+let RETARDS_STRUCTURELS = {provoque:{}, subit:{}};
+
+let INIT_EN_COURS = false;
+let NON_ATTRIBUE_VERIFIE = false;
+let PREMIER_CHARGEMENT = true; // le scroll vers la 1ère date visible ne se déclenche qu'à l'ouverture, pas à chaque reload de données
+
+// ============================================================================
+// GESTION DES FILTRES SECTION & PROJET (chips cliquables)
+// ============================================================================
+// IMPORTANT : les "sections" n'existent, en tant que valeurs, que via le champ
+// Projets.Section (référence vers PARAMETRES). PARAMETRES.Section est le texte
+// brut de la valeur elle-même (une ligne = un nom de section), donc on ne peut
+// pas le "resolveRef" comme une référence — sinon on retombe sur des libellés
+// de projets par erreur. On dérive donc la liste des sections en parcourant
+// les projets, pas PARAMETRES directement.
+
+function obtenirSectionsUniques(){
+  // Retourne les sections réellement utilisées par des projets,
+  // dans l'ordre d'apparition des projets (qui reflète l'ordre PARAMETRES
+  // via l'ordre naturel d'ajout des projets).
+  // IMPORTANT : on ne lit PAS la colonne "Section" en dur — Grist peut l'avoir
+  // renommée (ex: "$Section2" en cas de doublon détecté par detectParametresSchema()).
+  // Le reste du code (openProjetEdit, saveProjet) utilise déjà SCHEMA_PARAMETRES.section
+  // pour cette raison ; on fait pareil ici pour rester cohérent.
+  const colSection = SCHEMA_PARAMETRES.section || "Section";
+  const vues = new Set();
+  const sections = [];
+  DB.projets.forEach(proj=>{
+    const sid = refId(proj.Section);
+    if(sid !== null && sid !== undefined && !vues.has(sid)){
+      const nom = resolveRef(DB.parametres, proj.Section, colSection);
+      if(nom){
+        vues.add(sid);
+        sections.push({id:sid, nom});
+      }
+    }
+  });
+  return sections;
+}
+
+function obtenirProjetsParSection(sectionIds){
+  // Retourne les projets dont la Section est dans sectionIds.
+  // Si aucune section n'est cochée, ne retourne rien : la liste "Projet"
+  // reste vide tant qu'on n'a pas choisi une section (le Gantt, lui,
+  // continue d'afficher tous les projets — voir construire()).
+  if(sectionIds.size === 0) return [];
+  return DB.projets.filter(proj=>sectionIds.has(refId(proj.Section)));
+}
+
+// Liste des projets RÉELLEMENT affichés dans le Gantt compte tenu des filtres
+// Section/Projet actifs — même logique que celle utilisée dans construire()
+// pour dessiner les lignes. Centralisée ici pour être réutilisée partout où
+// on a besoin de savoir "quels projets sont visibles à l'écran" (ex: bouton
+// "Début"), afin que ces deux notions ne puissent jamais diverger.
+function obtenirProjetsAffiches(){
+  let projetsAffichage = DB.projets;
+  if(FILTRES_ACTIFS.projets.size > 0){
+    projetsAffichage = DB.projets.filter(p=>FILTRES_ACTIFS.projets.has(p.id));
+  } else if(FILTRES_ACTIFS.sections.size > 0){
+    projetsAffichage = DB.projets.filter(p=>{
+      const projSectionId = refId(p.Section);
+      return FILTRES_ACTIFS.sections.has(projSectionId);
+    });
+  }
+  return projetsAffichage;
+}
+
+function creerChip(label, isActive, onClick){
+  const chip = document.createElement("button");
+  chip.type = "button";
+  chip.className = "filter-chip" + (isActive ? " active" : "");
+  chip.textContent = label;
+  chip.onclick = onClick;
+  return chip;
+}
+
+function populerFiltresSection(){
+  const container = document.getElementById("filter-sections-chips");
+  container.innerHTML = "";
+  const sections = obtenirSectionsUniques();
+
+  if(sections.length === 0){
+    container.innerHTML = '<span class="filter-chips-empty">Aucune section trouvée</span>';
+    return;
+  }
+
+  sections.forEach(section=>{
+    const isActive = FILTRES_ACTIFS.sections.has(section.id);
+    const chip = creerChip(section.nom, isActive, ()=>{
+      if(FILTRES_ACTIFS.sections.has(section.id)){
+        FILTRES_ACTIFS.sections.delete(section.id);
+      } else {
+        FILTRES_ACTIFS.sections.add(section.id);
+      }
+      // Une section change → on réinitialise les projets cochés (cascade)
+      FILTRES_ACTIFS.projets.clear();
+      populerFiltresSection();
+      populerFiltresProjets();
+      construire();
+    });
+    container.appendChild(chip);
+  });
+}
+
+function populerFiltresProjets(){
+  const container = document.getElementById("filter-projets-chips");
+  container.innerHTML = "";
+
+  const projetsDisponibles = obtenirProjetsParSection(FILTRES_ACTIFS.sections);
+
+  if(FILTRES_ACTIFS.sections.size === 0){
+    container.innerHTML = '<span class="filter-chips-empty">Sélectionnez une section</span>';
+    return;
+  }
+  if(projetsDisponibles.length === 0){
+    container.innerHTML = '<span class="filter-chips-empty">Aucun projet dans cette section</span>';
+    return;
+  }
+
+  projetsDisponibles.forEach(proj=>{
+    const isActive = FILTRES_ACTIFS.projets.has(proj.id);
+    const chip = creerChip(proj.Projet, isActive, ()=>{
+      if(FILTRES_ACTIFS.projets.has(proj.id)){
+        FILTRES_ACTIFS.projets.delete(proj.id);
+      } else {
+        FILTRES_ACTIFS.projets.add(proj.id);
+      }
+      populerFiltresProjets();
+      construire();
+    });
+    container.appendChild(chip);
+  });
+}
+
+async function init(){
+  if(INIT_EN_COURS) return; // évite les appels concurrents (ex: cascade déclenchée par onRecords)
+  INIT_EN_COURS = true;
+  try{
+    document.getElementById("status").textContent="Chargement...";
+    DB.projets      = columnarToRows(await grist.docApi.fetchTable("Projets"));
+    DB.jalons       = columnarToRows(await grist.docApi.fetchTable("Jalons"));
+    DB.taches       = columnarToRows(await grist.docApi.fetchTable("Taches"));
+    DB.parametres   = columnarToRows(await grist.docApi.fetchTable("PARAMETRES"));
+    detectParametresSchema();  // ← Déterminer les vrais noms des champs
+    DB.actions      = columnarToRows(await grist.docApi.fetchTable("ACTIONS"));
+    exclureProjetsArchives();  // ← Retirer les projets archivés + tout ce qui en dépend
+
+    // ✅ S'assurer qu'un agent "Non attribué" existe dans PARAMETRES.Equipe
+    if(!NON_ATTRIBUE_VERIFIE){
+      let nonAttribue = DB.parametres.find(r => norm(r.Equipe) === norm("Non attribué"));
+      if(!nonAttribue){
+        await grist.docApi.applyUserActions([["AddRecord","PARAMETRES",null,{Equipe:"Non attribué"}]]);
+        DB.parametres = columnarToRows(await grist.docApi.fetchTable("PARAMETRES"));
+        nonAttribue = DB.parametres.find(r => norm(r.Equipe) === norm("Non attribué"));
+      }
+      NON_ATTRIBUE_ID = nonAttribue ? nonAttribue.id : null;
+      NON_ATTRIBUE_VERIFIE = true;
+    } else {
+      const nonAttribue = DB.parametres.find(r => norm(r.Equipe) === norm("Non attribué"));
+      NON_ATTRIBUE_ID = nonAttribue ? nonAttribue.id : NON_ATTRIBUE_ID;
+    }
+
+    populateSelects();
+    populerFiltresSection();
+    populerFiltresProjets();
+    construire();
+    if(PREMIER_CHARGEMENT){
+      PREMIER_CHARGEMENT = false;
+      setTimeout(()=>scrollVersDebutVisible(false), 350); // false = pas d'animation, positionnement direct à l'ouverture
+    }
+    document.getElementById("status").textContent="✓ Données chargées";
+  }catch(e){
+    console.error("❌", e);
+    document.getElementById("status").textContent="❌ "+e.message;
+  }finally{
+    INIT_EN_COURS = false;
+  }
+}
+
+function fillSelect(id, values, placeholder){
+  const sel=document.getElementById(id);
+  sel.innerHTML=`<option value="">${placeholder}</option>`;
+  values.forEach(v=>{
+    const opt=document.createElement("option");
+    opt.value=v; opt.textContent=v;
+    sel.appendChild(opt);
+  });
+}
+// ============================================================================
+// DÉTECTION AUTO DU SCHÉMA PARAMETRES (en cas de renommage par Grist)
+// ============================================================================
+let SCHEMA_PARAMETRES = { section: null, type: null, statut: null, equipe: null };
+
+// Déterminer les vrais noms des champs dans PARAMETRES (Grist renomme les colonnes
+// dupliquées, ex: "Section" → "Section" et "Section" → "$Section2"). Plutôt que de
+// chercher par le CONTENU (signatures ambiguës), on cherche par le NOM de la colonne
+// lui-même — c'est simple, explicite, et s'adapte à n'importe quelles données.
+//
+// PIÈGE CORRIGÉ : si PLUSIEURS colonnes matchent un même motif (ex: une colonne
+// "Section" fantôme/vide ET "$Section2" qui contient les vraies valeurs), on ne
+// peut pas se contenter de prendre la première trouvée — il faut vérifier laquelle
+// contient réellement des données, sur TOUTES les lignes (pas juste la première).
+function detectParametresSchema(){
+  if(!DB.parametres || DB.parametres.length === 0) {
+    console.log("❌ DB.parametres vide ou non chargée");
+    return;
+  }
+
+  // Compte le nombre de valeurs non-vides pour une colonne donnée, sur toutes les lignes
+  function nbValeursRemplies(field){
+    return DB.parametres.filter(row => row[field] !== null && row[field] !== undefined && row[field] !== "").length;
+  }
+
+  const toutesLesColonnes = new Set();
+  DB.parametres.forEach(row => Object.keys(row).forEach(k => toutesLesColonnes.add(k)));
+
+  function trouverMeilleureColonne(predicat){
+    // Parmi toutes les colonnes qui matchent le prédicat, retourne celle
+    // avec le plus de valeurs remplies (la "vraie" colonne de données).
+    const candidats = [...toutesLesColonnes].filter(f => f !== 'id' && predicat(f));
+    if(candidats.length === 0) return null;
+    if(candidats.length === 1) return candidats[0];
+    let meilleur = candidats[0], meilleurScore = nbValeursRemplies(candidats[0]);
+    for(const c of candidats.slice(1)){
+      const score = nbValeursRemplies(c);
+      if(score > meilleurScore){ meilleur = c; meilleurScore = score; }
+    }
+    return meilleur;
+  }
+
+  SCHEMA_PARAMETRES.section = trouverMeilleureColonne(f => /^\$?section\d*$/i.test(f));
+  SCHEMA_PARAMETRES.type    = trouverMeilleureColonne(f => /^type[_ ]?projet$/i.test(f) || /^\$?type_?projet\d*$/i.test(f));
+  SCHEMA_PARAMETRES.statut  = trouverMeilleureColonne(f => /^\$?statut\d*$/i.test(f));
+  SCHEMA_PARAMETRES.equipe  = trouverMeilleureColonne(f => /^\$?(equipe|équipe)\d*$/i.test(f));
+
+  // FALLBACK: si la détection par regex a échoué, essayer les noms en dur connus
+  if(!SCHEMA_PARAMETRES.section && [...toutesLesColonnes].includes('$Section2')){
+    SCHEMA_PARAMETRES.section = '$Section2';
+    console.log("  ⚠️  Fallback: détection regex échouée, utilisant $Section2 directement");
+  }
+  if(!SCHEMA_PARAMETRES.type && [...toutesLesColonnes].includes('$Type_Projet2')){
+    SCHEMA_PARAMETRES.type = '$Type_Projet2';
+  }
+  if(!SCHEMA_PARAMETRES.statut && [...toutesLesColonnes].includes('$Statut2')){
+    SCHEMA_PARAMETRES.statut = '$Statut2';
+  }
+  if(!SCHEMA_PARAMETRES.equipe && [...toutesLesColonnes].includes('$Equipe2')){
+    SCHEMA_PARAMETRES.equipe = '$Equipe2';
+  }
+
+  console.log("=== DÉTECTION SCHÉMA PARAMETRES (colonne avec le plus de données) ===");
+  console.log("Colonnes disponibles:", [...toutesLesColonnes].sort());
+  console.log("Schéma final:", SCHEMA_PARAMETRES);
+  console.log("  Section → ", SCHEMA_PARAMETRES.section || "❌ NON TROUVÉE");
+  console.log("  Type    → ", SCHEMA_PARAMETRES.type    || "❌ NON TROUVÉE");
+  console.log("  Statut  → ", SCHEMA_PARAMETRES.statut  || "❌ NON TROUVÉE");
+  console.log("  Equipe  → ", SCHEMA_PARAMETRES.equipe  || "❌ NON TROUVÉE");
+  console.log("==========================================================");
+}
+
+function uniq(arr){ return arr.filter((v,i,a)=>a.indexOf(v)===i); }
+
+function populateSelects(){
+  // Lire les colonnes directement par leur nom Grist (pas de détection compliquée)
+  // C'est la même approche que dans Kanbanv9 : simple, robuste, lisible
+  
+  // Section (Projets)
+  const sections = DB.parametres.filter(p=>p.Section);
+  if(sections.length > 0){
+    fillSelect("field-projet-section", sections.map(r=>({value:r.Section, label:r.Section})), "-- Sélectionner --");
+  }
+  
+  // Type_Projet
+  const types = DB.parametres.filter(p=>p.Type_Projet);
+  if(types.length > 0){
+    fillSelect("field-projet-type", types.map(r=>({value:r.Type_Projet, label:r.Type_Projet})), "-- Sélectionner --");
+  }
+  
+  // Statut
+  const statuts = DB.parametres.filter(p=>p.Statut);
+  if(statuts.length > 0){
+    fillSelect("field-tache-statut", statuts.map(r=>({value:r.Statut, label:r.Statut})), "-- Sélectionner --");
+  }
+  
+  // Equipe (Tâches et Actions)
+  const agents = DB.parametres.filter(p=>p.Equipe);
+  if(agents.length > 0){
+    fillSelect("field-tache-equipe", agents.map(r=>({value:r.Equipe, label:r.Equipe})), "-- Aucun --");
+    fillSelect("field-action-equipe", agents.map(r=>({value:r.Equipe, label:r.Equipe})), "-- Aucun --");
+  }
+}
+
+function openModal(id){ document.getElementById(id).classList.add("active"); }
+function closeModal(id){ document.getElementById(id).classList.remove("active"); }
+
+function toggleProjetCollapse(projId){
+  const etaitPlie = COLLAPSED_PROJETS.has(projId);
+  if(etaitPlie){
+    COLLAPSED_PROJETS.delete(projId);
+  } else {
+    COLLAPSED_PROJETS.add(projId);
+  }
+  construire();
+  
+  // Masquer/afficher les labels des tâches de ce projet
+  const labelsDiv = document.getElementById("labels");
+  const tacheLabels = labelsDiv.querySelectorAll(`.label.tache[data-projet="${projId}"]`);
+  tacheLabels.forEach(label => {
+    if(COLLAPSED_PROJETS.has(projId)){
+      label.classList.add("hidden");
+    } else {
+      label.classList.remove("hidden");
+    }
+  });
+
+  // Dépli (etaitPlie=true → le projet redevient visible) : recentrer sur la
+  // 1ère date parmi les projets désormais visibles. Pas de scroll au pli.
+  if(etaitPlie){
+    setTimeout(()=>scrollVersDebutVisible(true), 50);
+  }
+}
+
+function datePaques(annee){
+  const a = annee % 19;
+  const b = Math.floor(annee / 100);
+  const c = annee % 100;
+  const d = Math.floor(b / 4);
+  const e = b % 4;
+  const f = Math.floor((b + 8) / 25);
+  const g = Math.floor((b - f + 1) / 3);
+  const h = (19 * a + b - d - g + 15) % 30;
+  const i = Math.floor(c / 4);
+  const k = c % 4;
+  const l = (32 + 2 * e + 2 * i - h - k) % 7;
+  const m = Math.floor((a + 11 * h + 22 * l) / 451);
+  const mois = Math.floor((h + l - 7 * m + 114) / 31);
+  const jour = ((h + l - 7 * m + 114) % 31) + 1;
+  return new Date(annee, mois - 1, jour);
+}
+
+function joursFeriesAnnee(annee){
+  const paques = datePaques(annee);
+  const addJours = (date, n) => { const d = new Date(date); d.setDate(d.getDate() + n); return d; };
+  const cles = (d) => `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+  const feries = [
+    new Date(annee, 0, 1), addJours(paques, 1), new Date(annee, 4, 1), new Date(annee, 4, 8),
+    addJours(paques, 39), addJours(paques, 50), new Date(annee, 6, 14), new Date(annee, 7, 15),
+    new Date(annee, 10, 1), new Date(annee, 10, 11), new Date(annee, 11, 25),
+  ];
+  return new Set(feries.map(cles));
+}
+
+const CACHE_FERIES = {};
+function estFerie(date){
+  const annee = date.getFullYear();
+  if(!CACHE_FERIES[annee]) CACHE_FERIES[annee] = joursFeriesAnnee(annee);
+  const cle = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+  return CACHE_FERIES[annee].has(cle);
+}
+
+function joursOuvres(d1, d2){
+  let n=0;
+  const cur=new Date(d1);
+  while(cur<=d2){
+    const j=cur.getDay();
+    if(j!==0 && j!==6 && !estFerie(cur)) n++;
+    cur.setDate(cur.getDate()+1);
+  }
+  return n;
+}
+
+// Utilitaires jours ouvrés pour la propagation PERT (chemin critique)
+function estJourOuvre(date){
+  const j=date.getDay();
+  return j!==0 && j!==6 && !estFerie(date);
+}
+function jourOuvreSuivant(date){
+  const d=new Date(date);
+  d.setDate(d.getDate()+1);
+  while(!estJourOuvre(d)) d.setDate(d.getDate()+1);
+  return d;
+}
+function jourOuvrePrecedent(date){
+  const d=new Date(date);
+  d.setDate(d.getDate()-1);
+  while(!estJourOuvre(d)) d.setDate(d.getDate()-1);
+  return d;
+}
+// Renvoie la date de fin après n jours ouvrés en comptant "date" comme jour 1 (cohérent avec Duree_jours)
+function ajouterJoursOuvres(date, n){
+  const d=new Date(date);
+  let restant=Math.max(1,n)-1;
+  while(restant>0){
+    d.setDate(d.getDate()+1);
+    if(estJourOuvre(d)) restant--;
+  }
+  return d;
+}
+// Opération inverse : retrouve la date de début connaissant la fin et la durée en jours ouvrés
+function soustraireJoursOuvres(date, n){
+  const d=new Date(date);
+  let restant=Math.max(1,n)-1;
+  while(restant>0){
+    d.setDate(d.getDate()-1);
+    if(estJourOuvre(d)) restant--;
+  }
+  return d;
+}
+// ─── Calcul date/durée en temps réel (sans toggle, détection automatique) ────
+// Règle simple :
+//   Si le dernier champ modifié est "Durée" → on calcule Date_fin
+//   Si le dernier champ modifié est "Date fin" → on calcule Durée
+//   Si Date début change → on recalcule celui des deux qui est déjà rempli
+// On stocke le "dernier intent" dans un attribut data pour éviter l'ambiguïté.
+
+let _dernierChampModifie = null; // "duree" ou "fin"
+
+function majDepuisDuree(){
+  _dernierChampModifie = "duree";
+  const debut = document.getElementById("field-tache-debut").value;
+  const duree = parseInt(document.getElementById("field-tache-duree").value)||0;
+  if(debut && duree>0){
+    const fin = ajouterJoursOuvres(new Date(debut), duree);
+    document.getElementById("field-tache-fin").value = toDateInput(Math.floor(fin.getTime()/1000));
+  }
+}
+
+function majDepuisFin(){
+  _dernierChampModifie = "fin";
+  const debut = document.getElementById("field-tache-debut").value;
+  const fin = document.getElementById("field-tache-fin").value;
+  if(debut && fin){
+    const n = joursOuvres(new Date(debut), new Date(fin));
+    document.getElementById("field-tache-duree").value = n>0 ? n : "";
+  }
+}
+
+function majDepuisDebut(){
+  const debut = document.getElementById("field-tache-debut").value;
+  if(!debut) return;
+  if(_dernierChampModifie === "duree" || !_dernierChampModifie){
+    majDepuisDuree();
+  } else {
+    majDepuisFin();
+  }
+}
+
+// Alias utilisé par les listeners generiques
+function majDuree(){ majDepuisDebut(); }
+
+function findParamId(col, valeur){
+  const ligne=DB.parametres.find(p=>p[col]===valeur);
+  return ligne?ligne.id:null;
+}
+function findAgentId(nom){
+  const r=DB.parametres.find(x=>x.Equipe===nom);
+  return r?r.id:null;
+}
+
+function openProjetCreate(){
+  populateSelects();
+  
+  document.getElementById("field-projet-id").value="";
+  document.getElementById("field-projet-nom").value="";
+  document.getElementById("field-projet-section").value="";
+  document.getElementById("field-projet-type").value="";
+  document.getElementById("field-projet-desc").value="";
+  document.getElementById("modal-projet-title").textContent="Nouveau Projet";
+  document.getElementById("btn-save-projet").textContent="Créer";
+  document.getElementById("btn-delete-projet").style.display="none";
+  openModal("modal-projet");
+}
+
+function openProjetEdit(proj){
+  // Repeupler les selects au moment de l'ouverture (en cas de rechargement async)
+  populateSelects();
+  
+  document.getElementById("field-projet-id").value=proj.id;
+  document.getElementById("field-projet-nom").value=proj.Projet||"";
+  document.getElementById("field-projet-section").value=resolveRef(DB.parametres, proj[SCHEMA_PARAMETRES.section], SCHEMA_PARAMETRES.section)||"";
+  document.getElementById("field-projet-type").value=resolveRef(DB.parametres, proj[SCHEMA_PARAMETRES.type], SCHEMA_PARAMETRES.type)||proj[SCHEMA_PARAMETRES.type]||"";
+  document.getElementById("field-projet-desc").value=proj.Description||"";
+  document.getElementById("modal-projet-title").textContent="Modifier le projet";
+  document.getElementById("btn-save-projet").textContent="Enregistrer";
+  document.getElementById("btn-delete-projet").style.display="inline-block";
+  openModal("modal-projet");
+}
+
+async function saveProjet(){
+  const id=document.getElementById("field-projet-id").value;
+  const nom=document.getElementById("field-projet-nom").value.trim();
+  const section=document.getElementById("field-projet-section").value;
+  const type=document.getElementById("field-projet-type").value;
+  const desc=document.getElementById("field-projet-desc").value.trim();
+  if(!nom || !section || !type){ alert("Champs obligatoires"); return; }
+  try{
+    const sectionId = DB.parametres.find(p => p[SCHEMA_PARAMETRES.section] === section)?.id;
+    const typeId = DB.parametres.find(p => p[SCHEMA_PARAMETRES.type] === type)?.id;
+    if(!sectionId || !typeId){ alert("Section ou Type invalide"); return; }
+    if(id){
+      await grist.docApi.applyUserActions([["UpdateRecord","Projets",parseInt(id),{Projet:nom, Section:sectionId, Type_Projet:typeId, Description:desc}]]);
+    }else{
+      await grist.docApi.applyUserActions([["AddRecord","Projets",null,{Projet:nom, Section:sectionId, Type_Projet:typeId, Description:desc}]]);
+    }
+    closeModal("modal-projet");
+    init();
+  }catch(e){ alert("Erreur: "+e.message); console.error(e); }
+}
+
+async function deleteProjet(){
+  const id=parseInt(document.getElementById("field-projet-id").value);
+  if(!id) return;
+  const tachesLiees=DB.taches.filter(t=>refId(t.Projet)===id);
+  const jalonsLies=DB.jalons.filter(j=>refId(j.Projet)===id);
+  const actionsLiees=tachesLiees.flatMap(t=>getActionsTache(t.id));
+  const msg=`Ce projet contient ${tachesLiees.length} tâche(s), ${jalonsLies.length} jalon(s) et ${actionsLiees.length} sous-action(s). Tout supprimer ?`;
+  if(!confirm(msg)) return;
+  try{
+    const actions=[];
+    // Sous-actions d'abord : sans cela elles resteraient orphelines en base.
+    actionsLiees.forEach(a=>actions.push(["RemoveRecord","ACTIONS",a.id]));
+    tachesLiees.forEach(t=>actions.push(["RemoveRecord","Taches",t.id]));
+    jalonsLies.forEach(j=>actions.push(["RemoveRecord","Jalons",j.id]));
+    actions.push(["RemoveRecord","Projets",id]);
+    await grist.docApi.applyUserActions(actions);
+    closeModal("modal-projet");
+    init();
+  }catch(e){ alert("Erreur: "+e.message); console.error(e); }
+}
+
+// ============================================================================
+// DUPLICATION / TEMPLATE DE PROJET RÉCURRENT
+// ============================================================================
+// Principe : chaque tâche/jalon du projet source est repéré par son décalage
+// en JOURS OUVRÉS par rapport à l'élément qui finit le plus tard dans le
+// projet (l'"ancrage", basé sur la Date_fin des tâches et la Date des jalons).
+// À la duplication, l'utilisateur saisit la nouvelle DATE DE FIN cible (ex:
+// date d'une CAP, d'un jury, d'une échéance réglementaire) et ce même
+// décalage en jours ouvrés est réappliqué EN ARRIÈRE depuis cette date —
+// cohérent avec le pilotage par échéance typique des processus RH, et avec
+// le calcul de durée en jours ouvrés déjà utilisé partout ailleurs (§5.3, §5.4).
+// La Date_debut de chaque tâche est toujours recalculée depuis sa Date_fin et
+// sa Duree_jours (jamais décalée indépendamment), ce qui garantit que la durée
+// d'origine est préservée à l'identique dans la copie.
+
+let DUPLI_EN_COURS  = false; // gèle le rechargement auto pendant la séquence d'écritures
+let DUPLI_SOURCE_ID = null;
+let DUPLI_ANCRAGE   = null; // Date (objet Date) la plus tardive du projet source
+
+// Décalage en jours ouvrés de `date` par rapport à `ancrage` (0 si identique,
+// négatif si `date` est antérieure à `ancrage` — le cas normal ici, puisque
+// l'ancrage est la date de fin la plus tardive du projet).
+function offsetOuvresDepuis(ancrage, date){
+  if(date.getTime() >= ancrage.getTime()) return joursOuvres(ancrage, date) - 1;
+  return -(joursOuvres(date, ancrage) - 1);
+}
+// Applique un décalage en jours ouvrés à une date d'ancrage donnée.
+function dateDecaleeOuvree(ancrage, offset){
+  if(offset >= 0) return ajouterJoursOuvres(ancrage, offset + 1);
+  return soustraireJoursOuvres(ancrage, Math.abs(offset) + 1);
+}
+
+// Renvoie l'ancrage du rétroplanning ainsi que les listes de tâches/jalons.
+// L'ancre suit la même définition que la Date_cible d'un projet (cf. §5.2) :
+//   1. dernier jalon Livrable *Fixe*  (échéance à ancrage hiérarchique dur)
+//   2. à défaut, dernier jalon Livrable
+//   3. à défaut, date la plus tardive du projet (fin de tâche ou jalon)
+// Motivation : dans un processus RH, l'échéance qui structure le rétroplanning
+// est le livrable (CAP, jury, publication), pas une tâche de clôture
+// administrative qui pourrait traîner après lui.
+function calculerAncrageEtItems(projetId){
+  const taches = DB.taches.filter(t=>refId(t.Projet)===projetId);
+  const jalons = DB.jalons.filter(j=>refId(j.Projet)===projetId);
+
+  function plusTardif(liste, getDate){
+    let best = null;
+    liste.forEach(x=>{
+      const d = getDate(x);
+      if(d && (!best || d > best.date)) best = { date:d, element:x };
+    });
+    return best;
+  }
+
+  const livrables = jalons.filter(j=>norm(getJalonTypeTexte(j))===norm("Livrable"));
+
+  let choix = plusTardif(livrables.filter(j=>j.Important===true), j=>parseDate(j.Date));
+  if(choix) return { ancrage:choix.date, ancrageLibelle:`Livrable fixe « ${choix.element.Nom} »`, taches, jalons };
+
+  choix = plusTardif(livrables, j=>parseDate(j.Date));
+  if(choix) return { ancrage:choix.date, ancrageLibelle:`Livrable « ${choix.element.Nom} »`, taches, jalons };
+
+  const candidats = [];
+  taches.forEach(t=>{ const d=parseDate(t.Date_fin); if(d) candidats.push({date:d, nom:t.Tache}); });
+  jalons.forEach(j=>{ const d=parseDate(j.Date); if(d) candidats.push({date:d, nom:j.Nom}); });
+  if(!candidats.length) return { ancrage:null, ancrageLibelle:null, taches, jalons };
+  candidats.sort((a,b)=>b.date-a.date);
+  return {
+    ancrage: candidats[0].date,
+    ancrageLibelle: `dernière échéance « ${candidats[0].nom} » (aucun livrable défini)`,
+    taches, jalons
+  };
+}
+
+function openDupliquerProjet(projetId){
+  const proj = DB.projets.find(p=>p.id===projetId);
+  if(!proj) return;
+  DUPLI_SOURCE_ID = projetId;
+  document.getElementById("field-dupli-projet-source").value = projetId;
+  document.getElementById("field-dupli-source-nom").value = proj.Projet;
+  document.getElementById("field-dupli-nom").value = proj.Projet + " (copie)";
+  document.getElementById("field-dupli-date-fin").value = "";
+  document.getElementById("dupli-apercu").style.display = "none";
+  document.getElementById("btn-confirmer-dupliquer").disabled = true;
+  document.getElementById("btn-confirmer-dupliquer").textContent = "Dupliquer";
+
+  const { ancrage, ancrageLibelle } = calculerAncrageEtItems(projetId);
+  DUPLI_ANCRAGE = ancrage;
+  const infoDiv = document.getElementById("dupli-info");
+  const ancrageDiv = document.getElementById("dupli-ancrage-info");
+  if(!ancrage){
+    ancrageDiv.textContent = "";
+    infoDiv.className = "info-box warning";
+    infoDiv.style.display = "block";
+    infoDiv.textContent = "Ce projet n'a aucune tâche ni jalon daté : rien à dupliquer.";
+  } else {
+    ancrageDiv.textContent = `Rétroplanning ancré sur : ${ancrageLibelle}, actuellement le ${fmtJourComplet(Math.floor(ancrage.getTime()/1000))}.`;
+    infoDiv.style.display = "none";
+  }
+  openModal("modal-dupliquer-projet");
+}
+
+// Recalcule l'aperçu (décalage + liste tâches/jalons) à chaque frappe.
+function majApercuDuplication(){
+  const nom = document.getElementById("field-dupli-nom").value.trim();
+  const dateVal = document.getElementById("field-dupli-date-fin").value;
+  const btn = document.getElementById("btn-confirmer-dupliquer");
+  const infoDiv = document.getElementById("dupli-info");
+  const apercuWrap = document.getElementById("dupli-apercu");
+  const apercuList = document.getElementById("dupli-apercu-list");
+
+  if(!DUPLI_ANCRAGE || !dateVal || !nom){
+    btn.disabled = true;
+    apercuWrap.style.display = "none";
+    if(DUPLI_ANCRAGE){ infoDiv.style.display = "none"; }
+    return;
+  }
+
+  const nouvelleAncrage = new Date(dateVal);
+  const { taches, jalons } = calculerAncrageEtItems(DUPLI_SOURCE_ID);
+  const nbActions = taches.reduce((n,t)=> n + getActionsTache(t.id).length, 0);
+
+  const items = [];
+  taches.forEach(t=>{
+    const d = parseDate(t.Date_fin);
+    if(!d) return;
+    const offset = offsetOuvresDepuis(DUPLI_ANCRAGE, d);
+    const nouvelleFin = dateDecaleeOuvree(nouvelleAncrage, offset);
+    const duree = t.Duree_jours || 1;
+    items.push({
+      genre:"tache", nom:t.Tache,
+      oldDate:d, newDate:nouvelleFin,
+      newDebut: soustraireJoursOuvres(nouvelleFin, duree)
+    });
+  });
+  jalons.forEach(j=>{
+    const d = parseDate(j.Date);
+    if(!d) return;
+    const offset = offsetOuvresDepuis(DUPLI_ANCRAGE, d);
+    items.push({ genre:"jalon", nom:j.Nom, oldDate:d, newDate: dateDecaleeOuvree(nouvelleAncrage, offset) });
+  });
+  items.sort((a,b)=>a.oldDate-b.oldDate);
+
+  const deltaOuvre = offsetOuvresDepuis(DUPLI_ANCRAGE, nouvelleAncrage);
+  // Premier démarrage du nouveau rétroplanning (date la plus précoce calculée)
+  const premierDebut = items.length ? new Date(Math.min(...items.map(i=>i.newDebut ? i.newDebut.getTime() : i.newDate.getTime()))) : null;
+  const aujourdhui = new Date(); aujourdhui.setHours(0,0,0,0);
+  const demarrePasse = premierDebut && premierDebut < aujourdhui;
+
+  infoDiv.className = demarrePasse ? "info-box warning" : "info-box";
+  infoDiv.style.display = "block";
+  infoDiv.textContent = `${taches.length} tâche(s), ${jalons.length} jalon(s), ${nbActions} sous-action(s) seront dupliqués. `
+    + `Décalage : ${deltaOuvre >= 0 ? "+" : ""}${deltaOuvre} jour(s) ouvré(s) `
+    + `(échéance actuelle : ${fmtJourComplet(Math.floor(DUPLI_ANCRAGE.getTime()/1000))} → nouvelle échéance : ${fmtJourComplet(Math.floor(nouvelleAncrage.getTime()/1000))}).`;
+  if(demarrePasse){
+    infoDiv.textContent += ` ⚠️ Avec cette échéance, le rétroplanning devrait démarrer le ${fmtJourComplet(Math.floor(premierDebut.getTime()/1000))}, soit dans le passé : l'échéance est trop proche pour tenir le processus complet.`;
+  }
+
+  apercuList.innerHTML = "";
+  items.forEach(item=>{
+    const ligne = document.createElement("div");
+    ligne.className = "cascade-recap-line";
+    const icone = document.createElement("span");
+    icone.textContent = item.genre==="jalon" ? "◆" : "▶";
+    icone.style.cssText = "font-size:10px;opacity:0.6;flex-shrink:0";
+    ligne.appendChild(icone);
+    const nomEl = document.createElement("span");
+    nomEl.className = "nom-element";
+    nomEl.textContent = item.nom;
+    ligne.appendChild(nomEl);
+    const dates = document.createElement("span");
+    dates.className = "dates-shift";
+    dates.textContent = `${fmtJourComplet(Math.floor(item.oldDate.getTime()/1000))} → ${fmtJourComplet(Math.floor(item.newDate.getTime()/1000))}`;
+    ligne.appendChild(dates);
+    apercuList.appendChild(ligne);
+  });
+  apercuWrap.style.display = items.length ? "block" : "none";
+
+  btn.disabled = false;
+}
+
+async function confirmerDuplicationProjet(){
+  const projetId = DUPLI_SOURCE_ID;
+  const proj = DB.projets.find(p=>p.id===projetId);
+  const nouveauNom = document.getElementById("field-dupli-nom").value.trim();
+  const dateVal = document.getElementById("field-dupli-date-fin").value;
+  if(!proj || !nouveauNom || !dateVal || !DUPLI_ANCRAGE){ alert("Champs obligatoires manquants"); return; }
+  const nouvelleAncrage = new Date(dateVal);
+
+  const btn = document.getElementById("btn-confirmer-dupliquer");
+  btn.disabled = true;
+  btn.textContent = "Duplication en cours…";
+
+  // La duplication enchaîne 5 écritures successives ; chacune déclenche
+  // grist.onRecords → init(), qui rechargerait DB en pleine séquence.
+  // On gèle ce rechargement jusqu'au init() final, maîtrisé.
+  DUPLI_EN_COURS = true;
+  try{
+    const { taches, jalons } = calculerAncrageEtItems(projetId);
+    const idsTachesSource = new Set(taches.map(t=>t.id));
+    const idsJalonsSource = new Set(jalons.map(j=>j.id));
+    const statutAFaireId = findParamId("Statut", "À faire");
+    let refsExternesIgnorees = 0;
+
+    // 1. Nouveau Projet (même Section / Type / Description que la source)
+    const resProjet = await grist.docApi.applyUserActions([
+      ["AddRecord","Projets",null,{
+        Projet: nouveauNom,
+        Section: refId(proj.Section),
+        Type_Projet: refId(proj.Type_Projet),
+        Description: proj.Description || ""
+      }]
+    ]);
+    const nouveauProjetId = resProjet.retValues[0];
+
+    // 2. Nouvelles Tâches — ancrées sur leur Date_fin (la Date_debut est
+    //    recalculée en arrière depuis la durée). Statut réinitialisé à
+    //    "À faire", Équipe conservée, Commentaires vidés ; Predecesseurs/
+    //    Jalon_declencheur posés à vide pour l'instant (remappés à l'étape 4,
+    //    une fois tous les nouveaux id connus).
+    const tacheActions = taches.map(t=>{
+      const fin = parseDate(t.Date_fin);
+      const offset = offsetOuvresDepuis(DUPLI_ANCRAGE, fin);
+      const nouvelleFin = dateDecaleeOuvree(nouvelleAncrage, offset);
+      const duree = t.Duree_jours || 1;
+      const nouveauDebut = soustraireJoursOuvres(nouvelleFin, duree);
+      return ["AddRecord","Taches",null,{
+        Section: refId(proj.Section),
+        Projet: nouveauProjetId,
+        Tache: t.Tache,
+        Date_debut: Math.floor(nouveauDebut.getTime()/1000),
+        Date_fin: Math.floor(nouvelleFin.getTime()/1000),
+        Duree_jours: duree,
+        Statut: statutAFaireId,
+        Equipe: refId(t.Equipe) || NON_ATTRIBUE_ID,
+        Commentaires: "",
+        Predecesseurs: ['L'],
+        Jalon_declencheur: ['L'],
+        Incompressible: t.Incompressible === true
+      }];
+    });
+    const resTaches = tacheActions.length ? await grist.docApi.applyUserActions(tacheActions) : {retValues:[]};
+    const mapTaches = {};
+    taches.forEach((t,i)=>{ mapTaches[t.id] = resTaches.retValues[i]; });
+
+    // 3. Nouveaux Jalons — Fixe (Important) conservé tel quel ; Taches_requises
+    //    posé à vide pour l'instant (remappé à l'étape 4).
+    const jalonActions = jalons.map(j=>{
+      const d = parseDate(j.Date);
+      const offset = offsetOuvresDepuis(DUPLI_ANCRAGE, d);
+      const nouvelleDate = dateDecaleeOuvree(nouvelleAncrage, offset);
+      return ["AddRecord","Jalons",null,{
+        Projet: nouveauProjetId,
+        Nom: j.Nom,
+        Date: Math.floor(nouvelleDate.getTime()/1000),
+        Type: j.Type || null,
+        Important: j.Important === true,
+        Taches_requises: ['L']
+      }];
+    });
+    const resJalons = jalonActions.length ? await grist.docApi.applyUserActions(jalonActions) : {retValues:[]};
+    const mapJalons = {};
+    jalons.forEach((j,i)=>{ mapJalons[j.id] = resJalons.retValues[i]; });
+
+    // 4. Remappage des références croisées vers les homologues dupliqués.
+    //    Toute référence qui pointerait (anormalement) hors du projet source
+    //    est ignorée et comptabilisée — l'interface ne permet pas de créer un
+    //    tel lien aujourd'hui, ce garde-fou ne couvre que des données historiques.
+    const updateTacheActions = [];
+    taches.forEach(t=>{
+      const predsMappes = getPredecessorTasks(t).map(p=>refId(p.id||p)).filter(id=>{
+        if(!idsTachesSource.has(id)){ refsExternesIgnorees++; return false; }
+        return true;
+      }).map(id=>mapTaches[id]).filter(Boolean);
+
+      const jalonsMappes = getTacheJalonsDeclencheurs(t).map(j=>j.id).filter(id=>{
+        if(!idsJalonsSource.has(id)){ refsExternesIgnorees++; return false; }
+        return true;
+      }).map(id=>mapJalons[id]).filter(Boolean);
+
+      if(predsMappes.length || jalonsMappes.length){
+        updateTacheActions.push(["UpdateRecord","Taches",mapTaches[t.id],{
+          Predecesseurs: ['L', ...predsMappes],
+          Jalon_declencheur: ['L', ...jalonsMappes]
+        }]);
+      }
+    });
+    if(updateTacheActions.length) await grist.docApi.applyUserActions(updateTacheActions);
+
+    const updateJalonActions = [];
+    jalons.forEach(j=>{
+      const requisesMappees = getJalonTachesRequises(j).map(t=>t.id).filter(id=>{
+        if(!idsTachesSource.has(id)){ refsExternesIgnorees++; return false; }
+        return true;
+      }).map(id=>mapTaches[id]).filter(Boolean);
+      if(requisesMappees.length){
+        updateJalonActions.push(["UpdateRecord","Jalons",mapJalons[j.id],{
+          Taches_requises: ['L', ...requisesMappees]
+        }]);
+      }
+    });
+    if(updateJalonActions.length) await grist.docApi.applyUserActions(updateJalonActions);
+
+    // 5. Sous-Actions (table ACTIONS) — rattachées aux nouvelles tâches,
+    //    Statut réinitialisé, Commentaires vidés, Équipe conservée.
+    const actionsActions = [];
+    taches.forEach(t=>{
+      getActionsTache(t.id).forEach(a=>{
+        actionsActions.push(["AddRecord","ACTIONS",null,{
+          Tache: mapTaches[t.id],
+          Nom: a.Nom,
+          Ordre: a.Ordre || 0,
+          Statut: statutAFaireId,
+          Equipe: refId(a.Equipe) || null,
+          Commentaires: ""
+        }]);
+      });
+    });
+    if(actionsActions.length) await grist.docApi.applyUserActions(actionsActions);
+
+    await init();
+    construire();
+    closeModal("modal-dupliquer-projet");
+
+    let msg = `✅ Projet dupliqué : "${nouveauNom}" (${taches.length} tâche(s), ${jalons.length} jalon(s), ${actionsActions.length} sous-action(s)).`;
+    if(refsExternesIgnorees > 0){
+      msg += `\n⚠️ ${refsExternesIgnorees} référence(s) pointant hors du projet source ont été ignorées.`;
+    }
+    alert(msg);
+  }catch(e){
+    alert("Erreur lors de la duplication : "+e.message);
+    console.error(e);
+  }finally{
+    DUPLI_EN_COURS = false;
+    btn.disabled = false;
+    btn.textContent = "Dupliquer";
+  }
+}
+
+function toggleJalonTachesRequisesVisibilite(){
+  const type = document.getElementById("field-jalon-type").value;
+  const isLivrable = norm(type)===norm("Livrable");
+  document.getElementById("group-jalon-taches-requises").style.display = isLivrable ? "block" : "none";
+  document.getElementById("group-jalon-fixe").style.display = isLivrable ? "block" : "none";
+  if(!isLivrable) document.getElementById("field-jalon-fixe").checked = false;
+}
+
+function populateJalonTachesSelect(projetId, selectedTaches){
+  selectedTaches = selectedTaches || [];
+  const container = document.getElementById("field-jalon-taches-requises");
+  container.innerHTML = "";
+  if(!projetId){
+    container.innerHTML = "<div style='padding:8px;color:#999;font-size:11px;'>Aucun projet sélectionné</div>";
+    return;
+  }
+  const projetTasks = DB.taches.filter(t => refId(t.Projet) === projetId);
+  if(projetTasks.length === 0){
+    container.innerHTML = "<div style='padding:8px;color:#999;font-size:11px;'>Aucune tâche dans ce projet</div>";
+    return;
+  }
+  projetTasks.forEach(task=>{
+    const isSelected = selectedTaches.some(t => t.id === task.id);
+    const label = document.createElement("label");
+    label.className = "multi-select-item";
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.value = task.id;
+    checkbox.checked = isSelected;
+    label.appendChild(checkbox);
+    const texte = document.createElement("span");
+    texte.className = "multi-select-item-text";
+    texte.textContent = task.Tache;
+    label.appendChild(texte);
+    container.appendChild(label);
+  });
+}
+
+function openJalonCreate(projetId){
+  document.getElementById("field-jalon-id").value="";
+  document.getElementById("field-jalon-projet").value=projetId;
+  document.getElementById("field-jalon-nom").value="";
+  document.getElementById("field-jalon-date").value="";
+  document.getElementById("field-jalon-type").value="";
+  document.getElementById("field-jalon-fixe").checked=false;
+  document.getElementById("modal-jalon-title").textContent="Nouveau Jalon";
+  document.getElementById("btn-save-jalon").textContent="Créer";
+  document.getElementById("btn-delete-jalon").style.display="none";
+  populateJalonTachesSelect(projetId, []);
+  toggleJalonTachesRequisesVisibilite();
+  openModal("modal-jalon");
+}
+
+function openJalonEdit(jalon){
+  document.getElementById("field-jalon-id").value=jalon.id;
+  document.getElementById("field-jalon-projet").value=refId(jalon.Projet);
+  document.getElementById("field-jalon-nom").value=jalon.Nom||"";
+  document.getElementById("field-jalon-date").value=toDateInput(jalon.Date);
+  document.getElementById("field-jalon-type").value=getJalonTypeTexte(jalon)||"";
+  document.getElementById("field-jalon-fixe").checked=jalon.Important===true;
+  document.getElementById("field-jalon-commentaires").value=jalon.Commentaires||"";
+  document.getElementById("modal-jalon-title").textContent="Modifier le jalon";
+  document.getElementById("btn-save-jalon").textContent="Enregistrer";
+  document.getElementById("btn-delete-jalon").style.display="inline-block";
+  populateJalonTachesSelect(refId(jalon.Projet), getJalonTachesRequises(jalon));
+  toggleJalonTachesRequisesVisibilite();
+  openModal("modal-jalon");
+}
+
+async function saveJalon(){
+  const id=document.getElementById("field-jalon-id").value;
+  const projet_id=parseInt(document.getElementById("field-jalon-projet").value);
+  const nom=document.getElementById("field-jalon-nom").value.trim();
+  const date=document.getElementById("field-jalon-date").value;
+  const type=document.getElementById("field-jalon-type").value;
+  const fixe=document.getElementById("field-jalon-fixe").checked;
+  const commentaires=document.getElementById("field-jalon-commentaires").value.trim();
+  if(!nom || !date){ alert("Champs obligatoires"); return; }
+  try{
+    const checkboxes = document.querySelectorAll("#field-jalon-taches-requises input[type='checkbox']:checked");
+    const tachesRequisesIds = Array.from(checkboxes).map(cb => parseInt(cb.value));
+    if(id){
+      const jalonKey = 'J:'+id;
+      for(const taskId of tachesRequisesIds){
+        if(isDescendantUnifie(jalonKey, 'T:'+taskId)){
+          alert("❌ Cycle détecté : cette tâche requise créerait une boucle avec ce jalon. Sélection annulée.");
+          return;
+        }
+      }
+    }
+    // Détecter si la date a changé (pour déclencher la cascade)
+    const ancienJalon = id ? DB.jalons.find(j=>j.id===parseInt(id)) : null;
+    const nouvelleDate = Math.floor(new Date(date).getTime()/1000);
+    const dateChangee = ancienJalon && ancienJalon.Date !== nouvelleDate;
+
+    const values={
+      Projet:projet_id, Nom:nom, Date:nouvelleDate,
+      Type: type ? ['L', type] : null,
+      Important: fixe,
+      Commentaires: commentaires || null,
+      Taches_requises: ['L', ...tachesRequisesIds]
+    };
+    if(id){
+      await grist.docApi.applyUserActions([["UpdateRecord","Jalons",parseInt(id),values]]);
+    }else{
+      await grist.docApi.applyUserActions([["AddRecord","Jalons",null,values]]);
+    }
+    await init();
+    construire();
+    // Cascade automatique si la date a changé
+    if(dateChangee && ancienJalon){
+      const jalonMisAJour = DB.jalons.find(j=>j.id===parseInt(id));
+      if(jalonMisAJour){
+        const impacts = calculerCascadeDepuisJalon(jalonMisAJour);
+        if(impacts.length > 0){
+          // Conserver l'état AVANT modif pour permettre un vrai "Annuler"
+          LAST_CASCADE_ANCIEN_ETAT = {
+            genre: "jalon",
+            id: ancienJalon.id,
+            valeurs: {
+              Projet: ancienJalon.Projet,
+              Nom: ancienJalon.Nom,
+              Date: ancienJalon.Date,
+              Type: ancienJalon.Type,
+              Important: ancienJalon.Important,
+              Commentaires: ancienJalon.Commentaires,
+              Taches_requises: ancienJalon.Taches_requises,
+            }
+          };
+          afficherRecapCascade("jalon", jalonMisAJour.Nom, impacts);
+          return; // modale cascade gère la fermeture
+        }
+      }
+    }
+    closeModal("modal-jalon");
+  }catch(e){ alert("Erreur: "+e.message); console.error(e); }
+}
+
+async function deleteJalon(){
+  const id=parseInt(document.getElementById("field-jalon-id").value);
+  if(!id) return;
+  if(!confirm("Supprimer ce jalon ?")) return;
+  try{
+    await grist.docApi.applyUserActions([["RemoveRecord","Jalons",id]]);
+    closeModal("modal-jalon");
+    init();
+  }catch(e){ alert("Erreur: "+e.message); console.error(e); }
+}
+
+// ========== ACTIONS (SOUS-TÂCHES) ==========
+
+function getActionsTache(tacheId){
+  return DB.actions
+    .filter(a => refId(a.Tache) === tacheId)
+    .sort((a, b) => (a.Ordre || 0) - (b.Ordre || 0));
+}
+
+function displayActionsInModal(tacheId){
+  const container = document.getElementById("sous-actions-list");
+  container.innerHTML = "";
+
+  if(!tacheId){
+    container.innerHTML = '<div style="padding:12px;color:var(--texte-mention);font-size:12px;text-align:center;">Aucune sous-action</div>';
+    return;
+  }
+
+  const actions = getActionsTache(tacheId);
+
+  if(actions.length === 0){
+    container.innerHTML = '<div style="padding:12px;color:var(--texte-mention);font-size:12px;text-align:center;">Aucune sous-action</div>';
+  } else {
+    actions.forEach(action => {
+      const item = document.createElement("div");
+      item.className = "action-item";
+
+      const statutTexte = resolveRef(DB.parametres, action.Statut, "Statut");
+      const equipeTexte = resolveRef(DB.parametres, action.Equipe, "Equipe") || "Non attribué";
+
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.checked = norm(statutTexte) === norm("Terminé");
+      checkbox.onchange = async (e) => {
+        const newStatut = e.target.checked ? "Terminé" : "À faire";
+        const newStatutId = findParamId("Statut", newStatut);
+        await grist.docApi.applyUserActions([
+          ["UpdateRecord", "ACTIONS", action.id, {Statut: newStatutId}]
+        ]);
+        init();
+      };
+      item.appendChild(checkbox);
+
+      const nomSpan = document.createElement("span");
+      nomSpan.className = "action-nom";
+      nomSpan.textContent = action.Nom;
+      item.appendChild(nomSpan);
+
+      const equipeSpan = document.createElement("span");
+      equipeSpan.className = "action-equipe";
+      equipeSpan.textContent = equipeTexte;
+      item.appendChild(equipeSpan);
+
+      const actionsDiv = document.createElement("div");
+      actionsDiv.className = "action-actions";
+
+      const btnEdit = document.createElement("button");
+      btnEdit.type = "button";
+      btnEdit.className = "btn-edit-action";
+      btnEdit.textContent = "✏";
+      btnEdit.onclick = (e) => { e.stopPropagation(); openActionModal(tacheId, action.id); };
+      actionsDiv.appendChild(btnEdit);
+
+      const btnDelete = document.createElement("button");
+      btnDelete.type = "button";
+      btnDelete.className = "btn-delete-action";
+      btnDelete.textContent = "🗑";
+      btnDelete.onclick = async (e) => {
+        e.stopPropagation();
+        if(confirm("Supprimer cette sous-action?")){
+          await grist.docApi.applyUserActions([
+            ["RemoveRecord", "ACTIONS", action.id]
+          ]);
+          init();
+        }
+      };
+      actionsDiv.appendChild(btnDelete);
+
+      item.appendChild(actionsDiv);
+      container.appendChild(item);
+    });
+  }
+}
+
+function activateCreateInput(tacheId){
+  const area = document.getElementById("sous-action-create-area");
+  area.innerHTML = '';
+
+  const input = document.createElement("input");
+  input.type = "text";
+  input.className = "action-input-create";
+  input.placeholder = "Taper le nom de la sous-action...";
+  input.maxLength = 100;
+
+  input.onkeydown = async (e) => {
+    if(e.key === "Enter"){
+      e.preventDefault();
+      const nom = input.value.trim();
+      if(!nom) return;
+
+      try {
+        const existantes = getActionsTache(tacheId);
+        const ordre = existantes.length + 1;
+        const statutId = findParamId("Statut", "À faire");
+
+        await grist.docApi.applyUserActions([
+          ["AddRecord", "ACTIONS", null, {
+            Tache: tacheId,
+            Nom: nom,
+            Ordre: ordre,
+            Statut: statutId
+          }]
+        ]);
+
+        await init();
+        displayActionsInModal(tacheId);
+        activateCreateInput(tacheId);
+      } catch(e){
+        alert("Erreur: " + e.message);
+      }
+    } else if(e.key === "Escape"){
+      input.value = "";
+    }
+  };
+
+  area.appendChild(input);
+  input.focus();
+}
+
+function openActionModal(tacheId, actionId = null){
+  const overlay = document.getElementById("modal-action-overlay");
+
+  if(actionId){
+    const action = DB.actions.find(x => x.id === actionId);
+    document.getElementById("modal-action-title").textContent = "Modifier une sous-action";
+    document.getElementById("field-action-id").value = action.id;
+    document.getElementById("field-action-nom").value = action.Nom || "";
+    document.getElementById("field-action-statut").value =
+      resolveRef(DB.parametres, action.Statut, "Statut") || "À faire";
+    document.getElementById("field-action-equipe").value =
+      resolveRef(DB.parametres, action.Equipe, "Equipe") || "";
+    document.getElementById("field-action-commentaires").value = action.Commentaires || "";
+    document.getElementById("btn-delete-action").style.display = "inline-block";
+    document.getElementById("btn-save-action").textContent = "Enregistrer";
+  } else {
+    document.getElementById("modal-action-title").textContent = "Ajouter une sous-action";
+    document.getElementById("field-action-id").value = "";
+    document.getElementById("field-action-nom").value = "";
+    document.getElementById("field-action-statut").value = "À faire";
+    document.getElementById("field-action-equipe").value = "";
+    document.getElementById("field-action-commentaires").value = "";
+    document.getElementById("btn-delete-action").style.display = "none";
+    document.getElementById("btn-save-action").textContent = "Créer";
+  }
+
+  document.getElementById("field-action-tache").value = tacheId;
+  overlay.classList.add("active");
+}
+
+function closeActionModal(){
+  document.getElementById("modal-action-overlay").classList.remove("active");
+}
+
+async function saveAction(){
+  const id = document.getElementById("field-action-id").value;
+  const nom = document.getElementById("field-action-nom").value.trim();
+  const statut = document.getElementById("field-action-statut").value;
+  const equipe = document.getElementById("field-action-equipe").value;
+  const commentaires = document.getElementById("field-action-commentaires").value.trim();
+
+  if(!nom){ alert("Le nom est obligatoire"); return; }
+
+  try {
+    const statutId = findParamId("Statut", statut);
+    const equipeId = equipe ? findAgentId(equipe) : null;
+
+    const values = {
+      Nom: nom,
+      Statut: statutId,
+      Equipe: equipeId,
+      Commentaires: commentaires
+    };
+
+    if(id){
+      await grist.docApi.applyUserActions([
+        ["UpdateRecord", "ACTIONS", parseInt(id), values]
+      ]);
+    } else {
+      const tacheId = parseInt(document.getElementById("field-action-tache").value);
+      values.Tache = tacheId;
+      values.Ordre = getActionsTache(tacheId).length + 1;
+      await grist.docApi.applyUserActions([
+        ["AddRecord", "ACTIONS", null, values]
+      ]);
+    }
+
+    closeActionModal();
+    init();
+  } catch(e){
+    alert("Erreur: " + e.message);
+  }
+}
+
+async function deleteAction(){
+  const id = parseInt(document.getElementById("field-action-id").value);
+  if(!id) return;
+  if(!confirm("Supprimer cette sous-action?")) return;
+
+  try {
+    await grist.docApi.applyUserActions([
+      ["RemoveRecord", "ACTIONS", id]
+    ]);
+    closeActionModal();
+    init();
+  } catch(e){
+    alert("Erreur: " + e.message);
+  }
+}
+
+function openTacheCreate(projetId){
+  document.getElementById("field-tache-id").value="";
+  document.getElementById("field-tache-projet").value=projetId;
+  document.getElementById("field-tache-nom").value="";
+  document.getElementById("field-tache-debut").value="";
+  document.getElementById("field-tache-fin").value="";
+  document.getElementById("field-tache-duree").value="";
+  document.getElementById("field-tache-equipe").value="";
+  document.getElementById("field-tache-statut").value="";
+  document.getElementById("field-tache-comments").value="";
+  document.getElementById("modal-tache-title").textContent="Nouvelle Tâche";
+  document.getElementById("btn-save-tache").textContent="Créer";
+  document.getElementById("btn-delete-tache").style.display="none";
+  document.getElementById("field-tache-incompressible").checked=false;
+  document.getElementById("info-dependances").style.display="none";
+  populatePredecessorsSelect(projetId, []);
+  populateJalonsDeclencheursSelect(projetId, []);
+  displayActionsInModal(null);
+  openModal("modal-tache");
+}
+
+function openTacheEdit(t){
+  const duree=t.Duree_jours||1;
+  let finValue = t.Date_fin;
+  if(!finValue){
+    // Repli quand Date_fin est absente : on réutilise ajouterJoursOuvres pour
+    // rester cohérent avec le reste de l'outil (l'ancienne version ignorait les
+    // jours fériés et pouvait afficher une fin décalée d'un jour ou plus).
+    const debutDate=parseDate(t.Date_debut);
+    const finDate = debutDate ? ajouterJoursOuvres(debutDate, duree) : null;
+    finValue = finDate ? Math.floor(finDate.getTime()/1000) : null;
+  }
+  document.getElementById("field-tache-id").value=t.id;
+  document.getElementById("field-tache-projet").value=refId(t.Projet);
+  document.getElementById("field-tache-nom").value=t.Tache||"";
+  document.getElementById("field-tache-debut").value=toDateInput(t.Date_debut);
+  document.getElementById("field-tache-fin").value=finValue?toDateInput(finValue):"";
+  document.getElementById("field-tache-duree").value=duree;
+  document.getElementById("field-tache-equipe").value=resolveRef(DB.parametres, t.Equipe, "Equipe")||"";
+  document.getElementById("field-tache-statut").value=resolveRef(DB.parametres, t.Statut, "Statut")||"";
+  document.getElementById("field-tache-comments").value=t.Commentaires||"";
+  document.getElementById("modal-tache-title").textContent="Modifier la tâche";
+  document.getElementById("btn-save-tache").textContent="Enregistrer";
+  document.getElementById("btn-delete-tache").style.display="inline-block";
+  document.getElementById("field-tache-incompressible").checked=t.Incompressible===true;
+  const preds = getPredecessorTasks(t);
+  const blocked = getPredecessorsBlocked(t);
+  const jalonsDecl = getTacheJalonsDeclencheurs(t);
+  const jalonsNonAtteints = jalonsDecl.filter(j => !getJalonAtteint(j));
+  const statutTache = resolveRef(DB.parametres, t.Statut, "Statut");
+  const jalonsConditionnesNonAtteints = norm(statutTache) !== norm("Terminé")
+    ? getJalonsConditionnesParTache(t).filter(j => !getJalonAtteint(j))
+    : [];
+
+  const infoDiv = document.getElementById("info-dependances");
+  infoDiv.innerHTML = "";
+  let auMoinsUneLigne = false;
+  function ajouterLigneDep(puce, texte){
+    const ligne = document.createElement("div");
+    ligne.className = "dep-line";
+    const p = document.createElement("span"); p.className="puce"; p.textContent=puce;
+    ligne.appendChild(p);
+    ligne.appendChild(document.createTextNode(texte));
+    infoDiv.appendChild(ligne);
+    auMoinsUneLigne = true;
+  }
+  if(blocked.length > 0){
+    ajouterLigneDep("🔴", `Bloqué par : ${blocked.map(p => p.Tache || p).join(", ")}`);
+  }
+  if(jalonsNonAtteints.length > 0){
+    ajouterLigneDep("🔶", `En attente de : ${jalonsNonAtteints.map(j => j.Nom).join(", ")}`);
+  }
+  if(jalonsConditionnesNonAtteints.length > 0){
+    ajouterLigneDep("🔶", `Conditionne : ${jalonsConditionnesNonAtteints.map(j => j.Nom).join(", ")}`);
+  }
+  if(preds.length > 0){
+    ajouterLigneDep("🟡", `Dépend de : ${preds.map(p => p.Tache || p).join(", ")}`);
+  }
+  infoDiv.style.display = auMoinsUneLigne ? "block" : "none";
+
+  populatePredecessorsSelect(refId(t.Projet), preds);
+  populateJalonsDeclencheursSelect(refId(t.Projet), jalonsDecl);
+  displayActionsInModal(t.id);
+  openModal("modal-tache");
+}
+
+function populatePredecessorsSelect(projetId, selectedPreds){
+  selectedPreds = selectedPreds || [];
+  const container = document.getElementById("field-tache-predecesseurs");
+  container.innerHTML = "";
+  if(!projetId){
+    container.innerHTML = "<div style='padding:8px;color:#999;font-size:11px;'>Aucun projet sélectionné</div>";
+    return;
+  }
+  const currentTaskId = parseInt(document.getElementById("field-tache-id").value);
+  const projetTasks = DB.taches.filter(t => refId(t.Projet) === projetId && t.id !== currentTaskId);
+  if(projetTasks.length === 0){
+    container.innerHTML = "<div style='padding:8px;color:#999;font-size:11px;'>Aucune autre tâche dans ce projet</div>";
+    return;
+  }
+  projetTasks.forEach(task=>{
+    const isSelected = selectedPreds.some(p => refId(p.id||p) === task.id);
+    const label = document.createElement("label");
+    label.className = "multi-select-item";
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.value = task.id;
+    checkbox.checked = isSelected;
+    label.appendChild(checkbox);
+    const texte = document.createElement("span");
+    texte.className = "multi-select-item-text";
+    texte.textContent = task.Tache;
+    label.appendChild(texte);
+    container.appendChild(label);
+  });
+}
+
+function populateJalonsDeclencheursSelect(projetId, selectedJalons){
+  selectedJalons = selectedJalons || [];
+  const container = document.getElementById("field-tache-jalons-declencheurs");
+  container.innerHTML = "";
+  if(!projetId){
+    container.innerHTML = "<div style='padding:8px;color:#999;font-size:11px;'>Aucun projet sélectionné</div>";
+    return;
+  }
+  const projetJalons = DB.jalons.filter(j => refId(j.Projet) === projetId && norm(getJalonTypeTexte(j))===norm("Livrable"));
+  if(projetJalons.length === 0){
+    container.innerHTML = "<div style='padding:8px;color:#999;font-size:11px;'>Aucun livrable dans ce projet</div>";
+    return;
+  }
+  projetJalons.forEach(jalon=>{
+    const isSelected = selectedJalons.some(j => j.id === jalon.id);
+    const label = document.createElement("label");
+    label.className = "multi-select-item";
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.value = jalon.id;
+    checkbox.checked = isSelected;
+    label.appendChild(checkbox);
+    const texte = document.createElement("span");
+    texte.className = "multi-select-item-text";
+    texte.textContent = jalon.Nom;
+    label.appendChild(texte);
+    container.appendChild(label);
+  });
+}
+
+async function saveTache(){
+  const id=document.getElementById("field-tache-id").value;
+  const projet_id=parseInt(document.getElementById("field-tache-projet").value);
+  const nom=document.getElementById("field-tache-nom").value.trim();
+  const debut=document.getElementById("field-tache-debut").value;
+  const fin=document.getElementById("field-tache-fin").value;
+  const equipe=document.getElementById("field-tache-equipe").value;
+  const statut=document.getElementById("field-tache-statut").value;
+  const comments=document.getElementById("field-tache-comments").value.trim();
+  const incompressible=document.getElementById("field-tache-incompressible").checked;
+  if(!nom || !debut || !fin){ alert("Champs obligatoires manquants (nom, date début, date fin)"); return; }
+  if(new Date(fin) < new Date(debut)){
+    alert("❌ La date de fin ne peut pas être antérieure à la date de début.");
+    return;
+  }
+  const duree=joursOuvres(new Date(debut), new Date(fin));
+  try{
+    const proj=DB.projets.find(c=>c.id===projet_id);
+    if(!proj){ alert("Projet non trouvé"); return; }
+    const statutId=findParamId("Statut", statut);
+    const equipeId=findAgentId(equipe) || NON_ATTRIBUE_ID;
+    const sectionId = refId(proj.Section);
+    if(!sectionId){ alert("Section invalide"); return; }
+    const checkboxes = document.querySelectorAll("#field-tache-predecesseurs input[type='checkbox']:checked");
+    const predecessorIds = Array.from(checkboxes).map(cb => parseInt(cb.value));
+    if(id){
+      const currentTaskId = parseInt(id);
+      for(const predId of predecessorIds){
+        if(isDescendant(currentTaskId, predId)){
+          alert("❌ Cycle détecté : cette dépendance créerait une boucle. Sélection annulée.");
+          return;
+        }
+      }
+    }
+    const checkboxesJalons = document.querySelectorAll("#field-tache-jalons-declencheurs input[type='checkbox']:checked");
+    const jalonDeclencheurIds = Array.from(checkboxesJalons).map(cb => parseInt(cb.value));
+    if(id){
+      const currentTaskId = parseInt(id);
+      for(const jalonId of jalonDeclencheurIds){
+        if(isDescendantUnifie('T:'+currentTaskId, 'J:'+jalonId)){
+          alert("❌ Cycle détecté : ce livrable déclencheur créerait une boucle. Sélection annulée.");
+          return;
+        }
+      }
+    }
+    // Ancienne date de fin (avant modification) pour détecter un changement
+    const ancienneTache = id ? DB.taches.find(t=>t.id===parseInt(id)) : null;
+    const nouvelleDateFin = Math.floor(new Date(fin).getTime()/1000);
+    const dateFinChangee = ancienneTache && ancienneTache.Date_fin !== nouvelleDateFin;
+
+    const values={
+      Section:sectionId, Projet:projet_id, Tache:nom,
+      Date_debut:Math.floor(new Date(debut).getTime()/1000),
+      Date_fin: nouvelleDateFin,
+      Duree_jours:duree, Statut:statutId, Equipe:equipeId,
+      Commentaires:comments, Predecesseurs:['L',...predecessorIds],
+      Jalon_declencheur:['L',...jalonDeclencheurIds],
+      Incompressible: incompressible
+    };
+    if(id){
+      await grist.docApi.applyUserActions([["UpdateRecord","Taches",parseInt(id),values]]);
+    }else{
+      await grist.docApi.applyUserActions([["AddRecord","Taches",null,values]]);
+    }
+    await init();
+    construire();
+    // Cascade automatique si Date_fin a changé (édition uniquement)
+    if(dateFinChangee && ancienneTache){
+      const tacheMisAJour = DB.taches.find(t=>t.id===parseInt(id));
+      if(tacheMisAJour){
+        const impacts = calculerCascadeDepuisTache(tacheMisAJour);
+        if(impacts.length > 0){
+          // Conserver l'état AVANT modif pour permettre un vrai "Annuler"
+          LAST_CASCADE_ANCIEN_ETAT = {
+            genre: "tache",
+            id: ancienneTache.id,
+            valeurs: {
+              Section: ancienneTache.Section,
+              Projet: ancienneTache.Projet,
+              Tache: ancienneTache.Tache,
+              Date_debut: ancienneTache.Date_debut,
+              Date_fin: ancienneTache.Date_fin,
+              Duree_jours: ancienneTache.Duree_jours,
+              Statut: ancienneTache.Statut,
+              Equipe: ancienneTache.Equipe,
+              Commentaires: ancienneTache.Commentaires,
+              Predecesseurs: ancienneTache.Predecesseurs,
+              Jalon_declencheur: ancienneTache.Jalon_declencheur,
+              Incompressible: ancienneTache.Incompressible,
+            }
+          };
+          afficherRecapCascade("tache", tacheMisAJour.Tache, impacts);
+          return; // modale cascade gère la fermeture
+        }
+      }
+    }
+    closeModal("modal-tache");
+  }catch(e){ alert("Erreur: "+e.message); console.error(e); }
+}
+
+async function deleteTache(){
+  const id=parseInt(document.getElementById("field-tache-id").value);
+  if(!id) return;
+  const actionsLiees = getActionsTache(id);
+  const msg = actionsLiees.length
+    ? `Supprimer cette tâche et ses ${actionsLiees.length} sous-action(s) ?`
+    : "Supprimer cette tâche ?";
+  if(!confirm(msg)) return;
+  try{
+    // Les sous-actions doivent partir avec la tâche, sinon elles subsistent
+    // en base sans parent visible (lignes orphelines dans ACTIONS).
+    const actions = actionsLiees.map(a=>["RemoveRecord","ACTIONS",a.id]);
+    actions.push(["RemoveRecord","Taches",id]);
+    await grist.docApi.applyUserActions(actions);
+    closeModal("modal-tache");
+    await init();
+    construire();
+  }catch(e){ alert("Erreur: "+e.message); console.error(e); }
+}
+
+// ============================================================================
+// MOTEUR DE CASCADE — déclenché automatiquement à l'enregistrement
+// ============================================================================
+// Règles :
+//   Tâche compressible  → absorbe le retard (Date_fin stable, durée réduite min 1j).
+//                         Si pas absorbable (durée < 1j), décalée entièrement.
+//   Tâche incompressible → décalée entièrement (durée préservée).
+//   Jalon non-fixe      → décalé (comme une tâche incompressible).
+//   Jalon fixe          → ne bouge JAMAIS, signalé "En retard".
+// La cascade s'arrête sur une tâche qui absorbe (date_fin inchangée → successeurs non touchés).
+
+let LAST_CASCADE_IMPACTS = [];
+let LAST_CASCADE_SOURCE  = null; // { type:"tache"|"jalon", modal:"modal-tache"|"modal-jalon" }
+// État de la tâche/du jalon AVANT la modification qui a déclenché la popup de
+// cascade — capturé pour permettre un vrai "Annuler" (revenir en arrière),
+// distinct de "Confirmer" (garder la modif + propager si besoin).
+let LAST_CASCADE_ANCIEN_ETAT = null; // { genre:"tache"|"jalon", id, valeurs:{...} }
+
+// ─── Cascade depuis une tâche ─────────────────────────────────────────────
+function calculerCascadeDepuisTache(startTask){
+  const projId = refId(startTask.Projet);
+  const tasksScope = DB.taches.filter(t=>refId(t.Projet)===projId);
+  const jalonsScope = DB.jalons.filter(j=>refId(j.Projet)===projId);
+  const byTaskId = {};
+  tasksScope.forEach(t=>byTaskId[t.id]=t);
+
+  const impacts = [];
+  const finEffective = {};   // task.id → Date effective après cascade
+  finEffective[startTask.id] = parseDate(startTask.Date_fin);
+
+  const visites = new Set([`T:${startTask.id}`]);
+  const file    = [`T:${startTask.id}`];
+
+  while(file.length){
+    const key = file.shift();
+    const [kind, rawId] = key.split(":");
+    const currentId = parseInt(rawId);
+
+    if(kind === "T"){
+      // Successeurs tâches (via Predecesseurs)
+      tasksScope
+        .filter(t=>getPredecessorTasks(t).some(p=>{const pid=refId(p.id||p); return pid===currentId;}))
+        .forEach(s=>{ if(!visites.has(`T:${s.id}`)) traiterSuccesseurTache(s); });
+
+      // Successeurs jalons (via Taches_requises)
+      jalonsScope
+        .filter(j=>norm(getJalonTypeTexte(j))===norm("Livrable"))
+        .filter(j=>getJalonTachesRequises(j).some(t=>t.id===currentId))
+        .forEach(j=>{ if(!visites.has(`J:${j.id}`)) traiterSuccesseurJalon(j, currentId); });
+    }
+    // (jalons non-fixe peuvent aussi avoir des successeurs tâches via Jalon_declencheur,
+    // mais on ne propage pas au-delà pour garder la popup lisible)
+  }
+
+  function traiterSuccesseurTache(s){
+    visites.add(`T:${s.id}`);
+    // Date de début minimale = fin effective du prédécesseur le plus tardif
+    const predsIds = getPredecessorTasks(s).map(p=>refId(p.id||p)).filter(pid=>byTaskId[pid]);
+    let maxFin = null;
+    predsIds.forEach(pid=>{
+      const f = finEffective[pid] !== undefined ? finEffective[pid] : parseDate(byTaskId[pid].Date_fin);
+      if(f && (!maxFin || f>maxFin)) maxFin = f;
+    });
+    if(!maxFin){ finEffective[s.id]=parseDate(s.Date_fin); file.push(`T:${s.id}`); return; }
+
+    const debutMini   = jourOuvreSuivant(maxFin);
+    const debutActuel = parseDate(s.Date_debut);
+    if(!debutActuel || debutMini <= debutActuel){
+      finEffective[s.id]=parseDate(s.Date_fin); file.push(`T:${s.id}`); return;
+    }
+
+    const deltaJours = joursOuvres(debutActuel, debutMini) - 1;
+    const dureeActuelle = s.Duree_jours || joursOuvres(parseDate(s.Date_debut), parseDate(s.Date_fin));
+    const incompressible = s.Incompressible === true;
+
+    if(!incompressible){
+      // Tâche compressible : on essaie de garder Date_fin, on réduit la durée
+      const nouvelleDuree = dureeActuelle - deltaJours;
+      if(nouvelleDuree >= 1){
+        // Absorption complète : Date_fin ne change pas, cascade s'arrête ici
+        finEffective[s.id] = parseDate(s.Date_fin);
+        impacts.push({
+          genre:"tache", element:s, nom:s.Tache,
+          statut:"absorbe", deltaJours,
+          oldDebut:debutActuel, oldFin:parseDate(s.Date_fin),
+          newDebut:debutMini,   newFin:parseDate(s.Date_fin),
+          nouvelleDuree
+        });
+        return; // point d'arrêt
+      }
+    }
+    // Décalage entier (incompressible ou compressible qui ne peut pas absorber)
+    const nouvelleFin = ajouterJoursOuvres(debutMini, dureeActuelle);
+    finEffective[s.id] = nouvelleFin;
+    impacts.push({
+      genre:"tache", element:s, nom:s.Tache,
+      statut:"shift", deltaJours,
+      oldDebut:debutActuel, oldFin:parseDate(s.Date_fin),
+      newDebut:debutMini,   newFin:nouvelleFin,
+      nouvelleDuree:dureeActuelle
+    });
+    file.push(`T:${s.id}`);
+  }
+
+  function traiterSuccesseurJalon(j, sourceTacheId){
+    visites.add(`J:${j.id}`);
+    const jalonFixe = j.Important === true;
+    const dateJalon = parseDate(j.Date);
+    // Date de fin effective de la TÂCHE REQUISE qui atteint ce jalon — et non
+    // celle de la tâche à l'origine de la cascade : sur une chaîne A→B→C, le
+    // jalon conditionné par C doit être comparé à la fin recalculée de C.
+    const dateFinSource = finEffective[sourceTacheId] !== undefined
+      ? finEffective[sourceTacheId]
+      : parseDate((byTaskId[sourceTacheId]||{}).Date_fin);
+    if(!dateJalon || !dateFinSource){ return; }
+    if(dateFinSource <= dateJalon){ return; } // pas de dépassement
+
+    const deltaJours = joursOuvres(dateJalon, dateFinSource);
+    if(jalonFixe){
+      impacts.push({
+        genre:"jalon", element:j, nom:j.Nom,
+        statut:"fixe", deltaJours,
+        oldFin:dateJalon, newFin:dateJalon
+      });
+    } else {
+      const nouvelleDate = ajouterJoursOuvres(dateFinSource, 1);
+      impacts.push({
+        genre:"jalon", element:j, nom:j.Nom,
+        statut:"shift", deltaJours,
+        oldFin:dateJalon, newFin:nouvelleDate
+      });
+    }
+  }
+
+  // ─── Conflits amont : jalons qui attendent cette tâche et que la nouvelle
+  // Date_fin dépasse maintenant (quel que soit leur caractère Fixe ou non).
+  const nouvelleDateFinSource = parseDate(startTask.Date_fin);
+  jalonsScope
+    .filter(j => norm(getJalonTypeTexte(j)) === norm("Livrable"))
+    .filter(j => getJalonTachesRequises(j).some(t => t.id === startTask.id))
+    .forEach(j => {
+      const dateJalon = parseDate(j.Date);
+      if(!dateJalon || !nouvelleDateFinSource) return;
+      if(nouvelleDateFinSource <= dateJalon) return; // pas de dépassement
+      const deltaJours = joursOuvres(dateJalon, nouvelleDateFinSource);
+      impacts.push({
+        genre:"jalon", element:j, nom:j.Nom,
+        statut:"conflit", deltaJours,
+        detail:`Tâche finit le ${fmtJourComplet(Math.floor(nouvelleDateFinSource.getTime()/1000))} > Jalon le ${fmtJourComplet(Math.floor(dateJalon.getTime()/1000))}`
+      });
+    });
+
+  return impacts;
+}
+function calculerCascadeDepuisJalon(jalon){
+  const projId = refId(jalon.Projet);
+  const tasksScope = DB.taches.filter(t=>refId(t.Projet)===projId);
+  const impacts = [];
+  const nouvelleDateJalon = parseDate(jalon.Date);
+  if(!nouvelleDateJalon) return impacts;
+
+  // ─── Cascades vers l'avant : tâches déclenchées par ce jalon
+  tasksScope
+    .filter(t=>getTacheJalonsDeclencheurs(t).some(j=>j.id===jalon.id))
+    .forEach(t=>{
+      const debutActuel = parseDate(t.Date_debut);
+      if(!debutActuel || nouvelleDateJalon <= debutActuel) return;
+      const deltaJours = joursOuvres(debutActuel, nouvelleDateJalon);
+      const debutMini = jourOuvreSuivant(nouvelleDateJalon);
+      const duree = t.Duree_jours || 1;
+      const nouvelleFin = ajouterJoursOuvres(debutMini, duree);
+      impacts.push({
+        genre:"tache", element:t, nom:t.Tache,
+        statut:"shift", deltaJours,
+        oldDebut:debutActuel, oldFin:parseDate(t.Date_fin),
+        newDebut:debutMini,   newFin:nouvelleFin,
+        nouvelleDuree:duree
+      });
+    });
+
+  // ─── Conflits amont : tâches requises dont la Date_fin dépasse la nouvelle date du jalon
+  getJalonTachesRequises(jalon).forEach(t=>{
+    const finTache = parseDate(t.Date_fin);
+    if(!finTache || finTache <= nouvelleDateJalon) return;
+    const deltaJours = joursOuvres(nouvelleDateJalon, finTache);
+    impacts.push({
+      genre:"tache", element:t, nom:t.Tache,
+      statut:"conflit", deltaJours,
+      detail:`Finit le ${fmtJourComplet(Math.floor(finTache.getTime()/1000))} > Jalon avancé au ${fmtJourComplet(Math.floor(nouvelleDateJalon.getTime()/1000))}`
+    });
+  });
+
+  return impacts;
+}
+
+// ─── Affichage de la popup (unifiée tâche + jalon) ──────────────────────────
+function afficherRecapCascade(sourceType, sourceNom, impacts){
+  LAST_CASCADE_IMPACTS = impacts;
+  LAST_CASCADE_SOURCE  = { type:sourceType, modal: sourceType==="tache" ? "modal-tache" : "modal-jalon" };
+
+  const recapDiv = document.getElementById("cascade-recap");
+  recapDiv.innerHTML = "";
+
+  const conflits = impacts.filter(i=>i.statut==="conflit");
+  const cascades = impacts.filter(i=>i.statut!=="conflit");
+  // "nbAAppliquer" détermine s'il y a des écritures supplémentaires à faire
+  // en cas de clic sur "Confirmer" (décalages, absorptions). Le bouton reste
+  // désormais TOUJOURS visible, même à 0 — comportement cohérent : "Confirmer"
+  // garde la modification (et propage si besoin), "Annuler" revient en arrière.
+  // Avant ce correctif, "Confirmer" disparaissait s'il n'y avait que des
+  // conflits (rien à propager), ne laissant que "Annuler" — qui, lui, ne
+  // faisait alors QUE fermer la popup sans rien annuler de réel : source de
+  // confusion (voir LAST_CASCADE_ANCIEN_ETAT plus bas pour le vrai "Annuler").
+  const nbAAppliquer = cascades.filter(i=>i.statut==="shift" || i.statut==="absorbe").length;
+
+  document.getElementById("cascade-titre").textContent =
+    [conflits.length>0 ? `${conflits.length} conflit(s)` : "",
+     cascades.length>0 ? `${cascades.length} impact(s) à propager` : ""]
+    .filter(Boolean).join(" · ") || "Impacts calendaires";
+
+  document.getElementById("btn-confirmer-cascade").style.display = "inline-block";
+
+  // ── Section conflits (informationnelle, pas d'action automatique) ──────────
+  if(conflits.length>0){
+    const titre = document.createElement("div");
+    titre.style.cssText = "font-size:11px;font-weight:700;color:var(--critique);text-transform:uppercase;letter-spacing:.5px;margin:4px 0 6px 0;";
+    titre.textContent = "⚠️ Conflits détectés";
+    recapDiv.appendChild(titre);
+
+    conflits.forEach(impact=>{
+      const ligne = document.createElement("div");
+      ligne.className = "cascade-recap-line";
+      ligne.style.background = "#FFF5F5";
+
+      const icone = document.createElement("span");
+      icone.textContent = impact.genre==="jalon" ? "◆" : "▶";
+      icone.style.cssText = "font-size:10px;flex-shrink:0;color:var(--critique)";
+      ligne.appendChild(icone);
+
+      const nom = document.createElement("span");
+      nom.className = "nom-element";
+      nom.textContent = impact.nom;
+      ligne.appendChild(nom);
+
+      const detail = document.createElement("span");
+      detail.className = "dates-shift";
+      detail.textContent = impact.detail || "";
+      ligne.appendChild(detail);
+
+      const badge = document.createElement("span");
+      badge.className = "badge conflit";
+      badge.textContent = "Conflit";
+      badge.style.background = "var(--critique)";
+      ligne.appendChild(badge);
+
+      recapDiv.appendChild(ligne);
+    });
+
+    if(cascades.length>0){
+      const sep = document.createElement("div");
+      sep.style.cssText = "border-top:1px solid var(--bordure);margin:10px 0 6px 0;";
+      recapDiv.appendChild(sep);
+    }
+  }
+
+  // ── Section cascades (décalages et absorptions) ────────────────────────────
+  if(cascades.length>0){
+    const titre = document.createElement("div");
+    titre.style.cssText = "font-size:11px;font-weight:700;color:var(--texte-mention);text-transform:uppercase;letter-spacing:.5px;margin:4px 0 6px 0;";
+    titre.textContent = "Propagation";
+    recapDiv.appendChild(titre);
+
+    cascades.forEach(impact=>{
+      const ligne = document.createElement("div");
+      ligne.className = "cascade-recap-line" + (impact.statut!=="shift" ? " dim" : "");
+
+      const icone = document.createElement("span");
+      icone.textContent = impact.genre==="jalon" ? "◆" : "▶";
+      icone.style.cssText = "font-size:10px;opacity:0.6;flex-shrink:0";
+      ligne.appendChild(icone);
+
+      const nom = document.createElement("span");
+      nom.className = "nom-element";
+      nom.textContent = impact.nom;
+      ligne.appendChild(nom);
+
+      const dates = document.createElement("span");
+      dates.className = "dates-shift";
+      if(impact.statut==="shift"){
+        const oldD = impact.oldDebut || impact.oldFin;
+        const newD = impact.newDebut || impact.newFin;
+        if(oldD && newD)
+          dates.textContent = `${fmtJourComplet(Math.floor(oldD.getTime()/1000))} → ${fmtJourComplet(Math.floor(newD.getTime()/1000))}`;
+      } else if(impact.statut==="absorbe"){
+        dates.textContent = `durée réduite à ${impact.nouvelleDuree}j`;
+      } else if(impact.statut==="fixe"){
+        dates.textContent = `reste au ${fmtJourComplet(Math.floor(impact.oldFin.getTime()/1000))}`;
+      }
+      ligne.appendChild(dates);
+
+      const badge = document.createElement("span");
+      badge.className = "badge " + impact.statut;
+      badge.textContent = impact.statut==="shift" ? "Décalé"
+        : impact.statut==="absorbe" ? "Absorbé"
+        : "Fixe";
+      ligne.appendChild(badge);
+
+      recapDiv.appendChild(ligne);
+    });
+  }
+
+  openModal("modal-cascade");
+}
+
+// "Annuler" = revient réellement en arrière : la tâche/le jalon retrouve sa
+// valeur d'avant la modification (nouvelle écriture Grist), et rien n'est
+// propagé. Avant ce correctif, ce bouton fermait juste la popup sans rien
+// annuler — la modification restait silencieusement enregistrée, ce qui
+// prêtait à confusion (l'intitulé "Annuler" laissait croire le contraire).
+async function annulerCascade(){
+  const etatAnterieur = LAST_CASCADE_ANCIEN_ETAT;
+  closeModal("modal-cascade");
+  if(LAST_CASCADE_SOURCE) closeModal(LAST_CASCADE_SOURCE.modal);
+  LAST_CASCADE_IMPACTS = [];
+  LAST_CASCADE_SOURCE  = null;
+  LAST_CASCADE_ANCIEN_ETAT = null;
+
+  if(etatAnterieur){
+    try{
+      const table = etatAnterieur.genre === "tache" ? "Taches" : "Jalons";
+      await grist.docApi.applyUserActions([["UpdateRecord", table, etatAnterieur.id, etatAnterieur.valeurs]]);
+      await init();
+      construire();
+    }catch(e){
+      alert("Erreur lors de l'annulation : "+e.message);
+      console.error(e);
+    }
+  }
+}
+
+// "Confirmer" (= OK) : garde la modification telle quelle, et applique en
+// plus les décalages en cascade s'il y en a. S'il n'y a rien à propager
+// (cas "conflits uniquement"), se contente de fermer — pas d'appel réseau
+// inutile.
+async function confirmerCascade(){
+  const aAppliquer = LAST_CASCADE_IMPACTS.filter(i=>i.statut==="shift");
+  try{
+    const tachesActions = aAppliquer
+      .filter(i=>i.genre==="tache")
+      .map(i=>["UpdateRecord","Taches",i.element.id,{
+        Date_debut: Math.floor(i.newDebut.getTime()/1000),
+        Date_fin:   Math.floor(i.newFin.getTime()/1000)
+        // Duree_jours inchangée : cascade décale, ne rallonge/raccourcit pas
+      }]);
+    const jalonsActions = aAppliquer
+      .filter(i=>i.genre==="jalon")
+      .map(i=>["UpdateRecord","Jalons",i.element.id,{
+        Date: Math.floor(i.newFin.getTime()/1000)
+      }]);
+    const absorbeActions = LAST_CASCADE_IMPACTS
+      .filter(i=>i.statut==="absorbe")
+      .map(i=>["UpdateRecord","Taches",i.element.id,{
+        Date_debut: Math.floor(i.newDebut.getTime()/1000),
+        // Date_fin inchangée, on met juste à jour la durée
+        Duree_jours: i.nouvelleDuree
+      }]);
+    const toutesLesActions = [...tachesActions,...jalonsActions,...absorbeActions];
+    if(toutesLesActions.length > 0){
+      await grist.docApi.applyUserActions(toutesLesActions);
+      await init();
+      construire();
+    }
+    closeModal("modal-cascade");
+    if(LAST_CASCADE_SOURCE) closeModal(LAST_CASCADE_SOURCE.modal);
+  }catch(e){ alert("Erreur lors de la cascade : "+e.message); console.error(e); }
+  LAST_CASCADE_IMPACTS=[];
+  LAST_CASCADE_SOURCE=null;
+  LAST_CASCADE_ANCIEN_ETAT=null;
+}
+
+// Mesure précise de la largeur d'un texte avec la police réelle du widget.
+// "font" est optionnel : par défaut la police des labels de jalons (700 10px),
+// mais peut être surchargée (ex: police des noms de tâche dans les barres, 400 11px).
+let _canvasCtx = null;
+const FONT_JALON = '700 10px "Marianne", -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif';
+const FONT_BARRE_TACHE = '400 11px "Marianne", -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif';
+function mesurerLargeurTexte(texte, font){
+  if(!_canvasCtx){
+    const canvas = document.createElement("canvas");
+    _canvasCtx = canvas.getContext("2d");
+  }
+  _canvasCtx.font = font || FONT_JALON;
+  return _canvasCtx.measureText(texte).width;
+}
+
+// Calcule le niveau vertical de chaque jalon pour éviter les chevauchements de texte
+const JALON_TOP_BASE = 10;
+const JALON_NIVEAU_ESPACEMENT = 18;
+const JALON_TEXTE_OFFSET = 22;  // doit correspondre au "left" CSS de .jalon-name
+const JALON_MARGE = 10;
+
+function calculerNiveauxJalons(jalonsProj, minI){
+  const finOccupeeParNiveau = [];
+  jalonsProj.forEach(item=>{
+    const xDiamant = (item.dIdx - minI + 1) * JOUR_PX;
+    const xDebutTexte = xDiamant - 6;  // le diamant déborde à gauche
+    const xFinTexte = xDiamant + JALON_TEXTE_OFFSET + mesurerLargeurTexte(item.jalon.Nom);
+    let niveau = 0;
+    while(finOccupeeParNiveau[niveau] !== undefined && xDebutTexte < finOccupeeParNiveau[niveau] + JALON_MARGE){
+      niveau++;
+    }
+    finOccupeeParNiveau[niveau] = xFinTexte;
+    item.niveau = niveau;
+  });
+  const nbNiveaux = finOccupeeParNiveau.length || 1;
+  return nbNiveaux;
+}
+
+function construire(){
+  RETARDS_STRUCTURELS = calculerRetardsStructurels();
+  const allDates = [];
+  // La plage de dates (donc toute l'échelle horizontale du Gantt) se base sur
+  // TOUTES les tâches/jalons, projets repliés inclus. Plier/déplier un projet
+  // est une action verticale (masquer des lignes) : ça ne doit jamais décaler
+  // le repère "jour zéro" ni la position de la ligne/bouton "Aujourd'hui".
+  DB.taches.forEach(t => {
+    const dIdx = dayIndex(t.Date_debut);
+    if(dIdx !== null) {
+      allDates.push(dIdx);
+      const finIdx = dayIndex(t.Date_fin);
+      allDates.push(finIdx !== null ? finIdx : dIdx + (t.Duree_jours || 1) - 1);
+    }
+  });
+  DB.jalons.forEach(j => {
+    const dIdx = dayIndex(j.Date);
+    if(dIdx !== null) allDates.push(dIdx);
+  });
+  let minI, maxI;
+  if(allDates.length > 0){
+    minI = Math.min(...allDates);
+    maxI = Math.max(...allDates);
+  } else {
+    const today = Math.floor(Date.now()/86400000);
+    minI = today - 14;
+    maxI = today + 21;
+  }
+  // Toujours inclure "aujourd'hui" (+ petite marge) dans la plage affichée, même si
+  // aucune tâche/jalon ne s'y trouve : sinon le marqueur "Aujourd'hui" et le bouton
+  // 📍 Aujourd'hui n'ont aucun jour valide vers lequel se centrer.
+  const todayIdx = Math.floor(Date.now()/86400000);
+  minI = Math.min(minI, todayIdx - 3);
+  maxI = Math.max(maxI, todayIdx + 3);
+  const jourSemaineMinI = new Date(minI*86400000).getUTCDay();
+  const decalageLundi = (jourSemaineMinI + 6) % 7;
+  const minILundi = minI - decalageLundi;
+  minI = minILundi;
+  const totalJours=maxI-minI+1;
+  const tlW=totalJours*JOUR_PX;
+  const todayI=Math.floor(Date.now()/86400000);
+  const todayOffset=todayI-minI;
+  allData={minI, maxI, todayI, todayOffset, totalJours, tlW};
+  const labelsDiv=document.getElementById("labels");
+  const grid=document.createElement("div");
+  grid.className="grid";
+  grid.style.setProperty("--tl-w", tlW+"px");
+  grid.style.setProperty("--today", todayOffset);
+  labelsDiv.innerHTML="";
+  const NOMS_JOURS=['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi'];
+  const head=el("div","head-track");
+  const headInner=el("div","head-inner");
+  for(let i=minILundi;i<=maxI;i+=7){
+    const wn=getWeekNumber(new Date(i*86400000));
+    const label=el("div","week-label");
+    const semaineLargeur = 7 * JOUR_PX;
+    label.style.left=((i-minI)*JOUR_PX)+"px";
+    label.style.width=semaineLargeur+"px";
+    const start=fmtJJMM(i), end=fmtJJMM(i+4);
+    const jourDebut=NOMS_JOURS[new Date(i*86400000).getUTCDay()];
+    const jourFin=NOMS_JOURS[new Date((i+4)*86400000).getUTCDay()];
+    if(semaineLargeur >= 60){
+      label.innerHTML=`<div class="week-num">S${wn}</div><div class="week-date">${start}<br>${end}</div>`;
+    } else if(semaineLargeur >= 22){
+      label.innerHTML=`<div class="week-num">S${wn}</div>`;
+    }
+    label.setAttribute("data-tooltip",`du ${jourDebut.charAt(0).toUpperCase()+jourDebut.slice(1)} ${start} au ${jourFin.charAt(0).toUpperCase()+jourFin.slice(1)} ${end}\\n(5 j. ouvrés)`);
+    headInner.appendChild(label);
+  }
+  head.appendChild(headInner);
+  grid.appendChild(head);
+  
+  // Appliquer les filtres Section et Projet
+  let projetsAffichage = obtenirProjetsAffiches();
+  
+  projetsAffichage.forEach(proj=>{
+    // 1. Calcul des jalons et de leurs niveaux AVANT de créer le bandeau
+    const jalonsProj = DB.jalons
+      .filter(j=>refId(j.Projet)===proj.id)
+      .map(j=>({ jalon:j, dIdx:dayIndex(j.Date) }))
+      .filter(x=>x.dIdx!==null && x.dIdx>=minI && x.dIdx<=maxI)
+      .sort((a,b)=>a.dIdx-b.dIdx);
+    const nbNiveaux = calculerNiveauxJalons(jalonsProj, minI);
+
+    // 2. Hauteur dynamique du bandeau projet
+    const PROJ_H = Math.max(46, JALON_TOP_BASE + (nbNiveaux - 1) * JALON_NIVEAU_ESPACEMENT + 26);
+
+    const projGroup=el("div","proj-group");
+    if(COLLAPSED_PROJETS.has(proj.id)) projGroup.classList.add("collapsed");
+    const labProj=el("div","label projet");
+    labProj.style.height = PROJ_H + "px";
+    const btnCollapse=el("button","btn-collapse");
+    btnCollapse.textContent="▼";
+    btnCollapse.onclick=(e)=>{ e.stopPropagation(); toggleProjetCollapse(proj.id); };
+    labProj.appendChild(btnCollapse);
+    const nomSpan=el("span","nom-projet",proj.Projet);
+    nomSpan.onclick=(e)=>{ e.stopPropagation(); openProjetEdit(proj); };
+    labProj.appendChild(nomSpan);
+    const actions=el("div","label-actions");
+    const btnJalon=el("button","btn-tiny add"); btnJalon.textContent="🚩";
+    btnJalon.onclick=()=>{ openJalonCreate(proj.id); };
+    const btnTache=el("button","btn-tiny add"); btnTache.textContent="+";
+    btnTache.onclick=()=>{ openTacheCreate(proj.id); };
+    const btnDupliquer=el("button","btn-tiny"); btnDupliquer.textContent="⧉";
+    btnDupliquer.title="Dupliquer ce projet";
+    btnDupliquer.onclick=(e)=>{ e.stopPropagation(); openDupliquerProjet(proj.id); };
+    actions.appendChild(btnJalon); actions.appendChild(btnTache); actions.appendChild(btnDupliquer);
+    labProj.appendChild(actions);
+    labelsDiv.appendChild(labProj);
+    const trackProj=el("div","track projet");
+    trackProj.style.height = PROJ_H + "px";
+    projGroup.appendChild(trackProj);
+    const tachesProj = DB.taches.filter(t=>refId(t.Projet)===proj.id).sort((a, b) => {
+      const dateA = dayIndex(a.Date_debut) || Infinity;
+      const dateB = dayIndex(b.Date_debut) || Infinity;
+      return dateA - dateB;
+    });
+    const taskPositions = {};
+    tachesProj.forEach((t, idx)=>{
+      const statutTexte=resolveRef(DB.parametres, t.Statut, "Statut");
+      const equipeTexte=resolveRef(DB.parametres, t.Equipe, "Equipe");
+      const labTask=el("div","label tache");
+      labTask.setAttribute("data-projet", proj.id);
+      if(COLLAPSED_PROJETS.has(proj.id)) labTask.classList.add("hidden");
+      const nomSpanTache = el("span","nom",t.Tache);
+      nomSpanTache.onclick=(e)=>{ e.stopPropagation(); openTacheEdit(t); };
+      labTask.appendChild(nomSpanTache);
+      // Retard structurel : cette tâche en provoque un (⚠️→) ou le subit (🔴)
+      const retardT = getRetardStructurel("tache", t.id);
+      if(retardT.provoque.length>0){
+        const icoProvoque = el("span","retard-icone provoque","⚠️");
+        icoProvoque.title = "Met en retard : " + retardT.provoque.map(x=>x.nom).join(", ");
+        labTask.appendChild(icoProvoque);
+      }
+      if(retardT.subit.length>0){
+        const icoSubit = el("span","retard-icone subit","🔴");
+        icoSubit.title = "En retard (bloquée par " + retardT.subit.join(", ") + ")";
+        labTask.appendChild(icoSubit);
+      }
+      if(equipeTexte) labTask.appendChild(el("span","equipe",equipeTexte));
+      labelsDiv.appendChild(labTask);
+      const track=el("div","track tache");
+      const dIdx=dayIndex(t.Date_debut);
+      if(dIdx!==null){
+        if(dIdx<=maxI){
+          const info=statutInfo(statutTexte);
+          const barre=el("div","barre "+info.cls);
+          if(t.Date_fin && parseDate(t.Date_fin) < new Date() && norm(statutTexte)!==norm("Terminé")) barre.classList.add("critique");
+          barre.style.left=((dIdx-minI)*JOUR_PX)+"px";
+          const finIdx = dayIndex(t.Date_fin);
+          const duree = t.Duree_jours || 1;
+          const finIdxReel = finIdx !== null ? finIdx : (dIdx + duree - 1);
+          const etalementJours = finIdxReel - dIdx + 1;
+          const largeurBarrePx = Math.max(1,etalementJours*JOUR_PX);
+          barre.style.width=largeurBarrePx+"px";
+          barre.style.background=cssVarValue(info.couleur);
+          // Si le nom ne rentre pas dans la barre (padding 6px de chaque côté),
+          // on l'affiche À CÔTÉ plutôt que de le laisser tronqué/illisible —
+          // même principe que les labels de jalons, qui ont ce souci résolu
+          // depuis longtemps. Si la barre est assez large, rien ne change.
+          const largeurTexteDispo = largeurBarrePx - 12;
+          const largeurTexteReelle = mesurerLargeurTexte(t.Tache, FONT_BARRE_TACHE);
+          if(largeurTexteReelle <= largeurTexteDispo){
+            barre.textContent = t.Tache;
+          } else {
+            const labelExterne = el("div","barre-nom-externe", t.Tache);
+            labelExterne.style.left = ((dIdx-minI)*JOUR_PX + largeurBarrePx + 6) + "px";
+            labelExterne.onclick = (e)=>{ e.stopPropagation(); openTacheEdit(t); };
+            track.appendChild(labelExterne);
+          }
+          // Bulle de secours dans tous les cas (barre pleine ou label externe) :
+          // permet de relire le nom complet au survol, quelle que soit la situation.
+          barre.title = t.Commentaires ? (t.Tache+" — "+t.Commentaires) : t.Tache;
+          barre.onclick=(e)=>{ e.stopPropagation(); openTacheEdit(t); };
+          track.appendChild(barre);
+          if(JOUR_PX >= 6){
+            const debutLabel = el("div","date-label", fmtJJMM(dIdx));
+            debutLabel.style.left = ((dIdx-minI)*JOUR_PX + 8) + "px";
+            track.appendChild(debutLabel);
+            if(finIdxReel !== dIdx && duree > 2){
+              const finLabel = el("div","date-label", fmtJJMM(finIdxReel));
+              finLabel.style.left = ((finIdxReel-minI)*JOUR_PX + 8) + "px";
+              track.appendChild(finLabel);
+            }
+          }
+          taskPositions[t.id] = {dIdx: dIdx, finIdxReel: finIdxReel, rowIndex: idx};
+        }
+      }else{
+        const pill=el("div","pill-plan","à planifier");
+        pill.style.cursor="pointer";
+        pill.onclick=(e)=>{ e.stopPropagation(); openTacheEdit(t); };
+        track.appendChild(pill);
+      }
+      projGroup.appendChild(track);
+    });
+    const ROW_H = 44;
+    const BARRE_TOP = 20, BARRE_H = 22;
+    function ancrageBarre(pos, cote){
+      const gauche = (pos.dIdx - minI) * JOUR_PX;
+      const droite = (pos.finIdxReel - minI + 1) * JOUR_PX;
+      const centreX = (gauche + droite) / 2;
+      const yHautBarre = PROJ_H + pos.rowIndex * ROW_H + BARRE_TOP;
+      const yBasBarre = yHautBarre + BARRE_H;
+      const yCentreBarre = yHautBarre + BARRE_H / 2;
+      switch(cote){
+        case "est":   return { x: droite,  y: yCentreBarre };
+        case "ouest": return { x: gauche,  y: yCentreBarre };
+        case "nord":  return { x: centreX, y: yHautBarre };
+        case "sud":   return { x: centreX, y: yBasBarre };
+      }
+    }
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("class", "dependencies-svg");
+    svg.setAttribute("width", tlW);
+    svg.setAttribute("height", PROJ_H + tachesProj.length * ROW_H);
+    tachesProj.forEach(t=>{
+      const taskPos = taskPositions[t.id];
+      if(!taskPos) return;
+      getPredecessorTasks(t).forEach(pred=>{
+        const predId = refId(pred.id||pred);
+        const predPos = taskPositions[predId];
+        if(!predPos) return;
+        const ecart = taskPos.dIdx - predPos.finIdxReel;
+        let p1, p2, arriveeCote, path;
+        if(ecart > 2){
+          p1 = ancrageBarre(predPos, "est");
+          p2 = ancrageBarre(taskPos, "ouest");
+          arriveeCote = "ouest";
+          const midX = (p1.x + p2.x) / 2;
+          path = `M ${p1.x} ${p1.y} L ${midX} ${p1.y} L ${midX} ${p2.y} L ${p2.x} ${p2.y}`;
+        } else if(ecart >= -1){
+          p1 = ancrageBarre(predPos, "sud");
+          p2 = ancrageBarre(taskPos, "ouest");
+          arriveeCote = "ouest";
+          path = `M ${p1.x} ${p1.y} L ${p1.x} ${p2.y} L ${p2.x} ${p2.y}`;
+        } else {
+          p1 = ancrageBarre(predPos, "sud");
+          p2 = ancrageBarre(taskPos, "nord");
+          arriveeCote = "nord";
+          const midY = (p1.y + p2.y) / 2;
+          path = `M ${p1.x} ${p1.y} L ${p1.x} ${midY} L ${p2.x} ${midY} L ${p2.x} ${p2.y}`;
+        }
+        const statutCible = resolveRef(DB.parametres, t.Statut, "Statut");
+        const strokeColor = cssVarValue(statutInfo(statutCible).couleur);
+        const pathEl = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        pathEl.setAttribute("d", path);
+        pathEl.setAttribute("stroke", strokeColor);
+        pathEl.setAttribute("stroke-width", "1.5");
+        pathEl.setAttribute("fill", "none");
+        svg.appendChild(pathEl);
+        const angleParCote = { ouest: 0, nord: Math.PI/2, sud: -Math.PI/2 };
+        const angle = angleParCote[arriveeCote];
+        const arrowSize = 3.5;
+        const tipX = p2.x, tipY = p2.y;
+        const baseX = tipX - arrowSize * 2 * Math.cos(angle);
+        const baseY = tipY - arrowSize * 2 * Math.sin(angle);
+        const polygon = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+        polygon.setAttribute("points", `${tipX},${tipY} ${baseX - arrowSize*Math.sin(angle)},${baseY + arrowSize*Math.cos(angle)} ${baseX + arrowSize*Math.sin(angle)},${baseY - arrowSize*Math.cos(angle)}`);
+        polygon.setAttribute("fill", strokeColor);
+        svg.appendChild(polygon);
+      });
+    });
+    projGroup.appendChild(svg);
+
+    jalonsProj.forEach(({jalon, dIdx, niveau})=>{
+        const xDiamant=(dIdx-minI+1)*JOUR_PX;
+        const leftPx=xDiamant+"px";
+        const topNum=JALON_TOP_BASE + niveau * JALON_NIVEAU_ESPACEMENT;
+        const topPx=topNum+"px";
+        const typeTexte = getJalonTypeTexte(jalon);
+        const couleur=cssVarValue(jalonCouleur(typeTexte, jalon.Important));
+        const retardJ = getRetardStructurel("jalon", jalon.id);
+        const jalonLine=el("div","jalon-line");
+        jalonLine.style.left=leftPx;
+        jalonLine.style.top=PROJ_H+"px";
+        jalonLine.style.background=couleur;
+        projGroup.appendChild(jalonLine);
+        const nameEl=el("div","jalon-name");
+        const dateStr = fmtDateCourt(jalon.Date) || "??";
+        nameEl.textContent = `${dateStr} ${jalon.Nom}`;
+        nameEl.style.left=(xDiamant + JALON_TEXTE_OFFSET)+"px";
+        nameEl.style.top=topPx;
+        nameEl.style.color=couleur;
+        nameEl.onclick=(e)=>{ e.stopPropagation(); openJalonEdit(jalon); };
+        projGroup.appendChild(nameEl);
+        const markerWrap=el("div","jalon-marker-wrap");
+        markerWrap.style.left=leftPx;
+        markerWrap.style.top=topPx;
+        const tooltipRetard = retardJ.subit.length>0 ? `\\nEn retard (bloqué par ${retardJ.subit.join(", ")})` : "";
+        markerWrap.setAttribute("data-tooltip", `${jalon.Nom}${typeTexte?` (${typeTexte})`:""}\\n${fmtJourComplet(jalon.Date)}${tooltipRetard}`);
+        markerWrap.onclick=(e)=>{ e.stopPropagation(); openJalonEdit(jalon); };
+        const diamond=el("div","jalon-marker-diamond"+(retardJ.subit.length>0?" retard-subit":""));
+        diamond.style.background=couleur;
+        markerWrap.appendChild(diamond);
+        projGroup.appendChild(markerWrap);
+
+        // Flèches de dépendance Livrable : tâches requises → jalon, et jalon → tâches déclenchées
+        if(norm(typeTexte)===norm("Livrable")){
+          const pointJalon = {x: xDiamant, y: topNum};
+          getJalonTachesRequises(jalon).forEach(reqTask=>{
+            const pos = taskPositions[reqTask.id];
+            if(!pos) return;
+            const p1 = ancrageBarre(pos, "est");
+            if(!p1 || isNaN(p1.x) || isNaN(p1.y) || isNaN(pointJalon.x) || isNaN(pointJalon.y)) return;
+            const path = `M ${p1.x} ${p1.y} L ${pointJalon.x} ${p1.y} L ${pointJalon.x} ${pointJalon.y}`;
+            const pathEl = document.createElementNS("http://www.w3.org/2000/svg", "path");
+            pathEl.setAttribute("d", path);
+            pathEl.setAttribute("stroke", couleur);
+            pathEl.setAttribute("stroke-width", "1.5");
+            pathEl.setAttribute("stroke-dasharray", "3,2");
+            pathEl.setAttribute("fill", "none");
+            svg.appendChild(pathEl);
+          });
+          tachesProj.filter(t=>getTacheJalonsDeclencheurs(t).some(j=>j.id===jalon.id)).forEach(declTask=>{
+            const pos = taskPositions[declTask.id];
+            if(!pos) return;
+            const p2 = ancrageBarre(pos, "ouest");
+            if(!p2 || isNaN(p2.x) || isNaN(p2.y) || isNaN(pointJalon.x) || isNaN(pointJalon.y)) return;
+            const path = `M ${pointJalon.x} ${pointJalon.y} L ${pointJalon.x} ${p2.y} L ${p2.x} ${p2.y}`;
+            const pathEl = document.createElementNS("http://www.w3.org/2000/svg", "path");
+            pathEl.setAttribute("d", path);
+            pathEl.setAttribute("stroke", couleur);
+            pathEl.setAttribute("stroke-width", "1.5");
+            pathEl.setAttribute("stroke-dasharray", "3,2");
+            pathEl.setAttribute("fill", "none");
+            svg.appendChild(pathEl);
+            const arrowSize = 3.5;
+            const polygon = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+            polygon.setAttribute("points", `${p2.x},${p2.y} ${p2.x-arrowSize*2},${p2.y-arrowSize} ${p2.x-arrowSize*2},${p2.y+arrowSize}`);
+            polygon.setAttribute("fill", couleur);
+            svg.appendChild(polygon);
+          });
+        }
+    });
+
+    grid.appendChild(projGroup);
+  });
+  document.getElementById("kanban").innerHTML="";
+  document.getElementById("kanban").appendChild(grid);
+  document.getElementById("meta").textContent=`${DB.projets.length} projet(s) · ${DB.taches.length} tâche(s)`;
+  rendreLegende();
+  
+  // Le recentrage automatique (ZOOM_CENTER_DAY) ne sert qu'à préserver le point
+  // de vue lors d'un zoom avant/arrière/reset — ce n'est PAS un scroll "au
+  // hasard" à chaque rendu. En dehors du zoom, on ne touche plus au scroll ici :
+  // le saut systématique vers aujourd'hui à chaque sauvegarde/édition a été
+  // retiré. Le scroll volontaire vers la 1ère date visible se déclenche
+  // uniquement à l'ouverture du Gantt et au dépli d'un projet (scrollVersDebutVisible()).
+  if(ZOOM_CENTER_DAY !== null){
+    setTimeout(()=>{
+      const scrollDiv = document.getElementById("timeline-scroll");
+      const cible = (ZOOM_CENTER_DAY - minI) * JOUR_PX - Math.max(0, (scrollDiv.clientWidth - LABEL_W)) / 2;
+      scrollDiv.scrollLeft = Math.max(0, cible);
+      ZOOM_CENTER_DAY = null;
+    }, 300);
+  }
+}
+
+function getWeekNumber(d){
+  const date=new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate()));
+  const dayNum=date.getUTCDay()||7;
+  date.setUTCDate(date.getUTCDate()+4-dayNum);
+  const yearStart=new Date(Date.UTC(date.getUTCFullYear(),0,1));
+  return Math.ceil((((date-yearStart)/86400000)+1)/7);
+}
+function fmtJJMM(idx){
+  const d=new Date(idx*86400000);
+  return String(d.getUTCDate()).padStart(2,"0")+"/"+String(d.getUTCMonth()+1).padStart(2,"0");
+}
+function rendreLegende(){
+  const l=document.getElementById("legende");
+  l.innerHTML="";
+  STATUTS.forEach(s=>{
+    const item=el("div","item");
+    const puce=el("span","puce"); puce.style.background=s.couleur;
+    item.appendChild(puce);
+    item.appendChild(document.createTextNode(s.nom));
+    l.appendChild(item);
+  });
+  [["Jalon majeur","var(--jalon-majeur)"],["Livrable","var(--jalon-livrable)"],["Pour information","var(--jalon-info)"]].forEach(([label,couleur])=>{
+    const item=el("div","item");
+    const puce=el("span","puce jalon-puce"); puce.style.background=couleur;
+    item.appendChild(puce);
+    item.appendChild(document.createTextNode(label));
+    l.appendChild(item);
+  });
+  const itemCrit=el("div","item");
+  const puceCrit=el("span","puce critique-puce");
+  itemCrit.appendChild(puceCrit);
+  itemCrit.appendChild(document.createTextNode("Tâche en retard"));
+  l.appendChild(itemCrit);
+}
+function el(tag,cls,txt){
+  const e=document.createElement(cls?"div":tag);
+  if(cls)e.className=cls;
+  if(txt!==undefined&&txt!==null)e.textContent=txt;
+  return e;
+}
+
+document.getElementById("btn-add-projet").onclick=()=>openProjetCreate();
+document.getElementById("field-jalon-type").addEventListener("change", toggleJalonTachesRequisesVisibilite);
+// Calcul en temps réel (input = chaque frappe, pas juste blur)
+document.getElementById("field-tache-debut").addEventListener("input", majDepuisDebut);
+document.getElementById("field-tache-debut").addEventListener("change", majDepuisDebut);
+document.getElementById("field-tache-fin").addEventListener("input", majDepuisFin);
+document.getElementById("field-tache-fin").addEventListener("change", majDepuisFin);
+document.getElementById("field-tache-duree").addEventListener("input", majDepuisDuree);
+document.getElementById("field-tache-duree").addEventListener("change", majDepuisDuree);
+document.getElementById("btn-add-action").addEventListener("click", (e) => {
+  e.preventDefault();
+  const tacheId = parseInt(document.getElementById("field-tache-id").value);
+  if(!tacheId){
+    alert("Enregistrez la tâche d'abord");
+    return;
+  }
+  activateCreateInput(tacheId);
+});
+document.getElementById("btn-zoom-in").addEventListener("click", zoomAvant);
+document.getElementById("btn-zoom-out").addEventListener("click", zoomArriere);
+document.getElementById("btn-zoom-reset").addEventListener("click", zoomReinitialiser);
+document.getElementById("btn-zoom-fit").addEventListener("click", zoomVueEnsemble);
+document.getElementById("btn-debut").addEventListener("click", allerDebut);
+document.getElementById("btn-debut").onclick = allerDebut;
+document.getElementById("btn-today").addEventListener("click", allerAujourdhui);
+document.getElementById("btn-today").onclick = allerAujourdhui;
+document.getElementById("field-dupli-nom").addEventListener("input", majApercuDuplication);
+document.getElementById("field-dupli-date-fin").addEventListener("input", majApercuDuplication);
+document.getElementById("field-dupli-date-fin").addEventListener("change", majApercuDuplication);
+setJourPx(ZOOM_DEFAUT);
+grist.onRecords(()=>{ if(!DUPLI_EN_COURS) init(); });
+init();
+</script>
+</body>
+</html>
