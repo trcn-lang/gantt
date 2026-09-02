@@ -1011,12 +1011,21 @@ function detectParametresSchema(){
 }
 
 function obtenirSectionsUniques(){
+  // Garde : s'assurer que les données sont chargées et que le schéma est détecté
+  if(!DB.projets || DB.projets.length === 0) return [];
+  if(!DB.parametres || DB.parametres.length === 0) return [];
+  
+  // Utiliser le vrai nom de colonne détecté, ou fallback à "Section" si rien n'a marché
   const colSection = SCHEMA_PARAMETRES.section || "Section";
+  
   const vues = new Set();
   const sections = [];
+  
   DB.projets.forEach(proj=>{
     const sid = refId(proj.Section);
     if(sid !== null && sid !== undefined && !vues.has(sid)){
+      // resolveRef cherche dans DB.parametres la ligne avec cet id,
+      // puis retourne le champ spécifié (colSection)
       const nom = resolveRef(DB.parametres, proj.Section, colSection);
       if(nom){
         vues.add(sid);
@@ -1043,29 +1052,41 @@ function creerChip(label, isActive, onClick){
 
 function populerFiltresSection(){
   const container = document.getElementById("filter-sections-chips");
-  container.innerHTML = "";
-  const sections = obtenirSectionsUniques();
-
-  if(sections.length === 0){
-    container.innerHTML = '<span class="filter-chips-empty">Aucune section trouvée</span>';
+  if(!container) {
+    console.error("❌ Container filter-sections-chips introuvable");
     return;
   }
+  
+  container.innerHTML = "";
+  
+  try {
+    const sections = obtenirSectionsUniques();
+    console.log("📋 Sections obtenues:", sections);
+    
+    if(sections.length === 0){
+      container.innerHTML = '<span class="filter-chips-empty">Aucune section trouvée</span>';
+      return;
+    }
 
-  sections.forEach(section=>{
-    const isActive = FILTRES_ACTIFS.sections.has(section.id);
-    const chip = creerChip(section.nom, isActive, ()=>{
-      if(FILTRES_ACTIFS.sections.has(section.id)){
-        FILTRES_ACTIFS.sections.delete(section.id);
-      } else {
-        FILTRES_ACTIFS.sections.add(section.id);
-      }
-      FILTRES_ACTIFS.projets.clear();
-      populerFiltresSection();
-      populerFiltresProjets();
-      construire();
+    sections.forEach(section=>{
+      const isActive = FILTRES_ACTIFS.sections.has(section.id);
+      const chip = creerChip(section.nom, isActive, ()=>{
+        if(FILTRES_ACTIFS.sections.has(section.id)){
+          FILTRES_ACTIFS.sections.delete(section.id);
+        } else {
+          FILTRES_ACTIFS.sections.add(section.id);
+        }
+        FILTRES_ACTIFS.projets.clear();
+        populerFiltresSection();
+        populerFiltresProjets();
+        construire();
+      });
+      container.appendChild(chip);
     });
-    container.appendChild(chip);
-  });
+  } catch(e) {
+    console.error("❌ Erreur dans populerFiltresSection:", e);
+    container.innerHTML = '<span class="filter-chips-empty">Erreur chargement sections</span>';
+  }
 }
 
 function populerFiltresProjets(){
@@ -1108,6 +1129,11 @@ async function init(){
     DB.jalons       = columnarToRows(await grist.docApi.fetchTable("Jalons"));
     DB.parametres   = columnarToRows(await grist.docApi.fetchTable("PARAMETRES"));
     DB.actions      = columnarToRows(await grist.docApi.fetchTable("ACTIONS"));
+
+    console.log("📊 Données chargées depuis Grist:");
+    console.log("   Projets:", DB.projets?.length || 0);
+    console.log("   Tâches:", DB.taches?.length || 0);
+    console.log("   Paramètres:", DB.parametres?.length || 0);
 
     // ✅ S'assurer qu'un agent "Non attribué" existe dans PARAMETRES.Equipe —
     // vérifié une seule fois par session pour éviter les doublons via onRecords.
