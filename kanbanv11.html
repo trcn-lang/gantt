@@ -53,21 +53,34 @@
   }
   .toolbar label{font-size:12px;color:var(--texte-mention);font-weight:600}
 
-  /* ========== FILTRES CHECKBOXES ========== */
+  /* ========== FILTRES CHIPS (Section / Projet) ========== */
   .filter-section{
     padding:12px 16px;border-bottom:1px solid var(--bordure);
-    display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;
+    display:flex;flex-direction:column;gap:10px;
   }
-  .filter-group{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-  .filter-group-label{font-size:12px;font-weight:700;color:var(--texte);white-space:nowrap}
-  .filter-checkbox{
-    display:flex;align-items:center;gap:6px;font-size:12px;color:var(--texte);
-    cursor:pointer;padding:4px 8px;border-radius:4px;transition:background 0.15s;
+  .filter-row{display:flex;gap:10px;align-items:flex-start}
+  .filter-row-label{
+    font-size:12px;font-weight:700;color:var(--texte);white-space:nowrap;
+    padding-top:6px;flex-shrink:0;min-width:52px;
   }
-  .filter-checkbox:hover{background:var(--fond-alt)}
-  .filter-checkbox input[type="checkbox"]{
-    width:14px;height:14px;cursor:pointer;
+  .filter-chips{
+    display:flex;flex-wrap:wrap;gap:6px;flex:1;
   }
+  .filter-chip{
+    display:inline-flex;align-items:center;
+    padding:5px 12px;border-radius:16px;
+    border:1px solid var(--bordure);background:#fff;color:var(--texte);
+    font-size:12px;font-weight:500;cursor:pointer;
+    transition:background 0.15s,color 0.15s,border-color 0.15s;
+    white-space:nowrap;
+  }
+  .filter-chip:hover{border-color:var(--bleu-france);background:var(--bleu-975)}
+  .filter-chip.active{
+    background:var(--bleu-france);border-color:var(--bleu-france);color:#fff;font-weight:600;
+  }
+  .filter-chip.active:hover{background:#1212a8}
+  .filter-chips-empty{font-size:12px;color:var(--texte-mention);font-style:italic;padding-top:6px}
+
 
   .btn{
     padding:8px 16px;background:var(--bleu-france);color:#fff;border:none;
@@ -438,13 +451,13 @@
 
   <!-- FILTRES SECTION ET PROJET -->
   <div class="filter-section">
-    <div class="filter-group">
-      <span class="filter-group-label">Section :</span>
-      <div id="filter-sections-checkboxes"></div>
+    <div class="filter-row">
+      <span class="filter-row-label">Section :</span>
+      <div class="filter-chips" id="filter-sections-chips"></div>
     </div>
-    <div class="filter-group">
-      <span class="filter-group-label">Projet :</span>
-      <div id="filter-projets-checkboxes"></div>
+    <div class="filter-row">
+      <span class="filter-row-label">Projet :</span>
+      <div class="filter-chips" id="filter-projets-chips"></div>
     </div>
   </div>
 
@@ -731,6 +744,8 @@ let FILTRES_ACTIFS = {
   projets: new Set()    // IDs de projets cochés
 };
 
+let SCHEMA_PARAMETRES = { section: null, type: null, statut: null, equipe: null };
+
 grist.ready({requiredAccess:"full"});
 
 function columnarToRows(data){
@@ -948,103 +963,140 @@ function getEcheanceBadge(tache){
   }
 }
 
+let INIT_EN_COURS = false;
+let NON_ATTRIBUE_VERIFIE = false;
+
 // ============================================================================
-// GESTION DES FILTRES SECTION & PROJET
+// DÉTECTION AUTO DU SCHÉMA PARAMETRES + GESTION DES FILTRES SECTION/PROJET
 // ============================================================================
 
+function detectParametresSchema(){
+  if(!DB.parametres || DB.parametres.length === 0) {
+    console.log("❌ DB.parametres vide ou non chargée");
+    return;
+  }
+
+  function nbValeursRemplies(field){
+    return DB.parametres.filter(row => row[field] !== null && row[field] !== undefined && row[field] !== "").length;
+  }
+
+  const toutesLesColonnes = new Set();
+  DB.parametres.forEach(row => Object.keys(row).forEach(k => toutesLesColonnes.add(k)));
+
+  function trouverMeilleureColonne(predicat){
+    const candidats = [...toutesLesColonnes].filter(f => f !== 'id' && predicat(f));
+    if(candidats.length === 0) return null;
+    if(candidats.length === 1) return candidats[0];
+    let meilleur = candidats[0], meilleurScore = nbValeursRemplies(candidats[0]);
+    for(const c of candidats.slice(1)){
+      const score = nbValeursRemplies(c);
+      if(score > meilleurScore){ meilleur = c; meilleurScore = score; }
+    }
+    return meilleur;
+  }
+
+  SCHEMA_PARAMETRES.section = trouverMeilleureColonne(f => /^\$?section\d*$/i.test(f));
+  SCHEMA_PARAMETRES.type    = trouverMeilleureColonne(f => /^type[_ ]?projet$/i.test(f) || /^\$?type_?projet\d*$/i.test(f));
+  SCHEMA_PARAMETRES.statut  = trouverMeilleureColonne(f => /^\$?statut\d*$/i.test(f));
+  SCHEMA_PARAMETRES.equipe  = trouverMeilleureColonne(f => /^\$?(equipe|équipe)\d*$/i.test(f));
+
+  if(!SCHEMA_PARAMETRES.section && [...toutesLesColonnes].includes('$Section2')){
+    SCHEMA_PARAMETRES.section = '$Section2';
+  }
+
+  console.log("=== DÉTECTION SCHÉMA PARAMETRES (colonne avec le plus de données) ===");
+  console.log("Colonnes disponibles:", [...toutesLesColonnes].sort());
+  console.log("Schéma final:", SCHEMA_PARAMETRES);
+  console.log("==========================================================");
+}
+
 function obtenirSectionsUniques(){
-  // Retourne les sections dans l'ordre d'apparition dans PARAMETRES
+  const colSection = SCHEMA_PARAMETRES.section || "Section";
   const vues = new Set();
   const sections = [];
-  DB.parametres.forEach(p=>{
-    if(p.Section && !vues.has(refId(p.Section))){
-      vues.add(refId(p.Section));
-      sections.push({id:refId(p.Section), nom:resolveRef(DB.parametres,p.Section,"Section")});
+  DB.projets.forEach(proj=>{
+    const sid = refId(proj.Section);
+    if(sid !== null && sid !== undefined && !vues.has(sid)){
+      const nom = resolveRef(DB.parametres, proj.Section, colSection);
+      if(nom){
+        vues.add(sid);
+        sections.push({id:sid, nom});
+      }
     }
   });
   return sections;
 }
 
 function obtenirProjetsParSection(sectionIds){
-  // Retourne les projets dont la Section est dans sectionIds
-  // Si sectionIds vide, retourne tous les projets
-  if(sectionIds.size === 0) return DB.projets;
-  return DB.projets.filter(proj=>{
-    const projSectionId = refId(proj.Section);
-    return sectionIds.has(projSectionId);
-  });
+  if(sectionIds.size === 0) return [];
+  return DB.projets.filter(proj=>sectionIds.has(refId(proj.Section)));
+}
+
+function creerChip(label, isActive, onClick){
+  const chip = document.createElement("button");
+  chip.type = "button";
+  chip.className = "filter-chip" + (isActive ? " active" : "");
+  chip.textContent = label;
+  chip.onclick = onClick;
+  return chip;
 }
 
 function populerFiltresSection(){
-  const container = document.getElementById("filter-sections-checkboxes");
+  const container = document.getElementById("filter-sections-chips");
   container.innerHTML = "";
   const sections = obtenirSectionsUniques();
-  
+
+  if(sections.length === 0){
+    container.innerHTML = '<span class="filter-chips-empty">Aucune section trouvée</span>';
+    return;
+  }
+
   sections.forEach(section=>{
-    const label = document.createElement("label");
-    label.className = "filter-checkbox";
-    
-    const checkbox = document.createElement("input");
-    checkbox.type = "checkbox";
-    checkbox.value = section.id;
-    checkbox.checked = FILTRES_ACTIFS.sections.has(section.id);
-    
-    checkbox.addEventListener("change", ()=>{
-      if(checkbox.checked){
-        FILTRES_ACTIFS.sections.add(section.id);
-      } else {
+    const isActive = FILTRES_ACTIFS.sections.has(section.id);
+    const chip = creerChip(section.nom, isActive, ()=>{
+      if(FILTRES_ACTIFS.sections.has(section.id)){
         FILTRES_ACTIFS.sections.delete(section.id);
+      } else {
+        FILTRES_ACTIFS.sections.add(section.id);
       }
-      // Réinitialiser les projets cochés (cascade)
+      FILTRES_ACTIFS.projets.clear();
+      populerFiltresSection();
       populerFiltresProjets();
       construire();
     });
-    
-    const span = document.createElement("span");
-    span.textContent = section.nom;
-    
-    label.appendChild(checkbox);
-    label.appendChild(span);
-    container.appendChild(label);
+    container.appendChild(chip);
   });
 }
 
 function populerFiltresProjets(){
-  const container = document.getElementById("filter-projets-checkboxes");
+  const container = document.getElementById("filter-projets-chips");
   container.innerHTML = "";
-  
-  // Projets disponibles selon les sections cochées
+
   const projetsDisponibles = obtenirProjetsParSection(FILTRES_ACTIFS.sections);
-  
+
+  if(FILTRES_ACTIFS.sections.size === 0){
+    container.innerHTML = '<span class="filter-chips-empty">Sélectionnez une section</span>';
+    return;
+  }
+  if(projetsDisponibles.length === 0){
+    container.innerHTML = '<span class="filter-chips-empty">Aucun projet dans cette section</span>';
+    return;
+  }
+
   projetsDisponibles.forEach(proj=>{
-    const label = document.createElement("label");
-    label.className = "filter-checkbox";
-    
-    const checkbox = document.createElement("input");
-    checkbox.type = "checkbox";
-    checkbox.value = proj.id;
-    checkbox.checked = FILTRES_ACTIFS.projets.has(proj.id);
-    
-    checkbox.addEventListener("change", ()=>{
-      if(checkbox.checked){
-        FILTRES_ACTIFS.projets.add(proj.id);
-      } else {
+    const isActive = FILTRES_ACTIFS.projets.has(proj.id);
+    const chip = creerChip(proj.Projet, isActive, ()=>{
+      if(FILTRES_ACTIFS.projets.has(proj.id)){
         FILTRES_ACTIFS.projets.delete(proj.id);
+      } else {
+        FILTRES_ACTIFS.projets.add(proj.id);
       }
+      populerFiltresProjets();
       construire();
     });
-    
-    const span = document.createElement("span");
-    span.textContent = proj.Projet;
-    
-    label.appendChild(checkbox);
-    label.appendChild(span);
-    container.appendChild(label);
+    container.appendChild(chip);
   });
 }
-
-let INIT_EN_COURS = false;
-let NON_ATTRIBUE_VERIFIE = false;
 
 async function init(){
   if(INIT_EN_COURS) return; // évite les appels concurrents (ex: cascade déclenchée par onRecords)
@@ -1075,6 +1127,7 @@ async function init(){
       NON_ATTRIBUE_ID = nonAttribue ? nonAttribue.id : NON_ATTRIBUE_ID;
     }
 
+    detectParametresSchema();
     populateSelects();
     populerFiltresSection();
     populerFiltresProjets();
