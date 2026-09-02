@@ -82,32 +82,20 @@
   .recap-page-sub{font-size:11px;color:var(--texte-mention)}
 
   /* ========== FRISE RÉTROPLANNING (positionnement en %) ========== */
-  .frise{position:relative;height:70px;margin:24px 0 34px 0}
-  .frise-bar{
-    position:absolute;left:0;top:28px;width:100%;height:10px;
-    background:var(--bleu-france);border-radius:3px;
-  }
+  /* ========== FRISE RÉTROPLANNING (positionnement en %, hauteur dynamique) ========== */
+  .frise{position:relative;margin:24px 0 16px 0}
+  .frise-bar{position:absolute;left:0;top:0;width:100%;height:10px;background:var(--bleu-france);border-radius:3px}
   .frise-tick{position:absolute;top:0;bottom:0;width:1px;background:var(--bordure)}
-  .frise-tick-label{
-    position:absolute;top:44px;transform:translateX(-50%);
-    font-size:9px;color:var(--texte-mention);white-space:nowrap;
-  }
-  .frise-today-line{position:absolute;top:0;bottom:14px;width:2px;background:rgba(206,5,0,.55);z-index:1}
-  .frise-today-label{
-    position:absolute;bottom:-2px;transform:translateX(-50%);
-    font-size:9px;font-weight:700;color:var(--critique);white-space:nowrap;
-  }
-  .frise-jalon-wrap{position:absolute;top:28px;left:0;width:0;height:0;z-index:2}
+  .frise-tick-label{position:absolute;transform:translateX(-50%);font-size:9px;color:var(--texte-mention);white-space:nowrap}
+  .frise-today-line{position:absolute;top:0;width:2px;background:rgba(206,5,0,.55);z-index:1}
+  .frise-today-label{position:absolute;transform:translateX(-50%);font-size:9px;font-weight:700;color:var(--critique);white-space:nowrap}
   .frise-jalon-diamond{
-    position:absolute;top:5px;left:0;width:12px;height:12px;
+    position:absolute;top:5px;width:12px;height:12px;
     margin-top:-6px;margin-left:-6px;transform:rotate(45deg);
-    border:1.5px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.3);
+    border:1.5px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.3);z-index:2;
   }
   .frise-jalon-diamond.retard-subit{box-shadow:0 1px 3px rgba(0,0,0,.3),0 0 0 2px var(--critique)}
-  .frise-jalon-label{
-    position:absolute;top:16px;left:0;transform:translateX(-50%);
-    text-align:center;white-space:nowrap;pointer-events:none;
-  }
+  .frise-jalon-label{position:absolute;transform:translateX(-50%);text-align:center;white-space:nowrap;pointer-events:none}
   .frise-jalon-label .nom{font-size:9px;font-weight:700;color:var(--texte);line-height:1.25}
   .frise-jalon-label .date{font-size:8px;color:var(--texte-mention);line-height:1.25}
 
@@ -518,6 +506,48 @@ function construire(){
   });
 }
 
+// Mesure précise de la largeur d'un texte avec la police réelle du widget
+// (identique à ganttv11 : nécessaire pour savoir si deux labels de jalons
+// se chevaucheraient réellement, pas juste une estimation grossière)
+let _canvasCtx = null;
+function mesurerLargeurTexte(texte){
+  if(!_canvasCtx){
+    const canvas = document.createElement("canvas");
+    _canvasCtx = canvas.getContext("2d");
+    _canvasCtx.font = '700 9px "Marianne", -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif';
+  }
+  return _canvasCtx.measureText(texte).width;
+}
+
+// Largeur de référence utilisée UNIQUEMENT pour décider si deux labels de
+// jalons se chevauchent (pas pour le positionnement final, qui reste en %
+// donc indépendant de la largeur réelle de la page/l'écran). 1000px est une
+// largeur représentative d'une page A4 paysage imprimée — suffisant pour une
+// décision d'anti-chevauchement fiable dans l'immense majorité des cas.
+const FRISE_LARGEUR_REFERENCE = 1000;
+
+// Calcule le niveau vertical de chaque jalon pour éviter que leurs labels se
+// chevauchent horizontalement — même principe que calculerNiveauxJalons() du
+// Gantt (empilement niveau par niveau tant qu'il y a collision), adapté à un
+// positionnement en % plutôt qu'en pixels JOUR_PX.
+function calculerNiveauxJalonsRecap(jalonsAffiches){
+  const JALON_MARGE = 10;
+  const finOccupeeParNiveau = [];
+  jalonsAffiches.forEach(item=>{
+    const xDiamant = (item.pct/100) * FRISE_LARGEUR_REFERENCE;
+    const largeurTexte = Math.max(mesurerLargeurTexte(item.jalon.Nom), mesurerLargeurTexte(item.dateStr));
+    const xDebut = xDiamant - (largeurTexte/2) - 6;
+    const xFin   = xDiamant + (largeurTexte/2) + 6;
+    let niveau = 0;
+    while(finOccupeeParNiveau[niveau] !== undefined && xDebut < finOccupeeParNiveau[niveau] + JALON_MARGE){
+      niveau++;
+    }
+    finOccupeeParNiveau[niveau] = xFin;
+    item.niveau = niveau;
+  });
+  return finOccupeeParNiveau.length || 1;
+}
+
 function construireProjetPage(proj){
   const page = el("div", "recap-page");
 
@@ -559,14 +589,26 @@ function construireProjetPage(proj){
 }
 
 // --- Frise rétroplanning : positionnement en % (voir explication donnée à l'utilisateur) ---
+// Géométrie verticale (calculée en JS, pas en CSS fixe, car le nombre de
+// niveaux de jalons varie d'un projet à l'autre) :
+//   0px                    : haut de la barre de durée
+//   BAR_H                  : bas de la barre
+//   + GAP_APRES_BARRE      : début de la zone des labels de jalons
+//   + niveau * NIVEAU_H    : chaque niveau de jalon empilé
+//   + GAP_AVANT_TICKS      : marge avant la ligne de graduations
+//   = hauteur totale de la frise
+const BAR_H = 10;
+const GAP_APRES_BARRE = 8;
+const NIVEAU_H = 24;       // hauteur d'un niveau de label jalon (nom + date sur 2 lignes)
+const NB_NIVEAUX_MIN = 2;  // confort visuel : toujours au moins 2 niveaux réservés, même si 0-1 jalon
+const GAP_AVANT_TICKS = 10;
+const TICK_LABEL_H = 12;
+
 function construireFrise(proj, pTaches, pJalons, projMin, projMax){
   const wrap = el("div");
 
   // Légende
   const legend = el("div", "legend");
-  const items = [
-    [".legend-puce.diamond", "var(--critique)", "Livrable Fixe"],
-  ];
   function addLegendDiamond(couleur, label){
     const item = el("div", "legend-item");
     const puce = el("span", "legend-puce diamond");
@@ -590,11 +632,34 @@ function construireFrise(proj, pTaches, pJalons, projMin, projMax){
   const dureeMs = projMax - projMin;
   const pct = (d) => dureeMs > 0 ? ((d - projMin) / dureeMs) * 100 : 0;
 
+  // Jalons à afficher : Livrables toujours, "Pour information" selon le toggle
+  const afficherPourInfo = document.getElementById("toggle-pour-info").checked;
+  let jalonsAffiches = pJalons.filter(j=>{
+    const type = norm(getJalonTypeTexte(j));
+    if(type === norm("Pour information")) return afficherPourInfo;
+    return true; // Livrable (et Livrable Fixe) toujours affiché
+  }).filter(j => parseDate(j.Date) !== null)
+    .map(j=>{
+      const jDate = parseDate(j.Date);
+      return { jalon:j, jDate, pct: pct(jDate), dateStr: fmtDateCourt(jDate) };
+    })
+    .sort((a,b) => a.pct - b.pct);
+
+  // Anti-chevauchement : calcule le niveau de chaque jalon, avec un minimum
+  // de NB_NIVEAUX_MIN niveaux réservés systématiquement (confort visuel demandé).
+  const nbNiveauxCalcule = calculerNiveauxJalonsRecap(jalonsAffiches);
+  const nbNiveaux = Math.max(NB_NIVEAUX_MIN, nbNiveauxCalcule);
+
+  const zoneJalonsH = GAP_APRES_BARRE + nbNiveaux * NIVEAU_H;
+  const tickTop = BAR_H + zoneJalonsH + GAP_AVANT_TICKS;
+  const friseHauteur = tickTop + TICK_LABEL_H;
+  frise.style.height = friseHauteur + "px";
+
   // Barre de durée
   const bar = el("div", "frise-bar");
   frise.appendChild(bar);
 
-  // Graduations légères (6 repères répartis, dates dd/mm)
+  // Graduations légères (6 repères répartis, dates dd/mm), alignées tout en bas
   const NB_TICKS = 6;
   for(let i=0; i<NB_TICKS; i++){
     const t = i/(NB_TICKS-1);
@@ -602,56 +667,50 @@ function construireFrise(proj, pTaches, pJalons, projMin, projMax){
     const p = t*100;
     const tick = el("div", "frise-tick");
     tick.style.left = p + "%";
+    tick.style.top = "0";
+    tick.style.height = tickTop + "px";
     frise.appendChild(tick);
     const label = el("div", "frise-tick-label", fmtDateCourt(d));
     label.style.left = p + "%";
+    label.style.top = tickTop + "px";
     frise.appendChild(label);
   }
 
-  // Ligne "aujourd'hui" si dans la plage
+  // Ligne "aujourd'hui" si dans la plage — alignée sur la même ligne que les graduations
   const today = new Date();
   today.setUTCHours(0,0,0,0);
   if(today >= projMin && today <= projMax){
     const p = pct(today);
     const ligne = el("div", "frise-today-line");
     ligne.style.left = p + "%";
+    ligne.style.height = tickTop + "px";
     frise.appendChild(ligne);
     const label = el("div", "frise-today-label", "Aujourd'hui");
     label.style.left = p + "%";
+    label.style.top = tickTop + "px";
     frise.appendChild(label);
   }
 
-  // Jalons : Livrables toujours affichés, "Pour information" selon le toggle
-  const afficherPourInfo = document.getElementById("toggle-pour-info").checked;
-  let jalonsAffiches = pJalons.filter(j=>{
-    const type = norm(getJalonTypeTexte(j));
-    if(type === norm("Pour information")) return afficherPourInfo;
-    return true; // Livrable (et Livrable Fixe) toujours affiché
-  }).filter(j => parseDate(j.Date) !== null)
-    .sort((a,b) => parseDate(a.Date) - parseDate(b.Date));
-
-  jalonsAffiches.forEach(j=>{
-    const jDate = parseDate(j.Date);
-    const p = pct(jDate);
+  // Diamants + labels des jalons, empilés selon leur niveau anti-chevauchement
+  jalonsAffiches.forEach(item=>{
+    const { jalon: j, jDate, pct: p, dateStr } = item;
     const retardJ = getRetardStructurel("jalon", j.id);
     const type = getJalonTypeTexte(j);
     const couleur = jalonCouleur(type, j.Important === true);
 
-    const jw = el("div", "frise-jalon-wrap");
-    jw.style.left = p + "%";
-
     const diamond = el("div", "frise-jalon-diamond" + (retardJ.subit.length>0 ? " retard-subit" : ""));
+    diamond.style.left = p + "%";
     diamond.style.background = couleur;
     diamond.title = `${j.Nom} (${jalonLibelleType(j)}) — ${fmtDate(jDate)}` +
       (retardJ.subit.length>0 ? ` — EN RETARD (${retardJ.subit.join(", ")})` : "");
-    jw.appendChild(diamond);
+    frise.appendChild(diamond);
 
     const label = el("div", "frise-jalon-label");
+    label.style.left = p + "%";
+    label.style.top = (BAR_H + GAP_APRES_BARRE + item.niveau * NIVEAU_H) + "px";
     label.appendChild(el("div", "nom", j.Nom));
-    label.appendChild(el("div", "date", fmtDateCourt(jDate)));
-    jw.appendChild(label);
-
-    frise.appendChild(jw);
+    label.appendChild(el("div", "date", dateStr));
+    frise.appendChild(label);
   });
 
   wrap.appendChild(frise);
@@ -714,18 +773,15 @@ function ligneTache(t){
   tr.appendChild(el("td", "col-dates", fmtDate(t.Date_debut) || "—"));
   tr.appendChild(el("td", "col-dates", fmtDate(t.Date_fin) || "—"));
 
-  // Relations : Prédécesseurs + Jalon déclencheur
+  // Relations : "Suit :" regroupe tout ce qui précède cette tâche
+  // (prédécesseurs ET jalon(s) déclencheur(s) — même logique de dépendance amont)
   const tdRel = el("td", "col-relations");
   const preds = getPredecessorTasks(t);
   const jalonsDecl = getTacheJalonsDeclencheurs(t);
-  const relLignes = [];
-  if(preds.length>0) relLignes.push("Prédéc. : " + preds.map(p=>p.Tache).join(", "));
-  if(jalonsDecl.length>0) relLignes.push("Jalon décl. : " + jalonsDecl.map(j=>j.Nom).join(", "));
-  if(relLignes.length===0){
-    tdRel.innerHTML = '<span class="cell-vide">—</span>';
-  } else {
-    tdRel.innerHTML = relLignes.join("<br>");
-  }
+  const suitItems = [...preds.map(p=>p.Tache), ...jalonsDecl.map(j=>j.Nom)];
+  tdRel.innerHTML = suitItems.length>0
+    ? "Suit : " + suitItems.join(", ")
+    : '<span class="cell-vide">—</span>';
   tr.appendChild(tdRel);
 
   // Statut + alertes (même moteur/messages que le Kanban)
@@ -757,11 +813,11 @@ function ligneJalon(j){
   tr.appendChild(el("td", "col-dates", "—"));
   tr.appendChild(el("td", "col-dates", fmtDate(j.Date) || "—"));
 
-  // Relations : Tâche(s) requise(s)
+  // Relations : "Suit :" = tâche(s) requise(s) pour ce jalon
   const tdRel = el("td", "col-relations");
   const requises = getJalonTachesRequises(j);
   tdRel.innerHTML = requises.length>0
-    ? "Tâche req. : " + requises.map(t=>t.Tache).join(", ")
+    ? "Suit : " + requises.map(t=>t.Tache).join(", ")
     : '<span class="cell-vide">—</span>';
   tr.appendChild(tdRel);
 
