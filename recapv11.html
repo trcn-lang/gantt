@@ -813,14 +813,14 @@ function ligneTache(t){
   tr.appendChild(el("td", "col-dates", fmtDate(t.Date_debut) || "—"));
   tr.appendChild(el("td", "col-dates", fmtDate(t.Date_fin) || "—"));
 
-  // Relations : "Suit :" regroupe tout ce qui précède cette tâche
+  // Relations : "Nécessite :" regroupe tout ce qui précède cette tâche
   // (prédécesseurs ET jalon(s) déclencheur(s) — même logique de dépendance amont)
   const tdRel = el("td", "col-relations");
   const preds = getPredecessorTasks(t);
   const jalonsDecl = getTacheJalonsDeclencheurs(t);
   const suitItems = [...preds.map(p=>p.Tache), ...jalonsDecl.map(j=>j.Nom)];
   tdRel.innerHTML = suitItems.length>0
-    ? "Suit : " + suitItems.join(", ")
+    ? "Nécessite : " + suitItems.join(", ")
     : '<span class="cell-vide">—</span>';
   tr.appendChild(tdRel);
 
@@ -856,11 +856,11 @@ function ligneJalon(j){
   tr.appendChild(el("td", "col-dates", "—"));
   tr.appendChild(el("td", "col-dates", fmtDate(j.Date) || "—"));
 
-  // Relations : "Suit :" = tâche(s) requise(s) pour ce jalon
+  // Relations : "Nécessite :" = tâche(s) requise(s) pour ce jalon
   const tdRel = el("td", "col-relations");
   const requises = getJalonTachesRequises(j);
   tdRel.innerHTML = requises.length>0
-    ? "Suit : " + requises.map(t=>t.Tache).join(", ")
+    ? "Nécessite : " + requises.map(t=>t.Tache).join(", ")
     : '<span class="cell-vide">—</span>';
   tr.appendChild(tdRel);
 
