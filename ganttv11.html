@@ -97,21 +97,33 @@
   }
   .btn-zoom-fit:hover{background:var(--bleu-975)}
 
-  /* ========== FILTRES CHECKBOXES ========== */
+  /* ========== FILTRES CHIPS (Section / Projet) ========== */
   .filter-section{
     padding:12px 16px;border-bottom:1px solid var(--bordure);
-    display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;
+    display:flex;flex-direction:column;gap:10px;
   }
-  .filter-group{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-  .filter-group-label{font-size:12px;font-weight:700;color:var(--texte);white-space:nowrap}
-  .filter-checkbox{
-    display:flex;align-items:center;gap:6px;font-size:12px;color:var(--texte);
-    cursor:pointer;padding:4px 8px;border-radius:4px;transition:background 0.15s;
+  .filter-row{display:flex;gap:10px;align-items:flex-start}
+  .filter-row-label{
+    font-size:12px;font-weight:700;color:var(--texte);white-space:nowrap;
+    padding-top:6px;flex-shrink:0;min-width:52px;
   }
-  .filter-checkbox:hover{background:var(--fond-alt)}
-  .filter-checkbox input[type="checkbox"]{
-    width:14px;height:14px;cursor:pointer;
+  .filter-chips{
+    display:flex;flex-wrap:wrap;gap:6px;flex:1;
   }
+  .filter-chip{
+    display:inline-flex;align-items:center;
+    padding:5px 12px;border-radius:16px;
+    border:1px solid var(--bordure);background:#fff;color:var(--texte);
+    font-size:12px;font-weight:500;cursor:pointer;
+    transition:background 0.15s,color 0.15s,border-color 0.15s;
+    white-space:nowrap;
+  }
+  .filter-chip:hover{border-color:var(--bleu-france);background:var(--bleu-975)}
+  .filter-chip.active{
+    background:var(--bleu-france);border-color:var(--bleu-france);color:#fff;font-weight:600;
+  }
+  .filter-chip.active:hover{background:#1212a8}
+  .filter-chips-empty{font-size:12px;color:var(--texte-mention);font-style:italic;padding-top:6px}
 
   .scroll{flex:1;overflow:auto;position:relative}
   .timeline-scroll{overflow:auto;padding-bottom:28px}
@@ -497,13 +509,13 @@
 
   <!-- FILTRES SECTION ET PROJET -->
   <div class="filter-section">
-    <div class="filter-group">
-      <span class="filter-group-label">Section :</span>
-      <div id="filter-sections-checkboxes"></div>
+    <div class="filter-row">
+      <span class="filter-row-label">Section :</span>
+      <div class="filter-chips" id="filter-sections-chips"></div>
     </div>
-    <div class="filter-group">
-      <span class="filter-group-label">Projet :</span>
-      <div id="filter-projets-checkboxes"></div>
+    <div class="filter-row">
+      <span class="filter-row-label">Projet :</span>
+      <div class="filter-chips" id="filter-projets-chips"></div>
     </div>
   </div>
 
@@ -1122,97 +1134,107 @@ let NON_ATTRIBUE_VERIFIE = false;
 let PREMIER_CHARGEMENT = true; // le scroll vers la 1ère date visible ne se déclenche qu'à l'ouverture, pas à chaque reload de données
 
 // ============================================================================
-// GESTION DES FILTRES SECTION & PROJET
+// GESTION DES FILTRES SECTION & PROJET (chips cliquables)
 // ============================================================================
+// IMPORTANT : les "sections" n'existent, en tant que valeurs, que via le champ
+// Projets.Section (référence vers PARAMETRES). PARAMETRES.Section est le texte
+// brut de la valeur elle-même (une ligne = un nom de section), donc on ne peut
+// pas le "resolveRef" comme une référence — sinon on retombe sur des libellés
+// de projets par erreur. On dérive donc la liste des sections en parcourant
+// les projets, pas PARAMETRES directement.
 
 function obtenirSectionsUniques(){
-  // Retourne les sections dans l'ordre d'apparition dans PARAMETRES
+  // Retourne les sections réellement utilisées par des projets,
+  // dans l'ordre d'apparition des projets (qui reflète l'ordre PARAMETRES
+  // via l'ordre naturel d'ajout des projets).
   const vues = new Set();
   const sections = [];
-  DB.parametres.forEach(p=>{
-    if(p.Section && !vues.has(refId(p.Section))){
-      vues.add(refId(p.Section));
-      sections.push({id:refId(p.Section), nom:resolveRef(DB.parametres,p.Section,"Section")});
+  DB.projets.forEach(proj=>{
+    const sid = refId(proj.Section);
+    if(sid !== null && sid !== undefined && !vues.has(sid)){
+      const nom = resolveRef(DB.parametres, proj.Section, "Section");
+      if(nom){
+        vues.add(sid);
+        sections.push({id:sid, nom});
+      }
     }
   });
   return sections;
 }
 
 function obtenirProjetsParSection(sectionIds){
-  // Retourne les projets dont la Section est dans sectionIds
-  // Si sectionIds vide, retourne tous les projets
-  if(sectionIds.size === 0) return DB.projets;
-  return DB.projets.filter(proj=>{
-    const projSectionId = refId(proj.Section);
-    return sectionIds.has(projSectionId);
-  });
+  // Retourne les projets dont la Section est dans sectionIds.
+  // Si aucune section n'est cochée, ne retourne rien : la liste "Projet"
+  // reste vide tant qu'on n'a pas choisi une section (le Gantt, lui,
+  // continue d'afficher tous les projets — voir construire()).
+  if(sectionIds.size === 0) return [];
+  return DB.projets.filter(proj=>sectionIds.has(refId(proj.Section)));
+}
+
+function creerChip(label, isActive, onClick){
+  const chip = document.createElement("button");
+  chip.type = "button";
+  chip.className = "filter-chip" + (isActive ? " active" : "");
+  chip.textContent = label;
+  chip.onclick = onClick;
+  return chip;
 }
 
 function populerFiltresSection(){
-  const container = document.getElementById("filter-sections-checkboxes");
+  const container = document.getElementById("filter-sections-chips");
   container.innerHTML = "";
   const sections = obtenirSectionsUniques();
-  
+
+  if(sections.length === 0){
+    container.innerHTML = '<span class="filter-chips-empty">Aucune section trouvée</span>';
+    return;
+  }
+
   sections.forEach(section=>{
-    const label = document.createElement("label");
-    label.className = "filter-checkbox";
-    
-    const checkbox = document.createElement("input");
-    checkbox.type = "checkbox";
-    checkbox.value = section.id;
-    checkbox.checked = FILTRES_ACTIFS.sections.has(section.id);
-    
-    checkbox.addEventListener("change", ()=>{
-      if(checkbox.checked){
-        FILTRES_ACTIFS.sections.add(section.id);
-      } else {
+    const isActive = FILTRES_ACTIFS.sections.has(section.id);
+    const chip = creerChip(section.nom, isActive, ()=>{
+      if(FILTRES_ACTIFS.sections.has(section.id)){
         FILTRES_ACTIFS.sections.delete(section.id);
+      } else {
+        FILTRES_ACTIFS.sections.add(section.id);
       }
-      // Réinitialiser les projets cochés (cascade)
+      // Une section change → on réinitialise les projets cochés (cascade)
+      FILTRES_ACTIFS.projets.clear();
+      populerFiltresSection();
       populerFiltresProjets();
       construire();
     });
-    
-    const span = document.createElement("span");
-    span.textContent = section.nom;
-    
-    label.appendChild(checkbox);
-    label.appendChild(span);
-    container.appendChild(label);
+    container.appendChild(chip);
   });
 }
 
 function populerFiltresProjets(){
-  const container = document.getElementById("filter-projets-checkboxes");
+  const container = document.getElementById("filter-projets-chips");
   container.innerHTML = "";
-  
-  // Projets disponibles selon les sections cochées
+
   const projetsDisponibles = obtenirProjetsParSection(FILTRES_ACTIFS.sections);
-  
+
+  if(FILTRES_ACTIFS.sections.size === 0){
+    container.innerHTML = '<span class="filter-chips-empty">Sélectionnez une section</span>';
+    return;
+  }
+  if(projetsDisponibles.length === 0){
+    container.innerHTML = '<span class="filter-chips-empty">Aucun projet dans cette section</span>';
+    return;
+  }
+
   projetsDisponibles.forEach(proj=>{
-    const label = document.createElement("label");
-    label.className = "filter-checkbox";
-    
-    const checkbox = document.createElement("input");
-    checkbox.type = "checkbox";
-    checkbox.value = proj.id;
-    checkbox.checked = FILTRES_ACTIFS.projets.has(proj.id);
-    
-    checkbox.addEventListener("change", ()=>{
-      if(checkbox.checked){
-        FILTRES_ACTIFS.projets.add(proj.id);
-      } else {
+    const isActive = FILTRES_ACTIFS.projets.has(proj.id);
+    const chip = creerChip(proj.Projet, isActive, ()=>{
+      if(FILTRES_ACTIFS.projets.has(proj.id)){
         FILTRES_ACTIFS.projets.delete(proj.id);
+      } else {
+        FILTRES_ACTIFS.projets.add(proj.id);
       }
+      populerFiltresProjets();
       construire();
     });
-    
-    const span = document.createElement("span");
-    span.textContent = proj.Projet;
-    
-    label.appendChild(checkbox);
-    label.appendChild(span);
-    container.appendChild(label);
+    container.appendChild(chip);
   });
 }
 
