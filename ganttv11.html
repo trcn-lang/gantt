@@ -917,14 +917,24 @@ function allerDebut(){
 // projets, pour ne jamais faire bouger l'échelle horizontale au pli/dépli —
 // voir le fix "plier un projet décale toute la frise").
 function calculerPremiereDateVisible(){
+  // "Visible" = ni replié (COLLAPSED_PROJETS) NI masqué par les filtres
+  // Section/Projet actifs (FILTRES_ACTIFS). Avant ce correctif, seul le pli
+  // était pris en compte : filtrer un projet spécifique le laissait quand
+  // même compter dans le calcul, et le bouton "Début" scrollait alors vers
+  // une date appartenant à un projet invisible à l'écran (semblait "ne rien faire").
+  const projetsAffichesIds = new Set(obtenirProjetsAffiches().map(p=>p.id));
   const dates = [];
   DB.taches.forEach(t => {
-    if(COLLAPSED_PROJETS.has(refId(t.Projet))) return;
+    const pid = refId(t.Projet);
+    if(COLLAPSED_PROJETS.has(pid)) return;
+    if(!projetsAffichesIds.has(pid)) return;
     const dIdx = dayIndex(t.Date_debut);
     if(dIdx !== null) dates.push(dIdx);
   });
   DB.jalons.forEach(j => {
-    if(COLLAPSED_PROJETS.has(refId(j.Projet))) return;
+    const pid = refId(j.Projet);
+    if(COLLAPSED_PROJETS.has(pid)) return;
+    if(!projetsAffichesIds.has(pid)) return;
     const dIdx = dayIndex(j.Date);
     if(dIdx !== null) dates.push(dIdx);
   });
@@ -1174,6 +1184,24 @@ function obtenirProjetsParSection(sectionIds){
   // continue d'afficher tous les projets — voir construire()).
   if(sectionIds.size === 0) return [];
   return DB.projets.filter(proj=>sectionIds.has(refId(proj.Section)));
+}
+
+// Liste des projets RÉELLEMENT affichés dans le Gantt compte tenu des filtres
+// Section/Projet actifs — même logique que celle utilisée dans construire()
+// pour dessiner les lignes. Centralisée ici pour être réutilisée partout où
+// on a besoin de savoir "quels projets sont visibles à l'écran" (ex: bouton
+// "Début"), afin que ces deux notions ne puissent jamais diverger.
+function obtenirProjetsAffiches(){
+  let projetsAffichage = DB.projets;
+  if(FILTRES_ACTIFS.projets.size > 0){
+    projetsAffichage = DB.projets.filter(p=>FILTRES_ACTIFS.projets.has(p.id));
+  } else if(FILTRES_ACTIFS.sections.size > 0){
+    projetsAffichage = DB.projets.filter(p=>{
+      const projSectionId = refId(p.Section);
+      return FILTRES_ACTIFS.sections.has(projSectionId);
+    });
+  }
+  return projetsAffichage;
 }
 
 function creerChip(label, isActive, onClick){
@@ -3030,17 +3058,7 @@ function construire(){
   grid.appendChild(head);
   
   // Appliquer les filtres Section et Projet
-  let projetsAffichage = DB.projets;
-  if(FILTRES_ACTIFS.projets.size > 0){
-    // Si des projets sont cochés, afficher uniquement ceux-là
-    projetsAffichage = DB.projets.filter(p=>FILTRES_ACTIFS.projets.has(p.id));
-  } else if(FILTRES_ACTIFS.sections.size > 0){
-    // Sinon, si des sections sont cochées, afficher les projets de ces sections
-    projetsAffichage = DB.projets.filter(p=>{
-      const projSectionId = refId(p.Section);
-      return FILTRES_ACTIFS.sections.has(projSectionId);
-    });
-  }
+  let projetsAffichage = obtenirProjetsAffiches();
   
   projetsAffichage.forEach(proj=>{
     // 1. Calcul des jalons et de leurs niveaux AVANT de créer le bandeau
